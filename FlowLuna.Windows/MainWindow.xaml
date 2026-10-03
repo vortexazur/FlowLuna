@@ -1,0 +1,26 @@
+<Window x:Class="FlowLuna.Windows.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:wv2="clr-namespace:Microsoft.Web.WebView2.Wpf;assembly=Microsoft.Web.WebView2.Wpf"
+        mc:Ignorable="d"
+        Title="FlowLuna"
+        Height="820" Width="1280"
+        MinHeight="640" MinWidth="960"
+        WindowStartupLocation="CenterScreen"
+        WindowStyle="None"
+        Background="#0a0a0a"
+        Icon="wwwroot\favicon.ico">
+
+    <WindowChrome.WindowChrome>
+        <WindowChrome CaptionHeight="0"
+                      ResizeBorderThickness="6"
+                      CornerRadius="0"
+                      GlassFrameThickness="0" />
+    </WindowChrome.WindowChrome>
+
+    <Grid Background="#0a0a0a">
+        <wv2:WebView2 x:Name="WebViewControl" />
+    </Grid>
+</Window>

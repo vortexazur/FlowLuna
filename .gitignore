@@ -12,3 +12,12 @@ bin/*.exe
 yt-dlp.exe
 yt-dlp
 yt-dlp-nightly
+
+# .NET & WebView2
+**/[Bb]in/
+**/[Oo]bj/
+release-dotnet/
+FlowLuna.Windows/bin/
+FlowLuna.Windows/obj/
+*.user
+*.suo

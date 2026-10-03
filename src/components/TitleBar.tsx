@@ -49,6 +49,13 @@ export const TitleBar: React.FC<TitleBarProps> = ({ currentTrack, isPlaying, acc
       className="w-full h-8 bg-neutral-950/80 backdrop-blur-md border-b border-white/5 flex items-center justify-between select-none z-50 text-neutral-300 text-xs flex-shrink-0"
       style={{ WebkitAppRegion: 'drag' } as React.CSSProperties}
       onDoubleClick={handleMaximize}
+      onMouseDown={(e) => {
+        if (e.button === 0 && (e.target as HTMLElement).tagName !== 'BUTTON' && !(e.target as HTMLElement).closest('button')) {
+          if ((window as any).chrome?.webview) {
+            (window as any).chrome.webview.postMessage({ action: 'drag-window' });
+          }
+        }
+      }}
     >
       {/* Left: Branding & Status */}
       <div className="flex items-center gap-2.5 px-3 min-w-0" style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}>
