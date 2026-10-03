@@ -14,7 +14,6 @@ import {
   ListMusic,
   Maximize2,
   CheckCircle2,
-  Minimize2,
   Activity,
   FileText,
   PictureInPicture2,
@@ -400,16 +399,6 @@ export const PlayerBar: React.FC<PlayerBarProps> = ({
           </button>
         )}
 
-        {/* Mode Lecteur Compact / Mini-barre d'appoint */}
-        <button
-          type="button"
-          id="player-mini-btn"
-          onClick={onToggleMiniPlayer}
-          className="p-2 rounded-lg text-neutral-400 hover:text-emerald-400 hover:bg-neutral-800 transition-colors cursor-pointer"
-          title="Mode Lecteur Compact / Mini-barre d'appoint ancrable en haut ou en bas"
-        >
-          <Minimize2 className="w-4 h-4" />
-        </button>
 
         {/* Volume Controls & Normalization */}
         <div className="flex items-center gap-2">

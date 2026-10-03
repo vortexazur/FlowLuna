@@ -41,6 +41,10 @@ const api: ElectronAPI = {
     ipcRenderer.invoke('update-tray-track', info),
   getBinariesStatus: () => ipcRenderer.invoke('get-binaries-status'),
   updateYtdlp: () => ipcRenderer.invoke('update-ytdlp'),
+  getLibVlcStatus: () => fetch('/api/engine/libvlc-status').then((r) => r.json()),
+  updateLibVlc: () => fetch('/api/engine/update-libvlc', { method: 'POST' }).then((r) => r.json()),
+  setCompactMode: (enabled: boolean, width = 360, height = 240) =>
+    ipcRenderer.invoke('window-set-compact-mode', enabled, width, height),
   selectMusicFolder: () => ipcRenderer.invoke('select-music-folder'),
   selectMusicFiles: () => ipcRenderer.invoke('select-music-files'),
 };

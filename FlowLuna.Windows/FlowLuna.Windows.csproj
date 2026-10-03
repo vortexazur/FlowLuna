@@ -8,8 +8,12 @@
     <UseWPF>true</UseWPF>
     <AssemblyName>FlowLuna</AssemblyName>
     <RootNamespace>FlowLuna</RootNamespace>
-    <Version>1.1.0</Version>
+    <Version>1.1.1</Version>
     <ApplicationIcon>..\public\favicon.ico</ApplicationIcon>
+    <ServerGarbageCollection>false</ServerGarbageCollection>
+    <ConcurrentGarbageCollection>true</ConcurrentGarbageCollection>
+    <TieredPGO>true</TieredPGO>
+    <OptimizationPreference>Speed</OptimizationPreference>
   </PropertyGroup>
 
   <ItemGroup>

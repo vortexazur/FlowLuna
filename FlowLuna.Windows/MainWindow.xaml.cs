@@ -23,6 +23,9 @@ public partial class MainWindow : Window
     [DllImport("user32.dll")]
     private static extern IntPtr SendMessage(IntPtr hWnd, int msg, IntPtr wParam, IntPtr lParam);
 
+    [DllImport("psapi.dll")]
+    private static extern int EmptyWorkingSet(IntPtr hwProc);
+
     private const int WM_NCLBUTTONDOWN = 0xA1;
     private const int HTCAPTION = 0x2;
     private const int WM_APPCOMMAND = 0x0319;
@@ -51,11 +54,20 @@ public partial class MainWindow : Window
         // 1. Start embedded Kestrel minimal API server in-process
         await _httpServer.StartAsync(3000);
 
-        // 2. Initialize WebView2 with dedicated UserDataFolder
+        // 2. Initialize WebView2 with low-RAM optimization options & dedicated UserDataFolder
         var userDataFolder = Path.Combine(BinaryManager.FlowLunaDataDir, "webview2_data");
         Directory.CreateDirectory(userDataFolder);
 
-        var env = await CoreWebView2Environment.CreateAsync(userDataFolder: userDataFolder);
+        var envOptions = new CoreWebView2EnvironmentOptions(
+            "--disable-features=Translate,OptimizationHints,MediaRouter " +
+            "--renderer-process-limit=1 " +
+            "--disable-renderer-backgrounding " +
+            "--disable-backgrounding-occluded-windows " +
+            "--enable-low-res-tiling " +
+            "--js-flags=\"--max-old-space-size=128\""
+        );
+
+        var env = await CoreWebView2Environment.CreateAsync(userDataFolder: userDataFolder, options: envOptions);
         await WebViewControl.EnsureCoreWebView2Async(env);
 
         WebViewControl.CoreWebView2.Settings.IsStatusBarEnabled = false;
@@ -74,6 +86,15 @@ public partial class MainWindow : Window
                 minimize: () => window.chrome.webview.postMessage({ action: 'minimize' }),
                 maximize: () => window.chrome.webview.postMessage({ action: 'maximize' }),
                 close: () => window.chrome.webview.postMessage({ action: 'close' }),
+                setCompactMode: (enabled, w, h) => {
+                    try {
+                        if (window.chrome?.webview?.hostObjects?.nativeHost) {
+                            window.chrome.webview.hostObjects.nativeHost.SetCompactMode(enabled, w || 360, h || 240);
+                        } else {
+                            window.chrome.webview.postMessage({ action: 'set-compact-mode', enabled: !!enabled, width: w || 360, height: h || 240 });
+                        }
+                    } catch {}
+                },
                 isMaximized: async () => await window.chrome.webview.hostObjects.nativeHost.IsMaximized(),
                 selectMusicFolder: async () => await window.chrome.webview.hostObjects.nativeHost.SelectMusicFolder(),
                 selectMusicFiles: async () => JSON.parse(await window.chrome.webview.hostObjects.nativeHost.SelectMusicFilesJson()),
@@ -83,6 +104,14 @@ public partial class MainWindow : Window
                 },
                 updateYtdlp: async () => {
                     const res = await fetch('/api/downloader/update-ytdlp', { method: 'POST' });
+                    return res.json();
+                },
+                getLibVlcStatus: async () => {
+                    const res = await fetch('/api/engine/libvlc-status');
+                    return res.json();
+                },
+                updateLibVlc: async () => {
+                    const res = await fetch('/api/engine/update-libvlc', { method: 'POST' });
                     return res.json();
                 },
                 updateTrayTrack: (info) => window.chrome.webview.postMessage({ action: 'update-tray-track', info }),
@@ -150,6 +179,12 @@ public partial class MainWindow : Window
                         ReleaseCapture();
                         SendMessage(new WindowInteropHelper(this).Handle, WM_NCLBUTTONDOWN, (IntPtr)HTCAPTION, IntPtr.Zero);
                         break;
+                    case "set-compact-mode":
+                        bool enabled = doc.RootElement.TryGetProperty("enabled", out var ep) && ep.GetBoolean();
+                        double w = doc.RootElement.TryGetProperty("width", out var wp) ? wp.GetDouble() : 360;
+                        double h = doc.RootElement.TryGetProperty("height", out var hp) ? hp.GetDouble() : 240;
+                        _nativeBridge?.SetCompactMode(enabled, w, h);
+                        break;
                 }
             }
         }
@@ -158,6 +193,18 @@ public partial class MainWindow : Window
 
     private void MainWindow_StateChanged(object? sender, EventArgs e)
     {
+        if (WindowState == WindowState.Minimized)
+        {
+            // Aggressive RAM flush when minimized
+            GC.Collect(2, GCCollectionMode.Aggressive, true, true);
+            GC.WaitForPendingFinalizers();
+            try
+            {
+                EmptyWorkingSet(System.Diagnostics.Process.GetCurrentProcess().Handle);
+            }
+            catch { }
+        }
+
         if (WebViewControl.CoreWebView2 != null)
         {
             var isMax = WindowState == WindowState.Maximized;

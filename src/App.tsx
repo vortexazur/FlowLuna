@@ -446,29 +446,18 @@ export default function App() {
 
   // Open Detached Always-on-Top / Picture-in-Picture window
   const handleOpenDetachedPip = useCallback(async () => {
-    if (detachedPipWindow && !detachedPipWindow.closed) {
-      detachedPipWindow.focus();
-      return;
-    }
-
-    const res = await openAlwaysOnTopWindow(360, 220);
-    if (res && res.window) {
-      setDetachedPipWindow(res.window);
-      setPipNotification(
-        res.type === 'document-pip'
-          ? 'Mini-Lecteur Always-on-Top actif au-dessus de vos applications !'
-          : 'Mini-Lecteur Détaché compact ouvert !'
-      );
-      setTimeout(() => setPipNotification(null), 4000);
-    } else {
-      // Fallback to in-app floating mini player
-      setIsMiniPlayer(true);
-      setPipNotification(
-        'Mini-Lecteur PC activé ! (Pour l’Always-on-Top système, ouvrez PlayZic dans un nouvel onglet)'
-      );
-      setTimeout(() => setPipNotification(null), 5500);
-    }
-  }, [detachedPipWindow]);
+    setIsMiniPlayer((prev) => {
+      const next = !prev;
+      if (next) {
+        window.electronAPI?.setCompactMode?.(true, 360, 240);
+        setPipNotification('Mode Widget Flottant activé');
+      } else {
+        window.electronAPI?.setCompactMode?.(false);
+      }
+      setTimeout(() => setPipNotification(null), 3000);
+      return next;
+    });
+  }, []);
 
   const handleCloseDetachedPip = useCallback(() => {
     if (detachedPipWindow && !detachedPipWindow.closed) {
@@ -1323,7 +1312,9 @@ export default function App() {
         />
       </div>
       {/* Native Windows Frameless TitleBar */}
-      <TitleBar currentTrack={currentPlayingTrack} isPlaying={isPlaying} accent={playerSettings.accent} />
+      {!isMiniPlayer && (
+        <TitleBar currentTrack={currentPlayingTrack} isPlaying={isPlaying} accent={playerSettings.accent} />
+      )}
 
       {/* Unified Video & Audio Media Player Engine */}
       <VideoPlayer
@@ -1351,131 +1342,113 @@ export default function App() {
         accent={playerSettings.accent}
       />
 
-      {/* Main Desktop Container (Sidebar + Content) or Minimized Workspace Mode */}
-      {isMiniPlayer && isAppMinimized ? (
-        <div
-          className={`flex flex-1 flex-col items-center justify-center p-8 text-center select-none relative overflow-hidden bg-neutral-950 ${
-            playerSettings.compactPlayerDock === 'top' ? 'pt-16' : 'pb-16'
-          }`}
-        >
-          {currentPlayingTrack?.coverUrl && (
-            <div
-              className="absolute inset-0 bg-cover bg-center opacity-10 blur-3xl pointer-events-none scale-125"
-              style={{ backgroundImage: `url(${currentPlayingTrack.coverUrl})` }}
-            />
-          )}
-
-          <div className="relative z-10 flex flex-col items-center gap-4 max-w-md p-6 rounded-2xl bg-neutral-900/80 border border-neutral-800 backdrop-blur-md shadow-2xl animate-in zoom-in-95 duration-200">
-            <div className="p-3.5 rounded-2xl bg-neutral-800 text-emerald-400 border border-neutral-700/60 shadow-inner">
-              <Layers className="w-8 h-8 animate-pulse" />
-            </div>
-            <div>
-              <h3 className="text-base font-extrabold text-white">Mode Lecteur d'Appoint Actif</h3>
-              <p className="text-xs text-neutral-400 mt-1.5 leading-relaxed">
-                L'interface principale est réduite pour garder votre espace de travail dégagé. La mini-barre d'appoint reste ancrée en {playerSettings.compactPlayerDock === 'top' ? 'haut' : 'bas'} de votre écran avec tous vos contrôles.
-              </p>
-            </div>
-            <div className="flex items-center gap-2 mt-2">
-              <button
-                type="button"
-                onClick={() => setIsAppMinimized(false)}
-                className="px-4 py-2 rounded-xl text-xs font-semibold bg-neutral-800 hover:bg-neutral-700 text-white transition-colors cursor-pointer flex items-center gap-2 shadow-xs"
-              >
-                <Layers className="w-3.5 h-3.5" />
-                <span>Afficher la bibliothèque</span>
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  setIsMiniPlayer(false);
-                  setIsAppMinimized(false);
-                }}
-                className="px-4 py-2 rounded-xl text-xs font-semibold bg-emerald-500 hover:bg-emerald-400 text-neutral-950 transition-colors cursor-pointer flex items-center gap-2 shadow-md"
-              >
-                <Maximize2 className="w-3.5 h-3.5" />
-                <span>Restaurer l'application</span>
-              </button>
-            </div>
-          </div>
-        </div>
-      ) : (
-        <div
-          className={`flex flex-1 overflow-hidden ${
-            isMiniPlayer && playerSettings.compactPlayerDock === 'top' ? 'pt-11' : ''
-          }`}
-        >
-          <Sidebar
-            currentView={currentView}
-            onNavigate={handleNavigate}
-            playlists={playlists}
-            favoritesCount={tracks.filter((t) => t.isFavorite).length}
-            videosCount={tracks.filter((t) => t.isVideo).length}
-            onCreatePlaylist={() => setIsCreatePlaylistModalOpen(true)}
-            onOpenSettings={() => setIsSettingsOpen(true)}
-            onOpenEqualizer={() => setIsEqualizerOpen(true)}
-            onImportFiles={handleImportFiles}
-            accent={playerSettings.accent}
-            theme={playerSettings.theme}
-            cachedCount={cachedTracksCount}
+      {/* Exclusive Floating Widget Mode: when active, the player becomes ONLY the floating widget */}
+      {isMiniPlayer ? (
+        <div className="flex-1 flex items-center justify-center relative w-full h-full overflow-hidden select-none bg-neutral-950/95 backdrop-blur-xl">
+          <MiniPlayer
+            currentTrack={currentPlayingTrack}
             isPlaying={isPlaying}
+            onTogglePlay={handleTogglePlay}
+            onStop={handleStop}
+            onPrev={handlePrev}
+            onNext={handleNext}
+            currentTime={currentTime}
+            duration={duration}
+            onSeek={handleSeek}
+            volume={volume}
+            onVolumeChange={handleVolumeChange}
+            isMuted={isMuted}
+            onToggleMute={handleToggleMute}
+            isFavorite={currentPlayingTrack ? currentPlayingTrack.isFavorite : false}
+            onToggleFavorite={() => {
+              if (currentPlayingTrack) handleToggleFavorite(currentPlayingTrack.id);
+            }}
+            onRestore={() => {
+              setIsMiniPlayer(false);
+              window.electronAPI?.setCompactMode?.(false);
+            }}
+            onDetachPip={handleOpenDetachedPip}
+            accent={playerSettings.accent}
+            playlists={playlists}
+            onAddToPlaylist={handleAddToPlaylist}
+            onCreatePlaylist={() => setIsCreatePlaylistModalOpen(true)}
             settings={playerSettings}
             onUpdateSettings={handleUpdatePlayerSettings}
-            onToggleFullscreen={() => setIsFullscreenOpen(true)}
-            onTogglePinPlaylist={handleTogglePinPlaylist}
-            onBulkUpdatePins={handleBulkUpdatePins}
-            onOpenCommandPalette={() => setIsCommandPaletteOpen(true)}
-            onOpenQueue={() => setIsQueueOpen((p) => !p)}
-            queueLength={queue.length}
-            isQueueOpen={isQueueOpen}
+            isStandalone={true}
           />
-
-          {/* Scrollable Center Content View */}
-          <main id="main-content-scroll" className="flex-1 overflow-y-auto bg-neutral-950/90 glass-main relative z-10">
-            {renderMainContent()}
-          </main>
         </div>
-      )}
+      ) : (
+        <>
+          <div className="flex flex-1 overflow-hidden">
+            <Sidebar
+              currentView={currentView}
+              onNavigate={handleNavigate}
+              playlists={playlists}
+              favoritesCount={tracks.filter((t) => t.isFavorite).length}
+              videosCount={tracks.filter((t) => t.isVideo).length}
+              onCreatePlaylist={() => setIsCreatePlaylistModalOpen(true)}
+              onOpenSettings={() => setIsSettingsOpen(true)}
+              onOpenEqualizer={() => setIsEqualizerOpen(true)}
+              onImportFiles={handleImportFiles}
+              accent={playerSettings.accent}
+              theme={playerSettings.theme}
+              cachedCount={cachedTracksCount}
+              isPlaying={isPlaying}
+              settings={playerSettings}
+              onUpdateSettings={handleUpdatePlayerSettings}
+              onToggleFullscreen={() => setIsFullscreenOpen(true)}
+              onTogglePinPlaylist={handleTogglePinPlaylist}
+              onBulkUpdatePins={handleBulkUpdatePins}
+              onOpenCommandPalette={() => setIsCommandPaletteOpen(true)}
+              onOpenQueue={() => setIsQueueOpen((p) => !p)}
+              queueLength={queue.length}
+              isQueueOpen={isQueueOpen}
+            />
 
-      {/* Bottom Desktop Player Bar (hidden if MiniPlayer is docked at bottom) */}
-      {(!isMiniPlayer || playerSettings.compactPlayerDock !== 'bottom') && (
-        <PlayerBar
-          currentTrack={currentPlayingTrack}
-          isPlaying={isPlaying}
-          onTogglePlay={handleTogglePlay}
-          onStop={handleStop}
-          onPrev={handlePrev}
-          onNext={handleNext}
-          currentTime={currentTime}
-          duration={duration}
-          onSeek={handleSeek}
-          volume={volume}
-          onVolumeChange={handleVolumeChange}
-          isMuted={isMuted}
-          onToggleMute={handleToggleMute}
-          isFavorite={currentPlayingTrack ? currentPlayingTrack.isFavorite : false}
-          onToggleFavorite={() => {
-            if (currentPlayingTrack) handleToggleFavorite(currentPlayingTrack.id);
-          }}
-          shuffle={shuffle}
-          onToggleShuffle={() => setShuffle((p) => !p)}
-          repeatMode={repeatMode}
-          onCycleRepeat={() =>
-            setRepeatMode((p) => (p === 'off' ? 'all' : p === 'all' ? 'one' : 'off'))
-          }
-          onOpenQueue={() => setIsQueueOpen(true)}
-          queueLength={queue.length}
-          onOpenEqualizer={() => setIsEqualizerOpen(true)}
-          onToggleFullscreen={() => setIsFullscreenOpen(true)}
-          onToggleMiniPlayer={() => setIsMiniPlayer((p) => !p)}
-          onOpenDetachedPip={handleOpenDetachedPip}
-          isDetachedPipActive={!!detachedPipWindow && !detachedPipWindow.closed}
-          onToggleVideo={() => setVideoMode((prev) => (prev === 'theater' ? 'pip' : 'theater'))}
-          isVideoModeActive={videoMode !== 'hidden'}
-          accent={playerSettings.accent}
-          settings={playerSettings}
-          onUpdateSettings={handleUpdatePlayerSettings}
-          onOpenTrimmer={handleOpenTrimmer}
-        />
+            {/* Scrollable Center Content View */}
+            <main id="main-content-scroll" className="flex-1 overflow-y-auto bg-neutral-950/90 glass-main relative z-10">
+              {renderMainContent()}
+            </main>
+          </div>
+
+          <PlayerBar
+            currentTrack={currentPlayingTrack}
+            isPlaying={isPlaying}
+            onTogglePlay={handleTogglePlay}
+            onStop={handleStop}
+            onPrev={handlePrev}
+            onNext={handleNext}
+            currentTime={currentTime}
+            duration={duration}
+            onSeek={handleSeek}
+            volume={volume}
+            onVolumeChange={handleVolumeChange}
+            isMuted={isMuted}
+            onToggleMute={handleToggleMute}
+            isFavorite={currentPlayingTrack ? currentPlayingTrack.isFavorite : false}
+            onToggleFavorite={() => {
+              if (currentPlayingTrack) handleToggleFavorite(currentPlayingTrack.id);
+            }}
+            shuffle={shuffle}
+            onToggleShuffle={() => setShuffle((p) => !p)}
+            repeatMode={repeatMode}
+            onCycleRepeat={() =>
+              setRepeatMode((p) => (p === 'off' ? 'all' : p === 'all' ? 'one' : 'off'))
+            }
+            onOpenQueue={() => setIsQueueOpen(true)}
+            queueLength={queue.length}
+            onOpenEqualizer={() => setIsEqualizerOpen(true)}
+            onToggleFullscreen={() => setIsFullscreenOpen(true)}
+            onOpenDetachedPip={handleOpenDetachedPip}
+            isDetachedPipActive={isMiniPlayer}
+            onToggleVideo={() => setVideoMode((prev) => (prev === 'theater' ? 'pip' : 'theater'))}
+            isVideoModeActive={videoMode !== 'hidden'}
+            accent={playerSettings.accent}
+            settings={playerSettings}
+            onUpdateSettings={handleUpdatePlayerSettings}
+            onOpenTrimmer={handleOpenTrimmer}
+          />
+        </>
       )}
 
       {/* Equalizer Modal */}
@@ -1586,38 +1559,6 @@ export default function App() {
         accent={playerSettings.accent}
       />
 
-      {/* Floating Desktop Mini Player */}
-      {isMiniPlayer && (
-        <MiniPlayer
-          currentTrack={currentPlayingTrack}
-          isPlaying={isPlaying}
-          onTogglePlay={handleTogglePlay}
-          onStop={handleStop}
-          onPrev={handlePrev}
-          onNext={handleNext}
-          currentTime={currentTime}
-          duration={duration}
-          onSeek={handleSeek}
-          volume={volume}
-          onVolumeChange={handleVolumeChange}
-          isMuted={isMuted}
-          onToggleMute={handleToggleMute}
-          isFavorite={currentPlayingTrack ? currentPlayingTrack.isFavorite : false}
-          onToggleFavorite={() => {
-            if (currentPlayingTrack) handleToggleFavorite(currentPlayingTrack.id);
-          }}
-          onRestore={() => setIsMiniPlayer(false)}
-          onDetachPip={handleOpenDetachedPip}
-          accent={playerSettings.accent}
-          playlists={playlists}
-          onAddToPlaylist={handleAddToPlaylist}
-          onCreatePlaylist={() => setIsCreatePlaylistModalOpen(true)}
-          settings={playerSettings}
-          onUpdateSettings={handleUpdatePlayerSettings}
-          isAppMinimized={isAppMinimized}
-          onToggleMinimizeApp={() => setIsAppMinimized((prev) => !prev)}
-        />
-      )}
 
       {/* Detached Always-on-Top Window Portal */}
       {detachedPipWindow && !detachedPipWindow.closed && (

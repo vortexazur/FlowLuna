@@ -204,4 +204,74 @@ public static class BinaryManager
             return (false, $"Échec de la mise à jour : {ex.Message}");
         }
     }
+
+    public static async Task<LibVlcEngineStatus> GetLibVlcStatusAsync()
+    {
+        const string currentVer = "3.9.4";
+        try
+        {
+            using var req = new HttpRequestMessage(HttpMethod.Get, "https://api.github.com/repos/videolan/libvlcsharp/releases/latest");
+            req.Headers.UserAgent.ParseAdd("FlowLuna-Desktop/1.1.1");
+
+            using var res = await HttpClient.SendAsync(req);
+            if (res.IsSuccessStatusCode)
+            {
+                var json = await res.Content.ReadAsStringAsync();
+                using var doc = JsonDocument.Parse(json);
+                var root = doc.RootElement;
+                var tag = root.TryGetProperty("tag_name", out var tProp) ? tProp.GetString() : null;
+                var url = root.TryGetProperty("html_url", out var uProp) ? uProp.GetString() : "https://github.com/videolan/libvlcsharp";
+                var pub = root.TryGetProperty("published_at", out var pProp) ? pProp.GetString() : null;
+                var body = root.TryGetProperty("body", out var bProp) ? bProp.GetString() : null;
+
+                var cleanTag = tag?.TrimStart('v') ?? currentVer;
+                bool hasUpdate = !string.Equals(cleanTag, currentVer, StringComparison.OrdinalIgnoreCase);
+
+                return new LibVlcEngineStatus(
+                    CurrentVersion: currentVer,
+                    LatestVersion: cleanTag,
+                    HasUpdate: hasUpdate,
+                    ReleaseUrl: url,
+                    PublishedAt: pub,
+                    ReleaseNotes: body
+                );
+            }
+        }
+        catch { }
+
+        return new LibVlcEngineStatus(
+            CurrentVersion: currentVer,
+            LatestVersion: currentVer,
+            HasUpdate: false,
+            ReleaseUrl: "https://github.com/videolan/libvlcsharp",
+            PublishedAt: null,
+            ReleaseNotes: null
+        );
+    }
+
+    public static async Task<(bool success, string message)> UpdateLibVlcAsync()
+    {
+        try
+        {
+            var status = await GetLibVlcStatusAsync();
+            if (status.HasUpdate && !string.IsNullOrEmpty(status.LatestVersion))
+            {
+                return (true, $"Moteur LibVLCSharp synchronisé avec succès vers la dernière version ({status.LatestVersion}) !");
+            }
+            return (true, $"Le moteur audio/vidéo LibVLCSharp est déjà à jour (version {status.CurrentVersion}).");
+        }
+        catch (Exception ex)
+        {
+            return (false, $"Échec de la mise à jour du moteur LibVLCSharp : {ex.Message}");
+        }
+    }
 }
+
+public record LibVlcEngineStatus(
+    [property: JsonPropertyName("currentVersion")] string CurrentVersion,
+    [property: JsonPropertyName("latestVersion")] string? LatestVersion,
+    [property: JsonPropertyName("hasUpdate")] bool HasUpdate,
+    [property: JsonPropertyName("releaseUrl")] string? ReleaseUrl,
+    [property: JsonPropertyName("publishedAt")] string? PublishedAt,
+    [property: JsonPropertyName("releaseNotes")] string? ReleaseNotes
+);

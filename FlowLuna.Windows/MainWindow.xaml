@@ -7,7 +7,7 @@
         mc:Ignorable="d"
         Title="FlowLuna"
         Height="820" Width="1280"
-        MinHeight="640" MinWidth="960"
+        MinHeight="180" MinWidth="320"
         WindowStartupLocation="CenterScreen"
         WindowStyle="None"
         Background="#0a0a0a"

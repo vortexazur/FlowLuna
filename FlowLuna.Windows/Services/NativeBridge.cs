@@ -64,6 +64,42 @@ public class NativeBridge
         });
     }
 
+    private double _savedWidth = 1280;
+    private double _savedHeight = 820;
+    private WindowState _savedState = WindowState.Normal;
+
+    public void SetCompactMode(bool enabled, double width = 360, double height = 240)
+    {
+        _window.Dispatcher.Invoke(() =>
+        {
+            if (enabled)
+            {
+                if (_window.WindowState != WindowState.Minimized)
+                {
+                    _savedState = _window.WindowState;
+                    _savedWidth = _window.ActualWidth > 360 ? _window.ActualWidth : 1280;
+                    _savedHeight = _window.ActualHeight > 240 ? _window.ActualHeight : 820;
+                }
+
+                _window.WindowState = WindowState.Normal;
+                _window.MinWidth = 320;
+                _window.MinHeight = 180;
+                _window.Width = width > 0 ? width : 360;
+                _window.Height = height > 0 ? height : 240;
+                _window.Topmost = true;
+            }
+            else
+            {
+                _window.Topmost = false;
+                _window.MinWidth = 960;
+                _window.MinHeight = 640;
+                _window.Width = _savedWidth >= 960 ? _savedWidth : 1280;
+                _window.Height = _savedHeight >= 640 ? _savedHeight : 820;
+                _window.WindowState = _savedState;
+            }
+        });
+    }
+
     public string SelectMusicFilesJson()
     {
         return _window.Dispatcher.Invoke(() =>

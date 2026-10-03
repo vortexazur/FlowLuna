@@ -214,8 +214,8 @@ export const EqualizerModal: React.FC<EqualizerModalProps> = ({
           </div>
         </div>
 
-        {/* Preamp, Bass/Treble Enhancers & Volume Normalization */}
-        <div className={`grid grid-cols-1 sm:grid-cols-2 ${playerSettings && onUpdatePlayerSettings ? 'md:grid-cols-4' : 'md:grid-cols-3'} gap-3 border-t border-neutral-800/80 pt-4`}>
+        {/* Preamp, Bass & Treble Enhancers (3 columns) */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-3 border-t border-neutral-800/80 pt-4">
           <div className="bg-neutral-950/40 p-3 rounded-lg border border-neutral-800/50">
             <div className="flex items-center justify-between mb-1">
               <span className="text-xs font-semibold text-neutral-300">Pré-amplification</span>
@@ -283,81 +283,89 @@ export const EqualizerModal: React.FC<EqualizerModalProps> = ({
               className={`w-full h-1.5 bg-neutral-800 rounded-lg ${ACCENT_ACCENT[accent]} cursor-pointer`}
             />
           </div>
+        </div>
 
-          {playerSettings && onUpdatePlayerSettings && (
-            <div className="bg-neutral-950/40 p-3 rounded-lg border border-neutral-800/50 flex flex-col justify-between">
-              <div>
-                <div className="flex items-center justify-between mb-1">
-                  <span className="text-xs font-semibold text-neutral-300">Normalisation EBU R128</span>
-                  <span
-                    className={`text-[10px] font-mono px-1.5 py-0.5 rounded font-semibold ${
-                      playerSettings.volumeNormalization
-                        ? 'bg-emerald-500/20 text-emerald-300'
-                        : 'bg-neutral-800 text-neutral-400'
-                    }`}
-                  >
-                    {playerSettings.volumeNormalization
-                      ? playerSettings.normalizationTarget === 'replaygain'
-                        ? 'ReplayGain (-18 LUFS)'
-                        : playerSettings.normalizationTarget === 'broadcast'
-                        ? 'Broadcast (-23 LUFS)'
-                        : 'Streaming (-14 LUFS)'
-                      : 'Désactivé'}
-                  </span>
-                </div>
-                <p className="text-[11px] text-neutral-400 leading-tight mb-2">
-                  Harmonisation intelligente de la sonie selon la norme ITU-R BS.1770 / EBU R128
-                </p>
-                {playerSettings.volumeNormalization && (
-                  <div className="grid grid-cols-3 gap-1 mb-2">
-                    <button
-                      type="button"
-                      onClick={() => {
-                        const updated = { ...playerSettings, normalizationTarget: 'streaming' as const };
-                        onUpdatePlayerSettings(updated);
-                        audioEngine.setVolumeNormalization(true, 'streaming');
-                      }}
-                      className={`text-[10px] py-1 rounded transition-colors font-medium cursor-pointer ${
-                        (playerSettings.normalizationTarget ?? 'streaming') === 'streaming'
-                          ? 'bg-emerald-500/30 text-emerald-300 border border-emerald-500/40 font-bold'
-                          : 'bg-neutral-900 text-neutral-400 hover:text-neutral-200'
-                      }`}
-                    >
-                      -14 LUFS (Stream)
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        const updated = { ...playerSettings, normalizationTarget: 'replaygain' as const };
-                        onUpdatePlayerSettings(updated);
-                        audioEngine.setVolumeNormalization(true, 'replaygain');
-                      }}
-                      className={`text-[10px] py-1 rounded transition-colors font-medium cursor-pointer ${
-                        playerSettings.normalizationTarget === 'replaygain'
-                          ? 'bg-emerald-500/30 text-emerald-300 border border-emerald-500/40 font-bold'
-                          : 'bg-neutral-900 text-neutral-400 hover:text-neutral-200'
-                      }`}
-                    >
-                      -18 LUFS (RG)
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        const updated = { ...playerSettings, normalizationTarget: 'broadcast' as const };
-                        onUpdatePlayerSettings(updated);
-                        audioEngine.setVolumeNormalization(true, 'broadcast');
-                      }}
-                      className={`text-[10px] py-1 rounded transition-colors font-medium cursor-pointer ${
-                        playerSettings.normalizationTarget === 'broadcast'
-                          ? 'bg-emerald-500/30 text-emerald-300 border border-emerald-500/40 font-bold'
-                          : 'bg-neutral-900 text-neutral-400 hover:text-neutral-200'
-                      }`}
-                    >
-                      -23 LUFS (Cinema)
-                    </button>
-                  </div>
-                )}
+        {/* Normalisation EBU R128 sur toute la longueur (Full-width row) */}
+        {playerSettings && onUpdatePlayerSettings && (
+          <div className="bg-neutral-950/40 p-3.5 rounded-lg border border-neutral-800/50 flex flex-col md:flex-row md:items-center justify-between gap-3">
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center gap-2 mb-1">
+                <span className="text-xs font-semibold text-neutral-200">Normalisation Sonore EBU R128</span>
+                <span
+                  className={`text-[10px] font-mono px-2 py-0.5 rounded font-semibold ${
+                    playerSettings.volumeNormalization
+                      ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
+                      : 'bg-neutral-800 text-neutral-400'
+                  }`}
+                >
+                  {playerSettings.volumeNormalization
+                    ? playerSettings.normalizationTarget === 'replaygain'
+                      ? 'ReplayGain (-18 LUFS)'
+                      : playerSettings.normalizationTarget === 'broadcast'
+                      ? 'Broadcast / Cinéma (-23 LUFS)'
+                      : 'Streaming Web (-14 LUFS)'
+                    : 'Désactivé'}
+                </span>
               </div>
+              <p className="text-[11px] text-neutral-400 leading-tight">
+                Harmonisation dynamique intelligente selon la norme ITU-R BS.1770 / EBU R128 pour éliminer les écarts de volume.
+              </p>
+            </div>
+
+            <div className="flex items-center gap-2 flex-wrap sm:flex-nowrap">
+              {playerSettings.volumeNormalization && (
+                <div className="flex items-center gap-1.5 p-1 rounded-lg bg-neutral-900 border border-neutral-800">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const updated = { ...playerSettings, normalizationTarget: 'streaming' as const };
+                      onUpdatePlayerSettings(updated);
+                      audioEngine.setVolumeNormalization(true, 'streaming');
+                    }}
+                    className={`text-[11px] px-2.5 py-1 rounded transition-colors font-medium cursor-pointer ${
+                      (playerSettings.normalizationTarget ?? 'streaming') === 'streaming'
+                        ? 'bg-emerald-500/30 text-emerald-300 border border-emerald-500/40 font-bold'
+                        : 'bg-transparent text-neutral-400 hover:text-neutral-200'
+                    }`}
+                    title="Cible streaming (-14 LUFS : Spotify, YouTube, Web)"
+                  >
+                    -14 LUFS (Streaming)
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const updated = { ...playerSettings, normalizationTarget: 'replaygain' as const };
+                      onUpdatePlayerSettings(updated);
+                      audioEngine.setVolumeNormalization(true, 'replaygain');
+                    }}
+                    className={`text-[11px] px-2.5 py-1 rounded transition-colors font-medium cursor-pointer ${
+                      playerSettings.normalizationTarget === 'replaygain'
+                        ? 'bg-emerald-500/30 text-emerald-300 border border-emerald-500/40 font-bold'
+                        : 'bg-transparent text-neutral-400 hover:text-neutral-200'
+                    }`}
+                    title="Cible ReplayGain audiophile (-18 LUFS)"
+                  >
+                    -18 LUFS (ReplayGain)
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const updated = { ...playerSettings, normalizationTarget: 'broadcast' as const };
+                      onUpdatePlayerSettings(updated);
+                      audioEngine.setVolumeNormalization(true, 'broadcast');
+                    }}
+                    className={`text-[11px] px-2.5 py-1 rounded transition-colors font-medium cursor-pointer ${
+                      playerSettings.normalizationTarget === 'broadcast'
+                        ? 'bg-emerald-500/30 text-emerald-300 border border-emerald-500/40 font-bold'
+                        : 'bg-transparent text-neutral-400 hover:text-neutral-200'
+                    }`}
+                    title="Cible Broadcast / Télévision / Cinéma (-23 LUFS standard EBU R128)"
+                  >
+                    -23 LUFS (Cinéma)
+                  </button>
+                </div>
+              )}
+
               <button
                 type="button"
                 id="eq-toggle-normalization-btn"
@@ -369,7 +377,7 @@ export const EqualizerModal: React.FC<EqualizerModalProps> = ({
                   onUpdatePlayerSettings(updated);
                   audioEngine.setVolumeNormalization(updated.volumeNormalization, updated.normalizationTarget ?? 'streaming');
                 }}
-                className={`w-full py-1 px-2 rounded-md text-xs font-semibold transition-colors text-center cursor-pointer ${
+                className={`py-1.5 px-3 rounded-md text-xs font-semibold transition-colors text-center cursor-pointer whitespace-nowrap ${
                   playerSettings.volumeNormalization
                     ? `${ACCENT_BG[accent]} shadow-xs`
                     : 'bg-neutral-800 text-neutral-300 hover:bg-neutral-700'
@@ -378,8 +386,8 @@ export const EqualizerModal: React.FC<EqualizerModalProps> = ({
                 {playerSettings.volumeNormalization ? 'Désactiver' : 'Activer'}
               </button>
             </div>
-          )}
-        </div>
+          </div>
+        )}
 
         {/* DSP Effects: Spatial 3D Audio, Speed & Crossfade */}
         <div className="border-t border-neutral-800/80 pt-4 grid grid-cols-1 md:grid-cols-3 gap-4">

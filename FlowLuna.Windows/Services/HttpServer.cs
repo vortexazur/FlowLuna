@@ -192,6 +192,18 @@ public class HttpServer
             return Results.Json(new { success, message });
         });
 
+        _app.MapGet("/api/engine/libvlc-status", async () =>
+        {
+            var status = await BinaryManager.GetLibVlcStatusAsync();
+            return Results.Json(status);
+        });
+
+        _app.MapPost("/api/engine/update-libvlc", async () =>
+        {
+            var (success, message) = await BinaryManager.UpdateLibVlcAsync();
+            return Results.Json(new { success, message });
+        });
+
         // Real-time SSE download progress
         _app.MapGet("/api/downloader/progress/{jobId}", async (string jobId, HttpContext ctx) =>
         {

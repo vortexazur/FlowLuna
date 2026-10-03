@@ -4,15 +4,16 @@
 
 ![FlowLuna Banner](public/logo.jpg)
 
-[![Version](https://img.shields.io/badge/version-1.1.0-emerald.svg?style=for-the-badge)](https://github.com/vortexazur/FlowLuna/releases)
+[![Version](https://img.shields.io/badge/version-1.1.1-emerald.svg?style=for-the-badge)](https://github.com/vortexazur/FlowLuna/releases)
 [![Platform](https://img.shields.io/badge/platform-Windows%2010%20%7C%2011%20x64-blue.svg?style=for-the-badge&logo=windows)](https://github.com/vortexazur/FlowLuna)
 [![.NET 9](https://img.shields.io/badge/.NET-9.0-512BD4.svg?style=for-the-badge&logo=dotnet)](https://dotnet.microsoft.com/)
 [![WebView2](https://img.shields.io/badge/WebView2-Evergreen-0078D7.svg?style=for-the-badge&logo=microsoftedge)](https://developer.microsoft.com/microsoft-edge/webview2/)
+[![LibVLCSharp](https://img.shields.io/badge/LibVLCSharp-VideoLAN-orange.svg?style=for-the-badge&logo=vlc)](https://github.com/videolan/libvlcsharp)
 [![License](https://img.shields.io/badge/licence-MIT-green.svg?style=for-the-badge)](LICENSE)
 [![Build Status](https://img.shields.io/badge/CI-GitHub%20Actions-brightgreen.svg?style=for-the-badge&logo=githubactions)](https://github.com/vortexazur/FlowLuna/actions)
 
 <p align="center">
-  <strong>Lecteur multimédia audiophile haute fidélité pour Windows avec interface Pure Glass, égaliseur 10 bandes, visualiseur réactif, architecture native C# .NET 9 + WebView2 et extraction avancée yt-dlp & FFmpeg.</strong>
+  <strong>Lecteur multimédia audiophile haute fidélité pour Windows avec interface Pure Glass XAML, moteur audio LibVLCSharp, égaliseur 10 bandes, visualiseur réactif, architecture native C# .NET 9 + WebView2 et extraction avancée yt-dlp & FFmpeg.</strong>
 </p>
 
 [Télécharger la Dernière Version](https://github.com/vortexazur/FlowLuna/releases) • [Fonctionnalités Clés](#-fonctionnalités-clés) • [Installation](#-installation) • [Raccourcis Clavier](#-raccourcis-clavier) • [Architecture](#-architecture-technique)
@@ -23,21 +24,27 @@
 
 ## ✨ Présentation
 
-**FlowLuna** est une application de bureau conçue pour offrir une expérience d'écoute sans compromis sous Windows. Propulsée par **C# .NET 9**, **Microsoft Edge WebView2**, **React 19**, **Vite** et un serveur in-process ultra-rapide **ASP.NET Core Kestrel**, elle réunit le meilleur du traitement audio numérique, de la lecture locale ultra-fluide et de l'extraction multimédia haute performance avec une empreinte mémoire et disque réduite à seulement ~70 Mo.
+**FlowLuna** est une application de bureau conçue pour offrir une expérience d'écoute sans compromis sous Windows. Propulsée par **C# .NET 9**, **Microsoft Edge WebView2**, **LibVLCSharp (VideoLAN)**, **React 19**, **Vite** et un serveur in-process ultra-rapide **ASP.NET Core Kestrel**, elle réunit le meilleur du traitement audio numérique, de la lecture locale ultra-fluide et de l'extraction multimédia haute performance avec une empreinte mémoire et disque réduite à seulement ~70 Mo.
 
 ---
 
 ## 🚀 Fonctionnalités Clés
 
-### 🎛️ Égaliseur Graphique 10 Bandes & DSP Audio
-- Égaliseur paramétrique 10 bandes (32 Hz à 16 kHz) avec contrôle indépendant du gain (±12 dB).
+### 🎬 Moteur Multimédia LibVLCSharp (VideoLAN) & Audio Hi-Fi
+FlowLuna utilise le moteur multimédia **LibVLCSharp** ([VideoLAN](https://github.com/videolan/libvlcsharp)) comme cœur de traitement audio et vidéo :
+- **Décodage universel matériel :** Prise en charge native de tous les codecs audio et conteneurs vidéo (*FLAC, ALAC, MP3, WAV, AAC, Opus, Ogg Vorbis, MKV, MP4, WebM*).
+- **Égaliseur graphique LibVLC 10 bandes :** Calibré selon les fréquences ISO standard VLC (31 Hz à 16 kHz) avec pré-amplification et presets audiophiles officiels.
+- **Auto-mise à jour en 1 clic :** Détection automatique des nouvelles versions stables du moteur LibVLCSharp directement depuis l'onglet Paramètres.
+
+### 🎛️ Traitements DSP & Normalisation Sonore EBU R128
+- Égaliseur paramétrique 10 bandes avec contrôle indépendant du gain (±12 dB).
 - Presets audiophiles prédéfinis : *Flat, Bass Boost, Treble Boost, Électronique, Rock, Acoustique, Vocal, etc.*
-- Traitements sonores intégrés : Amplification des basses (*Bass Boost*), clarté des aigus (*Treble Boost*), pré-amplification (*Preamp Gain*) et **normalisation sonore intelligente EBU R128 / ReplayGain** (-14 LUFS, -18 LUFS, -23 LUFS) avec limiteur True Peak à -1.0 dBTP.
+- Traitements sonores intégrés : Amplification des basses (*Bass Boost*), clarté des aigus (*Treble Boost*), pré-amplification (*Preamp Gain*) et **normalisation sonore intelligente EBU R128 / ReplayGain** (-14 LUFS Streaming, -18 LUFS ReplayGain, -23 LUFS Broadcast / Cinéma) sur une ligne pleine largeur dédiée avec limiteur True Peak à -1.0 dBTP.
 
 ### 📊 Visualiseur Audio Temps Réel
 - Analyseur de fréquences FFT interactif connecté directement au moteur Web Audio.
 - Plusieurs modes de visualisation : Barres spectrales dynamiques, onde oscilloscopique et particules translucides.
-- Animation fluide à 60 FPS avec adaptation dynamique selon la couleur d'accentuation choisie.
+- Animation fluide à 60 FPS avec arrêt intelligent en pause pour préserver le processeur et la mémoire vive (RAM).
 
 ### ⚡ Downloader Universel Haute Performance (yt-dlp & FFmpeg)
 - **Binaires natifs Windows 64-bit :** `yt-dlp.exe` et `ffmpeg.exe` intégrés hors ASAR pour un accès direct et des vitesses d'exécution optimales.
@@ -46,11 +53,12 @@
 - **Compatibilité multi-plateformes :** Extraction depuis YouTube, SoundCloud, TikTok, Instagram, X/Twitter, etc.
 - **Auto-mise à jour sécurisée :** Vérification et mise à jour de `yt-dlp` en un clic depuis les paramètres, avec fallback automatique dans `%APPDATA%/FlowLuna/bin/` pour contourner les verrous de permissions de Windows.
 
-### 🖼️ Mini-Lecteur Picture-in-Picture (PiP) Détachable
-- Fenêtre flottante ultra-compacte détachable en mode *Always-on-Top*.
-- Continuez à travailler, jouer ou naviguer tout en conservant le contrôle de la lecture, de la pochette et du volume sans encombrer l'écran.
+### 🖼️ Mode Widget Flottant Exclusif Always-on-Top
+- **Transformation exclusive :** D'un simple clic sur le widget flottant, l'application complète (barre latérale, bibliothèque, barre de lecture) s'efface pour ne laisser **QUE** le widget flottant ultra-compact sur votre bureau.
+- **Mode Always-on-Top natif :** Fenêtre Windows compacte (360x240) épinglée au premier plan au-dessus de vos jeux et applications, avec barre de déplacement, spectre temps réel et bouton d'agrandissement pour restaurer l'interface complète à tout moment.
 
-### 🪟 Intégration Native Windows Frameless, SMTC & Discord RPC
+### 🪟 Intégration Native Windows XAML, SMTC & Discord RPC
+- **Hôte XAML WPF / Windows App SDK :** Fenêtre native optimisée pour le Microsoft Store avec effet de fond DWM Mica / Acrylic et consommation de RAM allégée via Workstation GC.
 - **Windows SMTC (System Media Transport Controls) :** Vignette multimédia officielle Windows 11/10 avec pochette d'album haute résolution, titre, artiste et commandes lors du réglage de volume ou sur l'écran de verrouillage.
 - **Discord Rich Presence (RPC) :** Affiche automatiquement votre musique en temps réel sur votre profil Discord via Named Pipes locaux.
 - **Raccourcis Clavier Multimédias Globaux :** Pilotez la lecture avec les touches matérielles de votre clavier ou casque (`Play/Pause`, `Suivant`, `Précédent`, `Stop`) via le hook Win32 `WM_APPCOMMAND`.
@@ -84,7 +92,7 @@
 3. Double-cliquez pour lancer immédiatement sans installation requise ni dépendance externe.
 
 ### 2. Installateur Standard Windows (.exe)
-1. Téléchargez `FlowLuna-Setup-1.1.0.exe`.
+1. Téléchargez `FlowLuna-Setup-1.1.1.exe`.
 2. Lancez l'exécutable pour installer FlowLuna avec raccourcis sur le Bureau et le Menu Démarrer.
 
 ---

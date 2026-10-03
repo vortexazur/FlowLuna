@@ -112,8 +112,6 @@ export const AudioVisualizer: React.FC<AudioVisualizerProps> = ({
     }
 
     const render = () => {
-      animationFrameRef.current = requestAnimationFrame(render);
-
       try {
         // Handle high DPI
         const dpr = Math.max(1, window.devicePixelRatio || 1);
@@ -137,14 +135,29 @@ export const AudioVisualizer: React.FC<AudioVisualizerProps> = ({
 
         ctx.clearRect(0, 0, width, height);
 
-        // Fetch live audio data
-        if (isPlaying) {
-          audioEngine.getFrequencyData(rawFreqArray);
-          audioEngine.getTimeDomainData(timeDomainArray);
-        } else {
-          rawFreqArray.fill(0);
-          timeDomainArray.fill(128);
+        if (!isPlaying) {
+          // If paused, decay peaks to zero then stop animation loop to conserve CPU & RAM
+          let hasRemainingPeak = false;
+          for (let i = 0; i < peaksRef.current.length; i++) {
+            if (peaksRef.current[i] > 1) {
+              peaksRef.current[i] = Math.max(0, peaksRef.current[i] - 5);
+              hasRemainingPeak = true;
+            } else {
+              peaksRef.current[i] = 0;
+            }
+          }
+          if (hasRemainingPeak) {
+            animationFrameRef.current = requestAnimationFrame(render);
+          }
+          ctx.restore();
+          return;
         }
+
+        animationFrameRef.current = requestAnimationFrame(render);
+
+        // Fetch live audio data
+        audioEngine.getFrequencyData(rawFreqArray);
+        audioEngine.getTimeDomainData(timeDomainArray);
 
         // Compute logarithmic bands for natural spectrum display
         const bands: number[] = [];

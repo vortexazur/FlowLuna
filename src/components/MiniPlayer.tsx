@@ -53,6 +53,7 @@ interface MiniPlayerProps {
   onUpdateSettings?: (newSettings: PlayerSettings) => void;
   isAppMinimized?: boolean;
   onToggleMinimizeApp?: () => void;
+  isStandalone?: boolean;
 }
 
 const ACCENT_BG: Record<AccentColor, string> = {
@@ -117,13 +118,15 @@ export const MiniPlayer: React.FC<MiniPlayerProps> = ({
   onUpdateSettings,
   isAppMinimized = false,
   onToggleMinimizeApp,
+  isStandalone = false,
 }) => {
   // 1. Persistent Docking Mode: 'bottom' | 'top' | 'floating'
   const [dockMode, setDockMode] = useState<CompactPlayerDock>(() => {
+    if (isStandalone) return 'floating';
     if (settings?.compactPlayerDock) return settings.compactPlayerDock;
     const saved = localStorage.getItem('aurawave_compact_dock');
     if (saved === 'top' || saved === 'bottom' || saved === 'floating') return saved;
-    return 'bottom';
+    return 'floating';
   });
 
   // 2. Persistent Ghost / Transparency Mode
@@ -687,21 +690,29 @@ export const MiniPlayer: React.FC<MiniPlayerProps> = ({
       id="aurawave-floating-widget"
       role="region"
       aria-label="Widget audio flottant déplaçable"
-      onPointerDown={handlePointerDown}
-      onPointerMove={handlePointerMove}
-      onPointerUp={handlePointerUp}
-      style={{
+      onPointerDown={isStandalone ? undefined : handlePointerDown}
+      onPointerMove={isStandalone ? undefined : handlePointerMove}
+      onPointerUp={isStandalone ? undefined : handlePointerUp}
+      style={isStandalone ? { touchAction: 'none' } : {
         left: `${floatingPos.x}px`,
         top: `${floatingPos.y}px`,
         touchAction: 'none',
       }}
-      className={`fixed z-[100] w-84 rounded-2xl border border-neutral-800 bg-neutral-950/95 backdrop-blur-md shadow-2xl p-3.5 flex flex-col gap-2.5 select-none transition-opacity duration-200 ${
+      className={`${isStandalone ? 'relative w-full h-full max-w-[360px] max-h-[240px]' : 'fixed z-[100] w-84'} rounded-2xl border border-neutral-800 bg-neutral-950/95 backdrop-blur-md shadow-2xl p-3.5 flex flex-col justify-between select-none transition-opacity duration-200 ${
         isGhostMode ? 'opacity-70 hover:opacity-100' : 'opacity-100'
-      } ${isDragging ? 'cursor-grabbing shadow-emerald-500/20 ring-1 ring-emerald-500/40' : 'cursor-grab'}`}
+      } ${!isStandalone && isDragging ? 'cursor-grabbing shadow-emerald-500/20 ring-1 ring-emerald-500/40' : !isStandalone ? 'cursor-grab' : ''}`}
     >
       {/* Top Header with Drag Handle, Spectrum & Quick Actions */}
       <div className="flex items-center justify-between gap-2 border-b border-neutral-800/80 pb-2">
-        <div className="flex items-center gap-1.5 text-neutral-400">
+        <div
+          onMouseDown={() => {
+            try {
+              (window as any).chrome?.webview?.postMessage({ action: 'drag-window' });
+            } catch {}
+          }}
+          className="flex items-center gap-1.5 text-neutral-400 cursor-move"
+          title="Déplacer la fenêtre"
+        >
           <GripHorizontal className="w-4 h-4 text-neutral-500" />
           <span className="text-[10px] font-mono uppercase tracking-wider font-bold">
             Widget Flottant

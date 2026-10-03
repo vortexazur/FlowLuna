@@ -333,6 +333,19 @@ function setupIpcHandlers(): void {
     return mainWindow?.isMaximized() ?? false;
   });
 
+  ipcMain.handle('window-set-compact-mode', (_event, enabled: boolean, width = 360, height = 240) => {
+    if (!mainWindow) return;
+    if (enabled) {
+      mainWindow.setAlwaysOnTop(true, 'screen-saver');
+      mainWindow.setMinimumSize(320, 180);
+      mainWindow.setSize(width, height);
+    } else {
+      mainWindow.setAlwaysOnTop(false);
+      mainWindow.setMinimumSize(960, 640);
+      mainWindow.setSize(1280, 820);
+    }
+  });
+
   ipcMain.handle('update-tray-track', (_event, info: { title: string; artist: string; isPlaying: boolean }) => {
     currentTrackInfo = {
       title: info.title || 'Aucune lecture',

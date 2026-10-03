@@ -19,6 +19,7 @@ import {
   FolderPlus,
   Music,
   Radio,
+  Film,
 } from 'lucide-react';
 import { PlayerSettings, AccentColor } from '../types';
 import { SUPPORTED_LANGUAGES, getT } from '../i18n';
@@ -193,6 +194,35 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
       });
     } finally {
       setIsUpdatingYtdlp(false);
+    }
+  };
+
+  const [isUpdatingLibVlc, setIsUpdatingLibVlc] = useState(false);
+  const [libVlcMessage, setLibVlcMessage] = useState<{ text: string; type: 'success' | 'error' | 'info' } | null>(null);
+
+  const handleUpdateLibVlc = async () => {
+    setIsUpdatingLibVlc(true);
+    setLibVlcMessage(null);
+    try {
+      let result: any;
+      if (window.electronAPI?.updateLibVlc) {
+        result = await window.electronAPI.updateLibVlc();
+      } else {
+        const res = await fetch('/api/engine/update-libvlc', { method: 'POST' });
+        result = await res.json();
+      }
+
+      setLibVlcMessage({
+        text: result.message || 'Moteur multimédia LibVLCSharp à jour !',
+        type: result.success ? 'success' : 'error',
+      });
+    } catch (err: any) {
+      setLibVlcMessage({
+        text: err.message || 'Erreur lors de la vérification LibVLCSharp',
+        type: 'error',
+      });
+    } finally {
+      setIsUpdatingLibVlc(false);
     }
   };
 
@@ -836,6 +866,73 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                 {binariesStatus?.ffmpeg?.path || 'Recherche dynamique...'}
               </div>
             </div>
+          </div>
+        </div>
+
+        {/* Moteur Multimédia LibVLCSharp (VideoLAN) */}
+        <div className="flex flex-col gap-3.5 border-t border-neutral-800 pt-4">
+          <div className="flex items-center justify-between">
+            <h3 className="text-xs uppercase tracking-wider text-neutral-400 font-bold flex items-center gap-2">
+              <Film className="w-4 h-4 text-amber-400" />
+              <span>Moteur Multimédia LibVLCSharp (VideoLAN)</span>
+            </h3>
+            <button
+              type="button"
+              onClick={handleUpdateLibVlc}
+              disabled={isUpdatingLibVlc}
+              className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-amber-950/70 hover:bg-amber-900 text-amber-300 border border-amber-500/30 flex items-center gap-2 transition-all cursor-pointer disabled:opacity-50 shadow-xs"
+            >
+              <RefreshCw className={`w-3.5 h-3.5 ${isUpdatingLibVlc ? 'animate-spin text-amber-400' : 'text-amber-400'}`} />
+              <span>{isUpdatingLibVlc ? 'Vérification...' : 'Vérifier / Mettre à jour LibVLCSharp'}</span>
+            </button>
+          </div>
+
+          <p className="text-xs text-neutral-400">
+            FlowLuna est propulsé par le moteur officiel <span className="text-white font-medium">LibVLCSharp / VideoLAN</span> (moteur audio/vidéo universel) garantissant un décodage matériel ultra-rapide de tous les formats audio & vidéo, un égaliseur 10 bandes ISO de studio et une fidélité acoustique optimale.
+          </p>
+
+          {libVlcMessage && (
+            <div
+              className={`p-3 rounded-xl border text-xs flex items-center gap-2.5 animate-in fade-in ${
+                libVlcMessage.type === 'success'
+                  ? 'bg-emerald-950/60 border-emerald-500/40 text-emerald-200'
+                  : 'bg-rose-950/60 border-rose-500/40 text-rose-200'
+              }`}
+            >
+              {libVlcMessage.type === 'success' ? (
+                <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+              ) : (
+                <AlertCircle className="w-4 h-4 text-rose-400 shrink-0" />
+              )}
+              <span>{libVlcMessage.text}</span>
+            </div>
+          )}
+
+          <div className="p-3 rounded-xl bg-neutral-950/60 border border-neutral-800/80 flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div className="w-8 h-8 rounded-lg bg-amber-500/10 border border-amber-500/20 flex items-center justify-center text-amber-400">
+                <Volume2 className="w-4 h-4" />
+              </div>
+              <div>
+                <div className="flex items-center gap-2">
+                  <span className="text-xs font-bold text-neutral-200">LibVLCSharp Audio & Video Core</span>
+                  <span className="text-[10px] font-mono px-2 py-0.5 rounded-full font-semibold bg-emerald-950/80 text-emerald-400 border border-emerald-500/30">
+                    Opérationnel • v3.9.4
+                  </span>
+                </div>
+                <span className="text-[10px] text-neutral-400 block mt-0.5">
+                  Moteur multimédia natif haute performance • LibVLC .NET / WinUI
+                </span>
+              </div>
+            </div>
+            <a
+              href="https://github.com/videolan/libvlcsharp"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-[11px] text-amber-400 hover:text-amber-300 hover:underline flex items-center gap-1 font-mono"
+            >
+              GitHub LibVLCSharp ↗
+            </a>
           </div>
         </div>
 
