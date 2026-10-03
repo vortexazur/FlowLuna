@@ -1,0 +1,1643 @@
+import React, { useState, useEffect, useRef, useCallback } from 'react';
+import {
+  Track,
+  Playlist,
+  PlayerSettings,
+  EqualizerSettings,
+  EqualizerBand,
+  AccentColor,
+} from './types';
+import {
+  getAllTracks,
+  saveTracks,
+  saveTrack,
+  deleteTrack as dbDeleteTrack,
+  getAllPlaylists,
+  savePlaylist,
+  deletePlaylist as dbDeletePlaylist,
+  getTrackPlayableUrl,
+  revokeTrackBlobUrl,
+  getSetting,
+  saveSetting,
+  saveAudioBlob,
+} from './services/audioDb';
+import { INITIAL_PLAYLISTS } from './data/defaultTracks';
+import { audioEngine, DEFAULT_EQ_FREQUENCIES, EQ_PRESETS } from './services/audioEngine';
+import { processLocalAudioFile } from './utils/fileAudioLoader';
+import { Sidebar } from './components/Sidebar';
+import { PlayerBar } from './components/PlayerBar';
+import { LibraryView } from './components/LibraryView';
+import { PlaylistView } from './components/PlaylistView';
+import { EqualizerModal } from './components/EqualizerModal';
+import { SettingsModal } from './components/SettingsModal';
+import { LyricsAndFullscreen } from './components/LyricsAndFullscreen';
+import { QueueDrawer } from './components/QueueDrawer';
+import { MiniPlayer } from './components/MiniPlayer';
+import { DetachedMiniPlayerPortal } from './components/DetachedMiniPlayer';
+import { openAlwaysOnTopWindow } from './services/pictureInPictureService';
+import { CreatePlaylistModal } from './components/CreatePlaylistModal';
+import { AllPlaylistsView } from './components/AllPlaylistsView';
+import { AudioTrimmerModal } from './components/AudioTrimmerModal';
+import { TrackTagEditorModal } from './components/TrackTagEditorModal';
+import { DuplicateFinderModal } from './components/DuplicateFinderModal';
+import { CommandPaletteModal } from './components/CommandPaletteModal';
+import { ListeningStatsModal } from './components/ListeningStatsModal';
+import { AudioMergerModal } from './components/AudioMergerModal';
+import { VideoPlayer, VideoDisplayMode } from './components/VideoPlayer';
+import { VideosView } from './components/VideosView';
+import { DownloaderView } from './components/DownloaderView';
+import { backgroundScanner } from './services/backgroundScanner';
+import { Layers, Maximize2 } from 'lucide-react';
+import { TitleBar } from './components/TitleBar';
+
+const DEFAULT_PLAYER_SETTINGS: PlayerSettings = {
+  language: 'fr',
+  theme: 'dark',
+  accent: 'emerald',
+  glassIntensity: 70,
+  visualizerStyle: 'bars',
+  crossfadeDuration: 2,
+  gaplessPlayback: true,
+  autoCacheFavorites: true,
+  maxCacheSizeMb: 1024,
+  highQualityStream: true,
+  volumeNormalization: true,
+  compactMode: false,
+  compactPlayerDock: 'bottom',
+  compactPlayerGhost: false,
+};
+
+const DEFAULT_EQ_SETTINGS: EqualizerSettings = {
+  enabled: true,
+  preset: 'Flat',
+  bands: DEFAULT_EQ_FREQUENCIES.map((freq) => ({
+    frequency: freq,
+    gain: 0,
+    label: freq >= 1000 ? `${freq / 1000}k` : `${freq}`,
+  })),
+  bassBoost: 2,
+  trebleBoost: 2,
+  preampGain: 0,
+  surroundEffect: false,
+};
+
+export default function App() {
+  const [tracks, setTracks] = useState<Track[]>([]);
+  const [playlists, setPlaylists] = useState<Playlist[]>([]);
+  const [currentView, setCurrentView] = useState<string>('library');
+  const [activePlaylistId, setActivePlaylistId] = useState<string | null>(null);
+
+  // Playback state
+  const [queue, setQueue] = useState<Track[]>([]);
+  const [currentTrackIndex, setCurrentTrackIndex] = useState<number>(-1);
+  const [isPlaying, setIsPlaying] = useState<boolean>(false);
+  const [currentTime, setCurrentTime] = useState<number>(0);
+  const [duration, setDuration] = useState<number>(0);
+  const [volume, setVolume] = useState<number>(0.85);
+  const [isMuted, setIsMuted] = useState<boolean>(false);
+  const [shuffle, setShuffle] = useState<boolean>(false);
+  const [repeatMode, setRepeatMode] = useState<'off' | 'all' | 'one'>('all');
+
+  // Modals & Panels
+  const [isEqualizerOpen, setIsEqualizerOpen] = useState<boolean>(false);
+  const [isSettingsOpen, setIsSettingsOpen] = useState<boolean>(false);
+  const [isFullscreenOpen, setIsFullscreenOpen] = useState<boolean>(false);
+  const [isQueueOpen, setIsQueueOpen] = useState<boolean>(false);
+  const [isMiniPlayer, setIsMiniPlayer] = useState<boolean>(false);
+  const [isAppMinimized, setIsAppMinimized] = useState<boolean>(false);
+  const [detachedPipWindow, setDetachedPipWindow] = useState<Window | null>(null);
+  const [pipNotification, setPipNotification] = useState<string | null>(null);
+  const [isCreatePlaylistModalOpen, setIsCreatePlaylistModalOpen] = useState<boolean>(false);
+  const [trimmerTrack, setTrimmerTrack] = useState<Track | null>(null);
+  const [tagEditorTrack, setTagEditorTrack] = useState<Track | null>(null);
+  const [isDeduplicatorOpen, setIsDeduplicatorOpen] = useState<boolean>(false);
+  const [isCommandPaletteOpen, setIsCommandPaletteOpen] = useState<boolean>(false);
+  const [isStatsOpen, setIsStatsOpen] = useState<boolean>(false);
+  const [isMergerOpen, setIsMergerOpen] = useState<boolean>(false);
+
+  // Settings
+  const [playerSettings, setPlayerSettings] = useState<PlayerSettings>(DEFAULT_PLAYER_SETTINGS);
+  const [equalizerSettings, setEqualizerSettings] = useState<EqualizerSettings>(DEFAULT_EQ_SETTINGS);
+
+  // Video Mode: 'theater' (fullscreen/cinema), 'pip' (floating mini window), 'hidden' (audio-only)
+  const [videoMode, setVideoMode] = useState<VideoDisplayMode>('theater');
+  const audioRef = useRef<HTMLVideoElement | null>(null);
+  const currentPlayingTrack = queue[currentTrackIndex] || null;
+
+  // Initialize Data from IndexedDB
+  const loadDatabase = useCallback(async () => {
+    try {
+      let loadedTracks = await getAllTracks();
+
+      // Clean up legacy base tracks (track-1 through track-6 or default source) from IndexedDB
+      const defaultTrackIds = new Set(['track-1', 'track-2', 'track-3', 'track-4', 'track-5', 'track-6']);
+      const hadDefaultTracks = loadedTracks.some((t) => t.source === 'default' || defaultTrackIds.has(t.id));
+      if (hadDefaultTracks) {
+        for (const t of loadedTracks) {
+          if (t.source === 'default' || defaultTrackIds.has(t.id)) {
+            await dbDeleteTrack(t.id).catch(() => {});
+          }
+        }
+        loadedTracks = loadedTracks.filter((t) => t.source !== 'default' && !defaultTrackIds.has(t.id));
+      }
+
+      setTracks(loadedTracks);
+
+      let loadedPlaylists = await getAllPlaylists();
+      if (loadedPlaylists.length === 0) {
+        for (const pl of INITIAL_PLAYLISTS) {
+          await savePlaylist(pl);
+        }
+        loadedPlaylists = INITIAL_PLAYLISTS;
+      } else {
+        // Purge obsolete demo playlists from database if present
+        if (loadedPlaylists.some((p) => p.id === 'playlist-chill' || p.id === 'playlist-offline' || p.id === 'playlist-youtube')) {
+          await dbDeletePlaylist('playlist-chill').catch(() => {});
+          await dbDeletePlaylist('playlist-offline').catch(() => {});
+          await dbDeletePlaylist('playlist-youtube').catch(() => {});
+          loadedPlaylists = loadedPlaylists.filter((p) => p.id !== 'playlist-chill' && p.id !== 'playlist-offline' && p.id !== 'playlist-youtube');
+        }
+
+        // Clean up references to deleted default tracks from playlists
+        for (let i = 0; i < loadedPlaylists.length; i++) {
+          const pl = loadedPlaylists[i];
+          const cleanedTrackIds = pl.trackIds.filter((id) => !defaultTrackIds.has(id));
+          if (cleanedTrackIds.length !== pl.trackIds.length) {
+            loadedPlaylists[i] = { ...pl, trackIds: cleanedTrackIds };
+            await savePlaylist(loadedPlaylists[i]).catch(() => {});
+          }
+        }
+
+        // Ensure playlist-favorites is synchronized with actual favorite tracks
+        const favTrackIds = loadedTracks.filter((t) => t.isFavorite).map((t) => t.id);
+        const favIndex = loadedPlaylists.findIndex((p) => p.id === 'playlist-favorites');
+        if (favIndex !== -1) {
+          const updatedFav = {
+            ...loadedPlaylists[favIndex],
+            title: 'Favoris',
+            icon: 'heart',
+            iconColor: 'rose',
+            trackIds: favTrackIds,
+          };
+          loadedPlaylists[favIndex] = updatedFav;
+          await savePlaylist(updatedFav).catch(() => {});
+        } else {
+          const newFav: Playlist = {
+            id: 'playlist-favorites',
+            title: 'Favoris',
+            description: 'Morceaux ajoutés à vos coups de cœur',
+            coverUrl: 'https://images.unsplash.com/photo-1518709268805-4e9042af9f23?w=600&auto=format&fit=crop&q=80',
+            icon: 'heart',
+            iconColor: 'rose',
+            trackIds: favTrackIds,
+            createdAt: Date.now(),
+            updatedAt: Date.now(),
+            isSmart: true,
+            smartType: 'favorites',
+          };
+          loadedPlaylists.unshift(newFav);
+          await savePlaylist(newFav).catch(() => {});
+        }
+      }
+      setPlaylists(loadedPlaylists);
+
+      const savedSettings = await getSetting<PlayerSettings>('player_settings', DEFAULT_PLAYER_SETTINGS);
+      setPlayerSettings(savedSettings);
+      audioEngine.setVolumeNormalization(savedSettings.volumeNormalization);
+
+      const savedEq = await getSetting<EqualizerSettings>('equalizer_settings', DEFAULT_EQ_SETTINGS);
+      setEqualizerSettings(savedEq);
+    } catch (e) {
+      console.error('Failed to load database:', e);
+      setTracks([]);
+      setPlaylists(INITIAL_PLAYLISTS);
+    }
+  }, []);
+
+  useEffect(() => {
+    loadDatabase();
+  }, [loadDatabase]);
+
+  // Synchronize document theme attribute & classes
+  useEffect(() => {
+    const root = document.documentElement;
+    const currentTheme = playerSettings.theme || 'dark';
+    root.setAttribute('data-theme', currentTheme);
+    if (currentTheme === 'light') {
+      root.classList.add('light');
+      root.classList.remove('dark');
+    } else {
+      root.classList.add('dark');
+      root.classList.remove('light');
+    }
+  }, [playerSettings.theme]);
+
+  // Connect Web Audio API to the HTMLAudioElement
+  useEffect(() => {
+    if (audioRef.current) {
+      audioEngine.init(audioRef.current);
+      audioEngine.applyEqualizer(equalizerSettings);
+      audioEngine.setVolumeNormalization(playerSettings.volumeNormalization);
+    }
+  }, [equalizerSettings, playerSettings.volumeNormalization]);
+
+  // Launch automatic background library scanner (discovers local audio tracks without manual import)
+  useEffect(() => {
+    backgroundScanner.start();
+    const unsubscribe = backgroundScanner.subscribe((newTracks) => {
+      setTracks((prev) => {
+        const existingIds = new Set(prev.map((t) => t.id));
+        const toAdd = newTracks.filter((t) => !existingIds.has(t.id));
+        if (toAdd.length > 0) {
+          console.info(`[App] Automatically indexed ${toAdd.length} local audio tracks.`);
+        }
+        return [...toAdd, ...prev];
+      });
+    });
+
+    return () => {
+      unsubscribe();
+      backgroundScanner.stop();
+    };
+  }, []);
+
+  // Handle track swap and memory management
+  const playTrackAt = useCallback(
+    async (index: number, newQueue?: Track[]) => {
+      const targetQueue = newQueue || queue;
+      if (index < 0 || index >= targetQueue.length) return;
+
+      const track = targetQueue[index];
+      const previousTrack = queue[currentTrackIndex] || null;
+      if (previousTrack && previousTrack.id !== track.id) {
+        revokeTrackBlobUrl(previousTrack.id);
+      }
+
+      if (newQueue) {
+        setQueue(newQueue);
+      }
+      setCurrentTrackIndex(index);
+      setCurrentTime(0);
+      if (track.duration && track.duration > 0) {
+        setDuration(track.duration);
+      }
+
+      if (track.isVideo) {
+        setVideoMode('theater');
+      }
+
+      if (audioRef.current) {
+        audioEngine.resume();
+        audioEngine.resetNormalization();
+        try {
+          const playableUrl = await getTrackPlayableUrl(track);
+          if (playableUrl) {
+            audioRef.current.src = playableUrl;
+            audioRef.current.load();
+            await audioRef.current.play();
+            setIsPlaying(true);
+
+            // Crossfade fade-in transition
+            const crossfade = playerSettings.crossfadeDuration ?? 2;
+            if (crossfade > 0 && !isMuted) {
+              audioRef.current.volume = 0;
+              const startTime = performance.now();
+              const fadeDuration = Math.min(1200, crossfade * 1000);
+              const rampUp = (now: number) => {
+                const elapsed = now - startTime;
+                const progress = Math.min(1, elapsed / fadeDuration);
+                if (audioRef.current) {
+                  audioRef.current.volume = volume * progress;
+                }
+                if (progress < 1) {
+                  requestAnimationFrame(rampUp);
+                }
+              };
+              requestAnimationFrame(rampUp);
+            } else {
+              audioRef.current.volume = volume;
+            }
+
+            // Update play count
+            track.playCount = (track.playCount || 0) + 1;
+            await saveTrack(track);
+            setTracks((prev) => prev.map((t) => (t.id === track.id ? { ...t, playCount: track.playCount } : t)));
+
+            // Proactive Gapless Pre-buffering: prefetch next track audio in background
+            if (playerSettings.gaplessPlayback !== false && targetQueue.length > 1) {
+              const nextIdx = (index + 1) % targetQueue.length;
+              const nextTrack = targetQueue[nextIdx];
+              if (nextTrack) {
+                getTrackPlayableUrl(nextTrack).catch(() => {});
+              }
+            }
+          }
+        } catch (err) {
+          console.warn('Playback play request interrupted or requires user interaction:', err);
+        }
+      }
+    },
+    [queue, currentTrackIndex, playerSettings.crossfadeDuration, isMuted, volume, playerSettings.gaplessPlayback]
+  );
+
+  // Play next track (handles shuffle and repeat)
+  const handleNext = useCallback(() => {
+    if (queue.length === 0) return;
+
+    if (repeatMode === 'one') {
+      if (audioRef.current) {
+        try {
+          if (isFinite(audioRef.current.duration) && audioRef.current.duration > 0) {
+            audioRef.current.currentTime = 0;
+          }
+          audioRef.current.play().catch(console.warn);
+        } catch {}
+      }
+      return;
+    }
+
+    if (shuffle) {
+      const randomIndex = Math.floor(Math.random() * queue.length);
+      playTrackAt(randomIndex);
+      return;
+    }
+
+    if (currentTrackIndex < queue.length - 1) {
+      playTrackAt(currentTrackIndex + 1);
+    } else if (repeatMode === 'all') {
+      playTrackAt(0);
+    } else {
+      setIsPlaying(false);
+    }
+  }, [queue, currentTrackIndex, repeatMode, shuffle, playTrackAt]);
+
+  // Play previous track
+  const handlePrev = useCallback(() => {
+    if (queue.length === 0) return;
+
+    if (audioRef.current) {
+      try {
+        if (isFinite(audioRef.current.currentTime) && audioRef.current.currentTime > 3) {
+          audioRef.current.currentTime = 0;
+          return;
+        }
+      } catch {}
+    }
+
+    if (currentTrackIndex > 0) {
+      playTrackAt(currentTrackIndex - 1);
+    } else if (repeatMode === 'all') {
+      playTrackAt(queue.length - 1);
+    }
+  }, [queue, currentTrackIndex, repeatMode, playTrackAt]);
+
+  // Toggle play/pause
+  const handleTogglePlay = useCallback(() => {
+    if (!audioRef.current) return;
+    audioEngine.resume();
+
+    if (isPlaying) {
+      audioRef.current.pause();
+      setIsPlaying(false);
+    } else {
+      if (!currentPlayingTrack) {
+        const targetList = queue.length > 0 ? queue : tracks;
+        if (targetList.length > 0) {
+          playTrackAt(0, targetList);
+        }
+      } else {
+        if (!audioRef.current.src || audioRef.current.src === '' || audioRef.current.src === window.location.href) {
+          playTrackAt(currentTrackIndex >= 0 ? currentTrackIndex : 0, queue.length > 0 ? queue : tracks);
+        } else {
+          audioRef.current.play().then(() => setIsPlaying(true)).catch(() => {
+            playTrackAt(currentTrackIndex >= 0 ? currentTrackIndex : 0, queue.length > 0 ? queue : tracks);
+          });
+        }
+      }
+    }
+  }, [isPlaying, currentPlayingTrack, tracks, currentTrackIndex, queue, playTrackAt]);
+
+  // Stop playback completely: unloads active track, resets player state to empty, and frees audio stream
+  const handleStop = useCallback(() => {
+    if (currentPlayingTrack) {
+      revokeTrackBlobUrl(currentPlayingTrack.id);
+    }
+    if (audioRef.current) {
+      try {
+        audioRef.current.pause();
+        if (isFinite(audioRef.current.duration) && audioRef.current.duration > 0) {
+          audioRef.current.currentTime = 0;
+        }
+        audioRef.current.removeAttribute('src');
+        audioRef.current.load();
+      } catch (err) {
+        console.warn('Error resetting audio element on stop:', err);
+      }
+    }
+    setCurrentTrackIndex(-1);
+    setCurrentTime(0);
+    setDuration(0);
+    setIsPlaying(false);
+  }, [currentPlayingTrack]);
+
+  // Open Detached Always-on-Top / Picture-in-Picture window
+  const handleOpenDetachedPip = useCallback(async () => {
+    if (detachedPipWindow && !detachedPipWindow.closed) {
+      detachedPipWindow.focus();
+      return;
+    }
+
+    const res = await openAlwaysOnTopWindow(360, 220);
+    if (res && res.window) {
+      setDetachedPipWindow(res.window);
+      setPipNotification(
+        res.type === 'document-pip'
+          ? 'Mini-Lecteur Always-on-Top actif au-dessus de vos applications !'
+          : 'Mini-Lecteur Détaché compact ouvert !'
+      );
+      setTimeout(() => setPipNotification(null), 4000);
+    } else {
+      // Fallback to in-app floating mini player
+      setIsMiniPlayer(true);
+      setPipNotification(
+        'Mini-Lecteur PC activé ! (Pour l’Always-on-Top système, ouvrez PlayZic dans un nouvel onglet)'
+      );
+      setTimeout(() => setPipNotification(null), 5500);
+    }
+  }, [detachedPipWindow]);
+
+  const handleCloseDetachedPip = useCallback(() => {
+    if (detachedPipWindow && !detachedPipWindow.closed) {
+      try {
+        detachedPipWindow.close();
+      } catch {}
+    }
+    setDetachedPipWindow(null);
+  }, [detachedPipWindow]);
+
+  // Seek
+  const handleSeek = (newTime: number) => {
+    if (audioRef.current && isFinite(newTime) && newTime >= 0) {
+      try {
+        const max = isFinite(audioRef.current.duration) && audioRef.current.duration > 0
+          ? audioRef.current.duration
+          : newTime;
+        const target = Math.min(newTime, max);
+        audioRef.current.currentTime = target;
+        setCurrentTime(target);
+      } catch (err) {
+        console.warn('Seek error ignored:', err);
+      }
+    }
+  };
+
+  // Volume
+  const handleVolumeChange = (newVol: number) => {
+    setVolume(newVol);
+    if (audioRef.current) {
+      audioRef.current.volume = isMuted ? 0 : newVol;
+    }
+    if (newVol > 0 && isMuted) {
+      setIsMuted(false);
+    }
+  };
+
+  const handleToggleMute = () => {
+    setIsMuted((prev) => {
+      const next = !prev;
+      if (audioRef.current) {
+        audioRef.current.volume = next ? 0 : volume;
+      }
+      return next;
+    });
+  };
+
+  // Toggle Favorite
+  const handleToggleFavorite = async (trackId: string) => {
+    const updatedTracks = tracks.map((t) => {
+      if (t.id === trackId) {
+        const nextFav = !t.isFavorite;
+        const updated = { ...t, isFavorite: nextFav };
+        saveTrack(updated);
+        return updated;
+      }
+      return t;
+    });
+    setTracks(updatedTracks);
+
+    // Update Favorite Playlist trackIds
+    const favPlaylist = playlists.find((p) => p.id === 'playlist-favorites');
+    if (favPlaylist) {
+      const isFav = updatedTracks.find((t) => t.id === trackId)?.isFavorite;
+      const nextTrackIds = isFav
+        ? [...new Set([...favPlaylist.trackIds, trackId])]
+        : favPlaylist.trackIds.filter((id) => id !== trackId);
+
+      const updatedFavPl = { ...favPlaylist, trackIds: nextTrackIds, updatedAt: Date.now() };
+      await savePlaylist(updatedFavPl);
+      setPlaylists((prev) => prev.map((p) => (p.id === 'playlist-favorites' ? updatedFavPl : p)));
+    }
+  };
+
+  // Add track to a playlist
+  const handleAddToPlaylist = async (playlistId: string, trackId: string) => {
+    const pl = playlists.find((p) => p.id === playlistId);
+    if (!pl) return;
+    if (!pl.trackIds.includes(trackId)) {
+      const updated = { ...pl, trackIds: [...pl.trackIds, trackId], updatedAt: Date.now() };
+      await savePlaylist(updated);
+      setPlaylists((prev) => prev.map((p) => (p.id === playlistId ? updated : p)));
+    }
+  };
+
+  // Remove track from a playlist
+  const handleRemoveTrackFromPlaylist = async (playlistId: string, trackId: string) => {
+    const pl = playlists.find((p) => p.id === playlistId);
+    if (!pl) return;
+    const updated = { ...pl, trackIds: pl.trackIds.filter((id) => id !== trackId), updatedAt: Date.now() };
+    await savePlaylist(updated);
+    setPlaylists((prev) => prev.map((p) => (p.id === playlistId ? updated : p)));
+  };
+
+  // Create playlist from modal
+  const handleSaveNewPlaylist = async (
+    title: string,
+    description?: string,
+    coverUrl?: string,
+    icon?: string,
+    iconColor?: string,
+    isPinned: boolean = true
+  ) => {
+    const newPl: Playlist = {
+      id: `playlist-${Date.now()}`,
+      title: title.trim(),
+      description: description?.trim() || 'Playlist personnalisée pour PC',
+      coverUrl: coverUrl || '',
+      icon: icon || 'music',
+      iconColor: iconColor || 'emerald',
+      isPinned: isPinned,
+      trackIds: [],
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+      isSmart: false,
+    };
+
+    await savePlaylist(newPl);
+    setPlaylists((prev) => [...prev, newPl]);
+    setCurrentView(`playlist-${newPl.id}`);
+    setActivePlaylistId(newPl.id);
+  };
+
+  // Toggle single playlist pin status
+  const handleTogglePinPlaylist = async (playlistId: string, isPinned: boolean) => {
+    const target = playlists.find((p) => p.id === playlistId);
+    if (!target) return;
+    const updated = { ...target, isPinned, updatedAt: Date.now() };
+    await savePlaylist(updated);
+    setPlaylists((prev) => prev.map((p) => (p.id === playlistId ? updated : p)));
+  };
+
+  // Bulk update pin statuses (e.g. from ManageSidebarPlaylistsModal)
+  const handleBulkUpdatePins = async (pinnedMap: Record<string, boolean>) => {
+    const updatedList: Playlist[] = [];
+    for (const pl of playlists) {
+      if (pl.id in pinnedMap) {
+        const updated = { ...pl, isPinned: pinnedMap[pl.id], updatedAt: Date.now() };
+        await savePlaylist(updated);
+        updatedList.push(updated);
+      } else {
+        updatedList.push(pl);
+      }
+    }
+    setPlaylists(updatedList);
+  };
+
+  // Update whole playlist metadata (icon, color, cover, title, description, isPinned)
+  const handleUpdatePlaylist = async (updatedPl: Playlist) => {
+    const final = { ...updatedPl, updatedAt: Date.now() };
+    await savePlaylist(final);
+    setPlaylists((prev) => prev.map((p) => (p.id === final.id ? final : p)));
+  };
+
+  // Delete playlist
+  const handleDeletePlaylist = async (playlistId: string) => {
+    await dbDeletePlaylist(playlistId);
+    setPlaylists((prev) => prev.filter((p) => p.id !== playlistId));
+    setCurrentView('library');
+    setActivePlaylistId(null);
+  };
+
+  // Update playlist title
+  const handleUpdatePlaylistTitle = async (playlistId: string, newTitle: string) => {
+    const pl = playlists.find((p) => p.id === playlistId);
+    if (!pl) return;
+    const updated = { ...pl, title: newTitle, updatedAt: Date.now() };
+    await savePlaylist(updated);
+    setPlaylists((prev) => prev.map((p) => (p.id === playlistId ? updated : p)));
+  };
+
+  // Add track to queue
+  const handleAddToQueue = (track: Track) => {
+    setQueue((prev) => [...prev, track]);
+  };
+
+  // Delete multiple tracks or single track with complete cleanup
+  const handleDeleteTracks = async (trackIds: string[]) => {
+    if (!trackIds || trackIds.length === 0) return;
+    const idSet = new Set(trackIds);
+
+    // Stop playback if current playing track is being deleted
+    if (currentPlayingTrack && idSet.has(currentPlayingTrack.id)) {
+      if (audioRef.current) {
+        audioRef.current.pause();
+        audioRef.current.src = '';
+      }
+      setIsPlaying(false);
+      setCurrentTrackIndex(-1);
+    }
+
+    // Delete each track from IndexedDB (both metadata and audio blob)
+    for (const id of trackIds) {
+      try {
+        await dbDeleteTrack(id);
+      } catch (err) {
+        console.warn('Failed to delete track from storage:', id, err);
+      }
+    }
+
+    // Update state for tracks and queue
+    setTracks((prev) => prev.filter((t) => !idSet.has(t.id)));
+    setQueue((prev) => prev.filter((t) => !idSet.has(t.id)));
+
+    // Clean up playlists removing references to deleted tracks
+    setPlaylists((prev) => {
+      const updated = prev.map((pl) => ({
+        ...pl,
+        trackIds: pl.trackIds.filter((id) => !idSet.has(id)),
+      }));
+      updated.forEach((pl) => {
+        savePlaylist(pl).catch(() => {});
+      });
+      return updated;
+    });
+  };
+
+  const handleDeleteTrack = async (trackId: string) => {
+    await handleDeleteTracks([trackId]);
+  };
+
+  // Track Trimmer Handlers
+  const handleOpenTrimmer = (track: Track) => {
+    setTrimmerTrack(track);
+  };
+
+  const handleTrackCreated = async (newTrack: Track) => {
+    setTracks((prev) => [newTrack, ...prev]);
+  };
+
+  const handleTrackUpdated = async (updatedTrack: Track) => {
+    setTracks((prev) => prev.map((t) => (t.id === updatedTrack.id ? updatedTrack : t)));
+    setQueue((prev) => prev.map((t) => (t.id === updatedTrack.id ? updatedTrack : t)));
+  };
+
+  // Tag Editor Handler
+  const handleSaveTrackTags = async (updatedTrack: Track) => {
+    await saveTrack(updatedTrack);
+    setTracks((prev) => prev.map((t) => (t.id === updatedTrack.id ? updatedTrack : t)));
+    setQueue((prev) => prev.map((t) => (t.id === updatedTrack.id ? updatedTrack : t)));
+  };
+
+  // Track created from Audio Merger
+  const handleTrackCreatedFromMerger = async (newTrack: Track) => {
+    setTracks((prev) => [newTrack, ...prev]);
+  };
+
+  // Open local files or folders (Screenbox)
+  const handleImportFiles = async (files: FileList | File[]) => {
+    const fileList = Array.isArray(files) ? files : Array.from(files);
+    const imported: Track[] = [];
+    for (const file of fileList) {
+      try {
+        const track = await processLocalAudioFile(file);
+        imported.push(track);
+      } catch (err) {
+        console.warn('File processing error:', err);
+      }
+    }
+    if (imported.length > 0) {
+      setTracks((prev) => {
+        const existingIds = new Set(prev.map((t) => t.id));
+        const newOnes = imported.filter((t) => !existingIds.has(t.id));
+        return [...newOnes, ...prev];
+      });
+      setQueue((prev) => {
+        const existingIds = new Set(prev.map((t) => t.id));
+        const newTracks = imported.filter((t) => !existingIds.has(t.id));
+        return [...newTracks, ...prev];
+      });
+      // Start playing the newly opened track immediately
+      const newQueue = [...imported, ...queue.filter((t) => !imported.some((imp) => imp.id === t.id))];
+      playTrackAt(0, newQueue);
+    }
+  };
+
+  // Add media (videos or songs) to the queue from the QueueDrawer '+' button
+  const handleAddMediaToQueue = async (files: FileList | File[]) => {
+    const fileList = Array.isArray(files) ? files : Array.from(files);
+    const imported: Track[] = [];
+    for (const file of fileList) {
+      try {
+        const track = await processLocalAudioFile(file);
+        imported.push(track);
+      } catch (err) {
+        console.warn('File processing error in queue:', err);
+      }
+    }
+    if (imported.length > 0) {
+      setTracks((prev) => {
+        const existingIds = new Set(prev.map((t) => t.id));
+        const newOnes = imported.filter((t) => !existingIds.has(t.id));
+        return [...newOnes, ...prev];
+      });
+      setQueue((prev) => {
+        const existingIds = new Set(prev.map((t) => t.id));
+        const newOnes = imported.filter((t) => !existingIds.has(t.id));
+        return [...prev, ...newOnes];
+      });
+      if (currentTrackIndex === -1 && queue.length === 0) {
+        playTrackAt(0, imported);
+      }
+    }
+  };
+
+  // Global Keyboard Shortcuts
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Command Palette (Ctrl+K or Cmd+K) works anywhere
+      if ((e.metaKey || e.ctrlKey) && (e.key === 'k' || e.key === 'K')) {
+        e.preventDefault();
+        setIsCommandPaletteOpen((prev) => !prev);
+        return;
+      }
+
+      // Ignore standard media keys when inside inputs or textareas
+      const target = e.target as HTMLElement;
+      if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA')) {
+        return;
+      }
+
+      if (e.key === '?' || e.key === '/') {
+        e.preventDefault();
+        setIsCommandPaletteOpen(true);
+        return;
+      }
+
+      if (e.code === 'Space') {
+        e.preventDefault();
+        handleTogglePlay();
+      } else if (e.code === 'ArrowLeft') {
+        e.preventDefault();
+        if (audioRef.current) {
+          handleSeek(Math.max(0, audioRef.current.currentTime - 5));
+        }
+      } else if (e.code === 'ArrowRight') {
+        e.preventDefault();
+        if (audioRef.current) {
+          handleSeek(Math.min(duration, audioRef.current.currentTime + 5));
+        }
+      } else if (e.code === 'ArrowUp') {
+        e.preventDefault();
+        handleVolumeChange(Math.min(1, volume + 0.05));
+      } else if (e.code === 'ArrowDown') {
+        e.preventDefault();
+        handleVolumeChange(Math.max(0, volume - 0.05));
+      } else if (e.key === 'm' || e.key === 'M') {
+        handleToggleMute();
+      } else if (e.key === 'l' || e.key === 'L') {
+        if (currentPlayingTrack) {
+          handleToggleFavorite(currentPlayingTrack.id);
+        }
+      } else if (e.key === 'n' || e.key === 'N') {
+        handleNext();
+      } else if (e.key === 'p' || e.key === 'P') {
+        handlePrev();
+      } else if (e.key === 'x' || e.key === 'X') {
+        handleStop();
+      } else if (e.key === 's' || e.key === 'S') {
+        setShuffle((prev) => !prev);
+      } else if (e.key === 'r' || e.key === 'R') {
+        setRepeatMode((prev) => (prev === 'off' ? 'all' : prev === 'all' ? 'one' : 'off'));
+      } else if (e.key === 'f' || e.key === 'F') {
+        setIsFullscreenOpen((prev) => !prev);
+      } else if (e.key === 'e' || e.key === 'E') {
+        setIsEqualizerOpen((prev) => !prev);
+      } else if (e.key === 'w' || e.key === 'W') {
+        setIsMiniPlayer((prev) => !prev);
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [handleTogglePlay, handleStop, handleSeek, duration, volume, handleToggleMute, currentPlayingTrack, handleNext, handlePrev]);
+
+  // Electron Tray Sync
+  useEffect(() => {
+    if (window.electronAPI) {
+      window.electronAPI.updateTrayTrack({
+        title: currentPlayingTrack?.title || 'Aucune lecture',
+        artist: currentPlayingTrack?.artist || 'FlowLuna',
+        isPlaying,
+      });
+    }
+  }, [currentPlayingTrack, isPlaying]);
+
+  // Electron Global Media Controls & Systray Events
+  useEffect(() => {
+    if (!window.electronAPI) return;
+    const unsubscribe = window.electronAPI.onMediaControl((action) => {
+      if (action === 'play-pause') {
+        handleTogglePlay();
+      } else if (action === 'next') {
+        handleNext();
+      } else if (action === 'prev') {
+        handlePrev();
+      } else if (action === 'stop') {
+        if (audioRef.current) {
+          audioRef.current.pause();
+          setIsPlaying(false);
+        }
+      }
+    });
+    return () => {
+      unsubscribe?.();
+    };
+  }, [handleTogglePlay, handleNext, handlePrev]);
+
+  // Audio element listeners
+  useEffect(() => {
+    const audio = audioRef.current;
+    if (!audio) return;
+
+    const handleTimeUpdate = () => {
+      setCurrentTime(audio.currentTime);
+
+      // Crossfade fade-out transition nearing end of track
+      const crossfade = playerSettings.crossfadeDuration ?? 2;
+      const d = audio.duration;
+      if (crossfade > 0 && d && d > 6 && !isMuted) {
+        const remaining = d - audio.currentTime;
+        if (remaining <= crossfade && remaining > 0) {
+          const fadeRatio = Math.max(0.02, remaining / crossfade);
+          audio.volume = Math.max(0, Math.min(1, volume * fadeRatio));
+        } else if (audio.currentTime > crossfade + 0.5 && audio.volume !== volume) {
+          audio.volume = volume;
+        }
+      }
+    };
+
+    const handleLoadedMetadata = () => {
+      const d = audio.duration;
+      if (d && !isNaN(d) && isFinite(d) && d > 0) {
+        setDuration(Math.round(d));
+      }
+    };
+
+    const handleEnded = () => {
+      handleNext();
+    };
+
+    audio.addEventListener('timeupdate', handleTimeUpdate);
+    audio.addEventListener('loadedmetadata', handleLoadedMetadata);
+    audio.addEventListener('ended', handleEnded);
+
+    return () => {
+      audio.removeEventListener('timeupdate', handleTimeUpdate);
+      audio.removeEventListener('loadedmetadata', handleLoadedMetadata);
+      audio.removeEventListener('ended', handleEnded);
+    };
+  }, [handleNext]);
+
+  // MediaSession API for OS integration (Taskbar, Media Keys, Lockscreen)
+  useEffect(() => {
+    if (!('mediaSession' in navigator)) return;
+
+    if (currentPlayingTrack) {
+      navigator.mediaSession.metadata = new MediaMetadata({
+        title: currentPlayingTrack.title,
+        artist: currentPlayingTrack.artist,
+        album: currentPlayingTrack.album || 'PlayZic',
+        artwork: currentPlayingTrack.coverUrl
+          ? [{ src: currentPlayingTrack.coverUrl, sizes: '512x512', type: 'image/png' }]
+          : [],
+      });
+      navigator.mediaSession.playbackState = isPlaying ? 'playing' : 'paused';
+    } else {
+      navigator.mediaSession.metadata = null;
+      navigator.mediaSession.playbackState = 'none';
+    }
+  }, [currentPlayingTrack, isPlaying]);
+
+  useEffect(() => {
+    if (!('mediaSession' in navigator)) return;
+
+    try {
+      navigator.mediaSession.setActionHandler('play', () => {
+        if (!isPlaying) handleTogglePlay();
+      });
+      navigator.mediaSession.setActionHandler('pause', () => {
+        if (isPlaying) handleTogglePlay();
+      });
+      navigator.mediaSession.setActionHandler('stop', () => {
+        handleStop();
+      });
+      navigator.mediaSession.setActionHandler('previoustrack', () => {
+        handlePrev();
+      });
+      navigator.mediaSession.setActionHandler('nexttrack', () => {
+        handleNext();
+      });
+      navigator.mediaSession.setActionHandler('seekto', (details) => {
+        if (details.seekTime !== undefined && details.seekTime !== null) {
+          handleSeek(details.seekTime);
+        }
+      });
+    } catch (err) {
+      console.warn('Error setting MediaSession handlers:', err);
+    }
+  }, [isPlaying, handleTogglePlay, handleStop, handlePrev, handleNext, handleSeek]);
+
+  // Navigation handler
+  const handleNavigate = (view: string, playlistId?: string) => {
+    if (view === 'playlist' && playlistId) {
+      setCurrentView(`playlist-${playlistId}`);
+      setActivePlaylistId(playlistId);
+    } else {
+      setCurrentView(view);
+      setActivePlaylistId(null);
+    }
+  };
+
+  // Play All in playlist or library
+  const handlePlayAllInPlaylist = (playlistTracks: Track[], shuffleTracks: boolean) => {
+    if (playlistTracks.length === 0) return;
+    if (shuffleTracks) {
+      setShuffle(true);
+    }
+    const finalQueue = shuffleTracks
+      ? [...playlistTracks].sort(() => Math.random() - 0.5)
+      : [...playlistTracks];
+    playTrackAt(0, finalQueue);
+  };
+
+  // Save updated settings
+  const handleUpdatePlayerSettings = async (settings: PlayerSettings) => {
+    setPlayerSettings(settings);
+    audioEngine.setVolumeNormalization(settings.volumeNormalization);
+    await saveSetting('player_settings', settings);
+  };
+
+  const handleUpdateEqualizerSettings = async (settings: EqualizerSettings) => {
+    setEqualizerSettings(settings);
+    audioEngine.applyEqualizer(settings);
+    await saveSetting('equalizer_settings', settings);
+  };
+
+  // Render current view
+  const renderMainContent = () => {
+    if (currentView.startsWith('playlist-')) {
+      const plId = activePlaylistId || currentView.replace('playlist-', '');
+      const playlist = playlists.find((p) => p.id === plId);
+      if (playlist) {
+        let playlistTracks: Track[] = [];
+        if (playlist.smartType === 'favorites' || playlist.id === 'playlist-favorites') {
+          playlistTracks = tracks.filter((t) => t.isFavorite);
+        } else if (playlist.smartType === 'offline') {
+          playlistTracks = tracks.filter((t) => t.isCachedOffline);
+        } else if (playlist.smartType === 'youtube') {
+          playlistTracks = tracks.filter((t) => t.source === 'youtube');
+        } else {
+          playlistTracks = playlist.trackIds
+            .map((tid) => tracks.find((t) => t.id === tid))
+            .filter((t): t is Track => !!t);
+        }
+
+        return (
+          <PlaylistView
+            playlist={playlist}
+            tracks={playlistTracks}
+            onPlayTrack={(track, list) => {
+              const q = list || playlistTracks;
+              const idx = q.findIndex((t) => t.id === track.id);
+              playTrackAt(idx !== -1 ? idx : 0, q);
+            }}
+            onPlayAll={handlePlayAllInPlaylist}
+            onToggleFavorite={handleToggleFavorite}
+            onRemoveTrackFromPlaylist={handleRemoveTrackFromPlaylist}
+            onDeletePlaylist={handleDeletePlaylist}
+            onUpdatePlaylistTitle={handleUpdatePlaylistTitle}
+            onUpdatePlaylist={handleUpdatePlaylist}
+            accent={playerSettings.accent}
+            allTracks={tracks}
+            currentTrackId={currentPlayingTrack?.id || null}
+            isPlaying={isPlaying}
+            onOpenTrimmer={handleOpenTrimmer}
+            onAddToQueue={handleAddToQueue}
+            onEditTrackTags={(track) => setTagEditorTrack(track)}
+          />
+        );
+      }
+    }
+
+    if (currentView === 'playlists' || currentView === 'playlists-overview') {
+      return (
+        <AllPlaylistsView
+          playlists={playlists}
+          tracks={tracks}
+          onNavigate={handleNavigate}
+          onCreatePlaylist={() => setIsCreatePlaylistModalOpen(true)}
+          onPlayPlaylist={(plId) => {
+            const pl = playlists.find((p) => p.id === plId);
+            if (!pl) return;
+            let plTracks: Track[] = [];
+            if (pl.id === 'playlist-favorites') {
+              plTracks = tracks.filter((t) => t.isFavorite);
+            } else if (pl.id === 'playlist-offline') {
+              plTracks = tracks.filter((t) => t.isCachedOffline);
+            } else {
+              const set = new Set(pl.trackIds);
+              plTracks = tracks.filter((t) => set.has(t.id));
+            }
+            if (plTracks.length > 0) {
+              playTrackAt(0, plTracks);
+            }
+          }}
+          onDeletePlaylist={handleDeletePlaylist}
+          onUpdatePlaylist={handleUpdatePlaylist}
+          onTogglePinPlaylist={handleTogglePinPlaylist}
+          onBulkUpdatePins={handleBulkUpdatePins}
+          accent={playerSettings.accent}
+        />
+      );
+    }
+
+    if (currentView === 'videos') {
+      return (
+        <VideosView
+          tracks={tracks}
+          currentTrackId={currentPlayingTrack?.id}
+          isPlaying={isPlaying}
+          onPlayTrack={(track, list) => {
+            const q = list || tracks;
+            const idx = q.findIndex((t) => t.id === track.id);
+            playTrackAt(idx !== -1 ? idx : 0, q);
+            setVideoMode('theater');
+          }}
+          onOpenVideoTheater={() => setVideoMode('theater')}
+          onImportFiles={handleImportFiles}
+          onDeleteTrack={(track) => handleDeleteTrack(track.id)}
+          onOpenTrimmer={handleOpenTrimmer}
+          accent={playerSettings.accent}
+        />
+      );
+    }
+
+    if (currentView === 'downloader') {
+      return (
+        <DownloaderView
+          accent={playerSettings.accent}
+          onTrackImported={async (newTrack) => {
+            await saveTrack(newTrack);
+            setTracks((prev) => [newTrack, ...prev.filter((t) => t.id !== newTrack.id)]);
+          }}
+          onPlayTrack={(track) => {
+            saveTrack(track);
+            setTracks((prev) => [track, ...prev.filter((t) => t.id !== track.id)]);
+            setQueue((prev) => [track, ...prev.filter((t) => t.id !== track.id)]);
+            setCurrentTrackIndex(0);
+            setIsPlaying(true);
+            if (track.isVideo) {
+              setVideoMode('theater');
+            }
+          }}
+        />
+      );
+    }
+
+    // Default: Library View (music tracks only)
+    const musicTracks = tracks.filter((t) => !t.isVideo);
+    return (
+      <LibraryView
+        tracks={musicTracks}
+        playlists={playlists.filter((p) => !p.isSmart)}
+        onPlayTrack={(track, list) => {
+          const q = list || musicTracks;
+          const idx = q.findIndex((t) => t.id === track.id);
+          playTrackAt(idx !== -1 ? idx : 0, q);
+        }}
+        onPlayAll={handlePlayAllInPlaylist}
+        onToggleFavorite={handleToggleFavorite}
+        onAddToPlaylist={handleAddToPlaylist}
+        onAddToQueue={handleAddToQueue}
+        onDeleteTrack={handleDeleteTrack}
+        onDeleteTracks={handleDeleteTracks}
+        onImportFiles={handleImportFiles}
+        accent={playerSettings.accent}
+        initialSearchFocus={currentView === 'search'}
+        currentTrackId={currentPlayingTrack?.id || null}
+        isPlaying={isPlaying}
+        onOpenTrimmer={handleOpenTrimmer}
+        onEditTrackTags={(track) => setTagEditorTrack(track)}
+        onOpenDeduplicator={() => setIsDeduplicatorOpen(true)}
+        onOpenMerger={() => setIsMergerOpen(true)}
+        onOpenStats={() => setIsStatsOpen(true)}
+      />
+    );
+  };
+
+  const cachedTracksCount = tracks.filter((t) => t.isCachedOffline).length;
+
+  const glassIntensity = playerSettings.glassIntensity ?? 70;
+  const glassFactor = glassIntensity / 100;
+  const isDark = playerSettings.theme !== 'light';
+
+  // Dynamic CSS variables for Pure Glass effect
+  const glassStyle = {
+    '--glass-intensity': `${glassIntensity}%`,
+    '--glass-factor': `${glassFactor}`,
+    '--glass-blur': `${Math.round(glassFactor * 28)}px`,
+    '--glass-border': isDark
+      ? `rgba(255, 255, 255, ${0.05 + glassFactor * 0.12})`
+      : `rgba(0, 0, 0, ${0.05 + glassFactor * 0.08})`,
+    '--glass-sidebar-bg': isDark
+      ? `rgba(10, 10, 15, ${Math.max(0.3, 1 - glassFactor * 0.65)})`
+      : `rgba(248, 250, 252, ${Math.max(0.4, 1 - glassFactor * 0.55)})`,
+    '--glass-main-bg': isDark
+      ? `rgba(6, 6, 10, ${Math.max(0.25, 1 - glassFactor * 0.7)})`
+      : `rgba(241, 245, 249, ${Math.max(0.35, 1 - glassFactor * 0.58)})`,
+    '--glass-player-bg': isDark
+      ? `rgba(12, 12, 18, ${Math.max(0.38, 1 - glassFactor * 0.6)})`
+      : `rgba(255, 255, 255, ${Math.max(0.48, 1 - glassFactor * 0.5)})`,
+    '--glass-card-bg': isDark
+      ? `rgba(20, 20, 28, ${Math.max(0.25, 1 - glassFactor * 0.65)})`
+      : `rgba(255, 255, 255, ${Math.max(0.5, 1 - glassFactor * 0.45)})`,
+  } as React.CSSProperties;
+
+  return (
+    <div
+      id="app-root-container"
+      data-theme={playerSettings.theme || 'dark'}
+      style={glassStyle}
+      className={`w-screen h-screen flex flex-col overflow-hidden transition-colors duration-200 relative ${
+        playerSettings.theme === 'light'
+          ? 'light bg-slate-50 text-slate-900'
+          : 'dark bg-neutral-950 text-neutral-100'
+      }`}
+    >
+      {/* Pure Glass Ambient Glow & Refraction Layer */}
+      <div
+        className="absolute inset-0 pointer-events-none overflow-hidden transition-opacity duration-700 z-0"
+        style={{
+          opacity: Math.max(0.12, glassFactor),
+        }}
+      >
+        <div
+          className="absolute -top-[20%] -left-[10%] w-[55vw] h-[55vw] rounded-full blur-[130px] opacity-40 transition-all duration-1000"
+          style={{
+            background:
+              playerSettings.accent === 'emerald'
+                ? 'radial-gradient(circle, rgba(16, 185, 129, 0.45) 0%, rgba(6, 78, 59, 0.15) 70%, transparent 100%)'
+                : playerSettings.accent === 'violet'
+                ? 'radial-gradient(circle, rgba(139, 92, 246, 0.45) 0%, rgba(76, 29, 149, 0.15) 70%, transparent 100%)'
+                : playerSettings.accent === 'cyan'
+                ? 'radial-gradient(circle, rgba(6, 182, 212, 0.45) 0%, rgba(21, 94, 117, 0.15) 70%, transparent 100%)'
+                : playerSettings.accent === 'rose'
+                ? 'radial-gradient(circle, rgba(244, 63, 94, 0.45) 0%, rgba(136, 19, 55, 0.15) 70%, transparent 100%)'
+                : playerSettings.accent === 'amber'
+                ? 'radial-gradient(circle, rgba(245, 158, 11, 0.45) 0%, rgba(120, 53, 15, 0.15) 70%, transparent 100%)'
+                : 'radial-gradient(circle, rgba(59, 130, 246, 0.45) 0%, rgba(30, 58, 138, 0.15) 70%, transparent 100%)',
+          }}
+        />
+        <div
+          className="absolute -bottom-[25%] -right-[15%] w-[60vw] h-[60vw] rounded-full blur-[140px] opacity-35 transition-all duration-1000"
+          style={{
+            background:
+              playerSettings.theme === 'light'
+                ? 'radial-gradient(circle, rgba(147, 197, 253, 0.4) 0%, rgba(224, 231, 255, 0.2) 60%, transparent 100%)'
+                : 'radial-gradient(circle, rgba(79, 70, 229, 0.35) 0%, rgba(30, 27, 75, 0.1) 65%, transparent 100%)',
+          }}
+        />
+        <div
+          className="absolute top-[35%] left-[30%] w-[45vw] h-[45vw] rounded-full blur-[120px] opacity-20 transition-all duration-1000"
+          style={{
+            background:
+              playerSettings.theme === 'light'
+                ? 'radial-gradient(circle, rgba(253, 186, 116, 0.25) 0%, transparent 70%)'
+                : 'radial-gradient(circle, rgba(168, 85, 247, 0.25) 0%, transparent 70%)',
+          }}
+        />
+      </div>
+      {/* Native Windows Frameless TitleBar */}
+      <TitleBar currentTrack={currentPlayingTrack} isPlaying={isPlaying} accent={playerSettings.accent} />
+
+      {/* Unified Video & Audio Media Player Engine */}
+      <VideoPlayer
+        videoRef={audioRef}
+        currentTrack={currentPlayingTrack}
+        isPlaying={isPlaying}
+        onTogglePlay={handleTogglePlay}
+        onPlay={() => setIsPlaying(true)}
+        onPause={() => setIsPlaying(false)}
+        onError={(e) => {
+          console.error('Impossible de charger le flux média:', e);
+          setIsPlaying(false);
+        }}
+        currentTime={currentTime}
+        duration={duration}
+        onSeek={handleSeek}
+        volume={volume}
+        onVolumeChange={handleVolumeChange}
+        isMuted={isMuted}
+        onToggleMute={handleToggleMute}
+        onPrev={handlePrev}
+        onNext={handleNext}
+        videoMode={videoMode}
+        onSetVideoMode={setVideoMode}
+        accent={playerSettings.accent}
+      />
+
+      {/* Main Desktop Container (Sidebar + Content) or Minimized Workspace Mode */}
+      {isMiniPlayer && isAppMinimized ? (
+        <div
+          className={`flex flex-1 flex-col items-center justify-center p-8 text-center select-none relative overflow-hidden bg-neutral-950 ${
+            playerSettings.compactPlayerDock === 'top' ? 'pt-16' : 'pb-16'
+          }`}
+        >
+          {currentPlayingTrack?.coverUrl && (
+            <div
+              className="absolute inset-0 bg-cover bg-center opacity-10 blur-3xl pointer-events-none scale-125"
+              style={{ backgroundImage: `url(${currentPlayingTrack.coverUrl})` }}
+            />
+          )}
+
+          <div className="relative z-10 flex flex-col items-center gap-4 max-w-md p-6 rounded-2xl bg-neutral-900/80 border border-neutral-800 backdrop-blur-md shadow-2xl animate-in zoom-in-95 duration-200">
+            <div className="p-3.5 rounded-2xl bg-neutral-800 text-emerald-400 border border-neutral-700/60 shadow-inner">
+              <Layers className="w-8 h-8 animate-pulse" />
+            </div>
+            <div>
+              <h3 className="text-base font-extrabold text-white">Mode Lecteur d'Appoint Actif</h3>
+              <p className="text-xs text-neutral-400 mt-1.5 leading-relaxed">
+                L'interface principale est réduite pour garder votre espace de travail dégagé. La mini-barre d'appoint reste ancrée en {playerSettings.compactPlayerDock === 'top' ? 'haut' : 'bas'} de votre écran avec tous vos contrôles.
+              </p>
+            </div>
+            <div className="flex items-center gap-2 mt-2">
+              <button
+                type="button"
+                onClick={() => setIsAppMinimized(false)}
+                className="px-4 py-2 rounded-xl text-xs font-semibold bg-neutral-800 hover:bg-neutral-700 text-white transition-colors cursor-pointer flex items-center gap-2 shadow-xs"
+              >
+                <Layers className="w-3.5 h-3.5" />
+                <span>Afficher la bibliothèque</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setIsMiniPlayer(false);
+                  setIsAppMinimized(false);
+                }}
+                className="px-4 py-2 rounded-xl text-xs font-semibold bg-emerald-500 hover:bg-emerald-400 text-neutral-950 transition-colors cursor-pointer flex items-center gap-2 shadow-md"
+              >
+                <Maximize2 className="w-3.5 h-3.5" />
+                <span>Restaurer l'application</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : (
+        <div
+          className={`flex flex-1 overflow-hidden ${
+            isMiniPlayer && playerSettings.compactPlayerDock === 'top' ? 'pt-11' : ''
+          }`}
+        >
+          <Sidebar
+            currentView={currentView}
+            onNavigate={handleNavigate}
+            playlists={playlists}
+            favoritesCount={tracks.filter((t) => t.isFavorite).length}
+            videosCount={tracks.filter((t) => t.isVideo).length}
+            onCreatePlaylist={() => setIsCreatePlaylistModalOpen(true)}
+            onOpenSettings={() => setIsSettingsOpen(true)}
+            onOpenEqualizer={() => setIsEqualizerOpen(true)}
+            onImportFiles={handleImportFiles}
+            accent={playerSettings.accent}
+            theme={playerSettings.theme}
+            cachedCount={cachedTracksCount}
+            isPlaying={isPlaying}
+            settings={playerSettings}
+            onUpdateSettings={handleUpdatePlayerSettings}
+            onToggleFullscreen={() => setIsFullscreenOpen(true)}
+            onTogglePinPlaylist={handleTogglePinPlaylist}
+            onBulkUpdatePins={handleBulkUpdatePins}
+            onOpenCommandPalette={() => setIsCommandPaletteOpen(true)}
+            onOpenQueue={() => setIsQueueOpen((p) => !p)}
+            queueLength={queue.length}
+            isQueueOpen={isQueueOpen}
+          />
+
+          {/* Scrollable Center Content View */}
+          <main id="main-content-scroll" className="flex-1 overflow-y-auto bg-neutral-950/90 glass-main relative z-10">
+            {renderMainContent()}
+          </main>
+        </div>
+      )}
+
+      {/* Bottom Desktop Player Bar (hidden if MiniPlayer is docked at bottom) */}
+      {(!isMiniPlayer || playerSettings.compactPlayerDock !== 'bottom') && (
+        <PlayerBar
+          currentTrack={currentPlayingTrack}
+          isPlaying={isPlaying}
+          onTogglePlay={handleTogglePlay}
+          onStop={handleStop}
+          onPrev={handlePrev}
+          onNext={handleNext}
+          currentTime={currentTime}
+          duration={duration}
+          onSeek={handleSeek}
+          volume={volume}
+          onVolumeChange={handleVolumeChange}
+          isMuted={isMuted}
+          onToggleMute={handleToggleMute}
+          isFavorite={currentPlayingTrack ? currentPlayingTrack.isFavorite : false}
+          onToggleFavorite={() => {
+            if (currentPlayingTrack) handleToggleFavorite(currentPlayingTrack.id);
+          }}
+          shuffle={shuffle}
+          onToggleShuffle={() => setShuffle((p) => !p)}
+          repeatMode={repeatMode}
+          onCycleRepeat={() =>
+            setRepeatMode((p) => (p === 'off' ? 'all' : p === 'all' ? 'one' : 'off'))
+          }
+          onOpenQueue={() => setIsQueueOpen(true)}
+          queueLength={queue.length}
+          onOpenEqualizer={() => setIsEqualizerOpen(true)}
+          onToggleFullscreen={() => setIsFullscreenOpen(true)}
+          onToggleMiniPlayer={() => setIsMiniPlayer((p) => !p)}
+          onOpenDetachedPip={handleOpenDetachedPip}
+          isDetachedPipActive={!!detachedPipWindow && !detachedPipWindow.closed}
+          onToggleVideo={() => setVideoMode((prev) => (prev === 'theater' ? 'pip' : 'theater'))}
+          isVideoModeActive={videoMode !== 'hidden'}
+          accent={playerSettings.accent}
+          settings={playerSettings}
+          onUpdateSettings={handleUpdatePlayerSettings}
+          onOpenTrimmer={handleOpenTrimmer}
+        />
+      )}
+
+      {/* Equalizer Modal */}
+      <EqualizerModal
+        isOpen={isEqualizerOpen}
+        onClose={() => setIsEqualizerOpen(false)}
+        settings={equalizerSettings}
+        onChange={handleUpdateEqualizerSettings}
+        accent={playerSettings.accent}
+        playerSettings={playerSettings}
+        onUpdatePlayerSettings={handleUpdatePlayerSettings}
+      />
+
+      {/* Settings Modal */}
+      <SettingsModal
+        isOpen={isSettingsOpen}
+        onClose={() => setIsSettingsOpen(false)}
+        settings={playerSettings}
+        onChange={handleUpdatePlayerSettings}
+        tracksCount={tracks.length}
+        playlistsCount={playlists.length}
+        onDataReload={loadDatabase}
+      />
+
+      {/* Fullscreen & Synchronized Lyrics View */}
+      <LyricsAndFullscreen
+        isOpen={isFullscreenOpen}
+        onClose={() => setIsFullscreenOpen(false)}
+        currentTrack={currentPlayingTrack}
+        isPlaying={isPlaying}
+        onTogglePlay={handleTogglePlay}
+        onStop={handleStop}
+        onPrev={handlePrev}
+        onNext={handleNext}
+        currentTime={currentTime}
+        duration={duration}
+        onSeek={handleSeek}
+        volume={volume}
+        onVolumeChange={handleVolumeChange}
+        isMuted={isMuted}
+        onToggleMute={handleToggleMute}
+        isFavorite={currentPlayingTrack ? currentPlayingTrack.isFavorite : false}
+        onToggleFavorite={() => {
+          if (currentPlayingTrack) handleToggleFavorite(currentPlayingTrack.id);
+        }}
+        shuffle={shuffle}
+        onToggleShuffle={() => setShuffle((p) => !p)}
+        repeatMode={repeatMode}
+        onCycleRepeat={() =>
+          setRepeatMode((p) => (p === 'off' ? 'all' : p === 'all' ? 'one' : 'off'))
+        }
+        accent={playerSettings.accent}
+        settings={playerSettings}
+      />
+
+      {/* Queue Drawer */}
+      <QueueDrawer
+        isOpen={isQueueOpen}
+        onClose={() => setIsQueueOpen(false)}
+        queue={queue}
+        currentTrackIndex={currentTrackIndex}
+        onSelectTrack={(idx) => playTrackAt(idx)}
+        onRemoveFromQueue={(idx) => {
+          setQueue((prev) => prev.filter((_, i) => i !== idx));
+          if (idx < currentTrackIndex) {
+            setCurrentTrackIndex((prev) => prev - 1);
+          }
+        }}
+        onMoveQueueItem={(from, to) => {
+          setQueue((prev) => {
+            const next = [...prev];
+            const [item] = next.splice(from, 1);
+            next.splice(to, 0, item);
+            return next;
+          });
+        }}
+        onClearQueue={() => {
+          setQueue(currentPlayingTrack ? [currentPlayingTrack] : []);
+          setCurrentTrackIndex(currentPlayingTrack ? 0 : -1);
+        }}
+        onAddMediaToQueue={handleAddMediaToQueue}
+        onSaveQueueAsPlaylist={async () => {
+          if (queue.length === 0) return;
+          const newPl: Playlist = {
+            id: `playlist-${Date.now()}`,
+            title: `Session ${new Date().toLocaleDateString('fr-FR')}`,
+            description: 'Playlist générée depuis la file d’attente',
+            coverUrl: queue[0]?.coverUrl || 'https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?w=600&auto=format&fit=crop&q=80',
+            trackIds: queue.map((t) => t.id),
+            createdAt: Date.now(),
+            updatedAt: Date.now(),
+            isSmart: false,
+          };
+          await savePlaylist(newPl);
+          setPlaylists((prev) => [...prev, newPl]);
+          setIsQueueOpen(false);
+          setCurrentView(`playlist-${newPl.id}`);
+          setActivePlaylistId(newPl.id);
+        }}
+        accent={playerSettings.accent}
+      />
+
+      {/* Create Playlist Modal */}
+      <CreatePlaylistModal
+        isOpen={isCreatePlaylistModalOpen}
+        onClose={() => setIsCreatePlaylistModalOpen(false)}
+        onCreate={handleSaveNewPlaylist}
+        accent={playerSettings.accent}
+      />
+
+      {/* Floating Desktop Mini Player */}
+      {isMiniPlayer && (
+        <MiniPlayer
+          currentTrack={currentPlayingTrack}
+          isPlaying={isPlaying}
+          onTogglePlay={handleTogglePlay}
+          onStop={handleStop}
+          onPrev={handlePrev}
+          onNext={handleNext}
+          currentTime={currentTime}
+          duration={duration}
+          onSeek={handleSeek}
+          volume={volume}
+          onVolumeChange={handleVolumeChange}
+          isMuted={isMuted}
+          onToggleMute={handleToggleMute}
+          isFavorite={currentPlayingTrack ? currentPlayingTrack.isFavorite : false}
+          onToggleFavorite={() => {
+            if (currentPlayingTrack) handleToggleFavorite(currentPlayingTrack.id);
+          }}
+          onRestore={() => setIsMiniPlayer(false)}
+          onDetachPip={handleOpenDetachedPip}
+          accent={playerSettings.accent}
+          playlists={playlists}
+          onAddToPlaylist={handleAddToPlaylist}
+          onCreatePlaylist={() => setIsCreatePlaylistModalOpen(true)}
+          settings={playerSettings}
+          onUpdateSettings={handleUpdatePlayerSettings}
+          isAppMinimized={isAppMinimized}
+          onToggleMinimizeApp={() => setIsAppMinimized((prev) => !prev)}
+        />
+      )}
+
+      {/* Detached Always-on-Top Window Portal */}
+      {detachedPipWindow && !detachedPipWindow.closed && (
+        <DetachedMiniPlayerPortal
+          targetWindow={detachedPipWindow}
+          currentTrack={currentPlayingTrack}
+          isPlaying={isPlaying}
+          onTogglePlay={handleTogglePlay}
+          onStop={handleStop}
+          onPrev={handlePrev}
+          onNext={handleNext}
+          currentTime={currentTime}
+          duration={duration}
+          onSeek={handleSeek}
+          volume={volume}
+          onVolumeChange={handleVolumeChange}
+          isMuted={isMuted}
+          onToggleMute={handleToggleMute}
+          isFavorite={currentPlayingTrack ? currentPlayingTrack.isFavorite : false}
+          onToggleFavorite={() => {
+            if (currentPlayingTrack) handleToggleFavorite(currentPlayingTrack.id);
+          }}
+          accent={playerSettings.accent}
+          settings={playerSettings}
+          onClose={handleCloseDetachedPip}
+        />
+      )}
+
+      {/* Floating Always-on-Top status notification */}
+      {pipNotification && (
+        <div className="fixed top-5 right-5 z-[100] px-4 py-2.5 rounded-xl bg-neutral-900/95 border border-emerald-500/50 text-emerald-300 text-xs font-semibold shadow-2xl backdrop-blur-md flex items-center gap-2 animate-in slide-in-from-top-3 select-none pointer-events-none">
+          <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+          <span>{pipNotification}</span>
+        </div>
+      )}
+
+      {/* Audio Trimmer & Cutter Studio Modal */}
+      <AudioTrimmerModal
+        isOpen={!!trimmerTrack}
+        onClose={() => setTrimmerTrack(null)}
+        track={trimmerTrack}
+        accent={playerSettings.accent}
+        onTrackCreated={handleTrackCreated}
+        onTrackUpdated={handleTrackUpdated}
+      />
+
+      {/* Track ID3 Tag & Cover Art Editor Modal */}
+      <TrackTagEditorModal
+        isOpen={!!tagEditorTrack}
+        onClose={() => setTagEditorTrack(null)}
+        track={tagEditorTrack}
+        onSave={handleSaveTrackTags}
+        accent={playerSettings.accent}
+      />
+
+      {/* Duplicate Finder & Cleanup Modal */}
+      <DuplicateFinderModal
+        isOpen={isDeduplicatorOpen}
+        onClose={() => setIsDeduplicatorOpen(false)}
+        tracks={tracks}
+        onDeleteTrack={(track) => handleDeleteTrack(track.id)}
+        accent={playerSettings.accent}
+      />
+
+      {/* Audio Merger & Track Concatenator Modal */}
+      <AudioMergerModal
+        isOpen={isMergerOpen}
+        onClose={() => setIsMergerOpen(false)}
+        tracks={tracks}
+        onTrackCreated={handleTrackCreatedFromMerger}
+        accent={playerSettings.accent}
+      />
+
+      {/* Listening Statistics Modal */}
+      <ListeningStatsModal
+        isOpen={isStatsOpen}
+        onClose={() => setIsStatsOpen(false)}
+        tracks={tracks}
+        onPlayTrack={(track) => playTrackAt(0, [track, ...queue.filter((t) => t.id !== track.id)])}
+        accent={playerSettings.accent}
+      />
+
+      {/* Global Command Palette (Ctrl+K) */}
+      <CommandPaletteModal
+        isOpen={isCommandPaletteOpen}
+        onClose={() => setIsCommandPaletteOpen(false)}
+        tracks={tracks}
+        playlists={playlists}
+        isPlaying={isPlaying}
+        onTogglePlay={handleTogglePlay}
+        onNext={handleNext}
+        onPrev={handlePrev}
+        onToggleShuffle={() => setShuffle((p) => !p)}
+        onPlayTrack={(track) => playTrackAt(0, [track, ...queue.filter((t) => t.id !== track.id)])}
+        onOpenPlaylist={(playlistId) => handleNavigate('playlist', playlistId)}
+        onOpenEqualizer={() => setIsEqualizerOpen(true)}
+        onOpenMiniPlayer={() => setIsMiniPlayer(true)}
+        onOpenFullscreen={() => setIsFullscreenOpen(true)}
+        onOpenImport={() => {}}
+        onOpenVideos={() => handleNavigate('videos')}
+        onOpenDownloader={() => handleNavigate('downloader')}
+        onOpenDeduplicator={() => setIsDeduplicatorOpen(true)}
+        onOpenMerger={() => setIsMergerOpen(true)}
+        onOpenStats={() => setIsStatsOpen(true)}
+        accent={playerSettings.accent}
+      />
+    </div>
+  );
+}

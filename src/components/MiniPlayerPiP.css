@@ -1,0 +1,303 @@
+/* Fond du document PiP */
+html, body {
+  margin: 0;
+  padding: 0;
+  width: 100vw;
+  height: 100vh;
+  background-color: #0d0e12;
+  overflow: hidden;
+}
+
+/* Racine adaptative avec Container Queries pour redimensionnement homothétique */
+.pip-root {
+  width: 100vw;
+  height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  container-type: inline-size;
+  background: #121316;
+  box-sizing: border-box;
+  overflow: hidden;
+}
+
+.pip-container {
+  width: 100%;
+  height: 100%;
+  padding: 3.5cqw 4.5cqw;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  box-sizing: border-box;
+  color: #ffffff;
+  font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  user-select: none;
+}
+
+/* En-tête */
+.pip-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  height: 10cqw;
+}
+
+.pip-label {
+  font-size: 2.5cqw;
+  font-weight: 800;
+  letter-spacing: 0.15cqw;
+  color: #9ca3af;
+  text-transform: uppercase;
+}
+
+/* Visualiseur Audio */
+.pip-visualizer {
+  display: flex;
+  align-items: center;
+  gap: 0.5cqw;
+  height: 6.5cqw;
+  padding: 0.6cqw 2.5cqw;
+  background: #1c1d22;
+  border-radius: 4cqw;
+  border: 1px solid #2a2b32;
+}
+
+.pip-bar {
+  width: 0.7cqw;
+  min-height: 15%;
+  background: linear-gradient(to top, #d97706, #f59e0b);
+  border-radius: 1cqw;
+  transition: height 0.15s ease;
+}
+
+.pip-bar-animated {
+  animation: pip-bar-bounce 1.2s ease-in-out infinite alternate;
+}
+
+@keyframes pip-bar-bounce {
+  0% {
+    transform: scaleY(0.4);
+  }
+  100% {
+    transform: scaleY(1.1);
+  }
+}
+
+.pip-header-actions {
+  display: flex;
+  gap: 2cqw;
+}
+
+/* Informations Titre & Pochette */
+.pip-track-section {
+  display: flex;
+  align-items: center;
+  gap: 3cqw;
+  margin: 0.5cqw 0;
+}
+
+.pip-cover {
+  width: 15cqw;
+  height: 15cqw;
+  border-radius: 3.2cqw;
+  object-fit: cover;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+  flex-shrink: 0;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.pip-meta {
+  flex: 1;
+  min-width: 0;
+}
+
+.pip-title {
+  margin: 0;
+  font-size: 3.5cqw;
+  font-weight: 700;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: #ffffff;
+  line-height: 1.2;
+}
+
+.pip-artist {
+  margin: 0.4cqw 0 0 0;
+  font-size: 2.7cqw;
+  color: #9ca3af;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.pip-track-actions {
+  display: flex;
+  align-items: center;
+  gap: 1.5cqw;
+}
+
+/* Section Barre de Temps + Slider */
+.pip-progress-section {
+  display: flex;
+  align-items: center;
+  gap: 2cqw;
+}
+
+.pip-time {
+  font-size: 2.6cqw;
+  color: #9ca3af;
+  font-variant-numeric: tabular-nums;
+  min-width: 5.5cqw;
+}
+
+.pip-slider-wrapper {
+  flex: 1;
+  display: flex;
+  align-items: center;
+}
+
+.pip-range-input {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 100%;
+  height: 1.2cqw;
+  border-radius: 1cqw;
+  outline: none;
+  cursor: pointer;
+  background: #374151;
+}
+
+.pip-range-input::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 3.6cqw;
+  height: 3.6cqw;
+  border-radius: 50%;
+  background: #ffffff;
+  border: 0.5cqw solid #f59e0b;
+  cursor: pointer;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.35);
+  transition: transform 0.1s ease;
+}
+
+.pip-range-input::-webkit-slider-thumb:hover {
+  transform: scale(1.15);
+}
+
+.pip-range-input::-moz-range-thumb {
+  width: 3.6cqw;
+  height: 3.6cqw;
+  border-radius: 50%;
+  background: #ffffff;
+  border: 0.5cqw solid #f59e0b;
+  cursor: pointer;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.35);
+}
+
+/* Footer & Contrôles */
+.pip-controls-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.pip-volume-box {
+  display: flex;
+  align-items: center;
+  gap: 1.5cqw;
+  width: 25cqw;
+}
+
+.pip-volume-range {
+  background: #374151;
+}
+
+.pip-main-controls {
+  display: flex;
+  align-items: center;
+  gap: 2.5cqw;
+}
+
+/* Boutons & SVG Adaptatifs */
+.pip-icon-btn,
+.pip-btn-ctrl {
+  background: transparent;
+  border: none;
+  color: #9ca3af;
+  cursor: pointer;
+  padding: 0.8cqw;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  transition: color 0.15s ease, transform 0.1s ease;
+}
+
+.pip-icon-btn:hover,
+.pip-btn-ctrl:hover {
+  color: #ffffff;
+  transform: scale(1.08);
+}
+
+.pip-icon-btn.active-fav {
+  color: #ef4444;
+}
+
+.pip-btn-play {
+  width: 9.5cqw;
+  height: 9.5cqw;
+  border-radius: 50%;
+  background: #f59e0b;
+  border: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  box-shadow: 0 0 12px rgba(245, 158, 11, 0.4);
+  transition: transform 0.1s ease, background 0.15s ease;
+  color: #000000;
+}
+
+.pip-btn-play:hover {
+  background: #d97706;
+  transform: scale(1.06);
+}
+
+.pip-btn-play:active {
+  transform: scale(0.95);
+}
+
+/* Tailles dynamiques des icônes SVG */
+.pip-svg {
+  width: 3.2cqw;
+  height: 3.2cqw;
+}
+
+.pip-svg-sm {
+  width: 3.5cqw;
+  height: 3.5cqw;
+}
+
+.pip-svg-md {
+  width: 4.2cqw;
+  height: 4.2cqw;
+}
+
+.pip-svg-lg {
+  width: 5cqw;
+  height: 5cqw;
+}
+
+.pip-svg-play {
+  width: 4.8cqw;
+  height: 4.8cqw;
+}
+
+.ml-v {
+  margin-left: 0.5cqw;
+}
+
+.text-gray {
+  color: #9ca3af;
+}

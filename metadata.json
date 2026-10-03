@@ -1,0 +1,8 @@
+{
+  "name": "FlowLuna",
+  "description": "Lecteur audio haute fidélité pour PC avec prise en charge de tous les formats, gestion avancée de playlists, cache hors-ligne intelligent, synchronisation cloud et import YouTube.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}

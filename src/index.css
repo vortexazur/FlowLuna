@@ -1,0 +1,793 @@
+@import "tailwindcss";
+@import "./components/MiniPlayerPiP.css";
+
+/* Custom Scrollbar Styles */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(100, 116, 139, 0.25);
+  border-radius: 9999px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(100, 116, 139, 0.45);
+}
+
+/* =========================================================================
+   LIGHT THEME DESIGN SYSTEM (data-theme="light" & .light)
+   High-contrast, modern clean aesthetic with seamless menu/modal integration
+   ========================================================================= */
+
+[data-theme="light"],
+html.light,
+body.light,
+.light {
+  color-scheme: light;
+}
+
+/* 1. Base Body & Root Canvas */
+[data-theme="light"] body,
+html.light body,
+.light#app-root-container {
+  background-color: #f8fafc;
+  color: #0f172a;
+}
+
+/* 2. Deep Neutral Backgrounds & ALL Opacity Variants -> Crisp Light Canvas */
+[data-theme="light"] .bg-neutral-950,
+[data-theme="light"] .bg-neutral-950\/100,
+[data-theme="light"] .bg-neutral-950\/95,
+[data-theme="light"] .bg-neutral-950\/90,
+[data-theme="light"] .bg-neutral-950\/85,
+[data-theme="light"] .bg-neutral-950\/80,
+[data-theme="light"] .bg-neutral-950\/75,
+[data-theme="light"] .bg-neutral-950\/70,
+[data-theme="light"] .bg-neutral-950\/65,
+[data-theme="light"] .bg-neutral-950\/60,
+[data-theme="light"] .bg-neutral-950\/55,
+[data-theme="light"] .bg-neutral-950\/50,
+[data-theme="light"] .bg-neutral-950\/45,
+[data-theme="light"] .bg-neutral-950\/40,
+[data-theme="light"] .bg-neutral-950\/35,
+[data-theme="light"] .bg-neutral-950\/30,
+[data-theme="light"] .bg-neutral-950\/25,
+[data-theme="light"] .bg-neutral-950\/20,
+[data-theme="light"] .bg-neutral-950\/15,
+[data-theme="light"] .bg-neutral-950\/10,
+[data-theme="light"] .bg-neutral-950\/5,
+html.light .bg-neutral-950,
+html.light .bg-neutral-950\/95,
+html.light .bg-neutral-950\/90,
+html.light .bg-neutral-950\/80,
+html.light .bg-neutral-950\/70,
+html.light .bg-neutral-950\/60,
+html.light .bg-neutral-950\/50,
+html.light .bg-neutral-950\/40,
+html.light .bg-neutral-950\/30,
+html.light .bg-neutral-950\/20 {
+  background-color: #f8fafc !important;
+}
+
+/* 3. Surface / Card / Container / Header Backgrounds -> Pure White */
+[data-theme="light"] .bg-neutral-900,
+[data-theme="light"] .bg-neutral-900\/100,
+[data-theme="light"] .bg-neutral-900\/95,
+[data-theme="light"] .bg-neutral-900\/90,
+[data-theme="light"] .bg-neutral-900\/85,
+[data-theme="light"] .bg-neutral-900\/80,
+[data-theme="light"] .bg-neutral-900\/75,
+[data-theme="light"] .bg-neutral-900\/70,
+[data-theme="light"] .bg-neutral-900\/65,
+[data-theme="light"] .bg-neutral-900\/60,
+[data-theme="light"] .bg-neutral-900\/55,
+[data-theme="light"] .bg-neutral-900\/50,
+html.light .bg-neutral-900,
+html.light .bg-neutral-900\/95,
+html.light .bg-neutral-900\/90,
+html.light .bg-neutral-900\/80,
+html.light .bg-neutral-900\/70,
+html.light .bg-neutral-900\/60,
+html.light .bg-neutral-900\/50 {
+  background-color: #ffffff !important;
+}
+
+[data-theme="light"] .bg-neutral-900\/40,
+[data-theme="light"] .bg-neutral-900\/35,
+[data-theme="light"] .bg-neutral-900\/30,
+[data-theme="light"] .bg-neutral-900\/25,
+[data-theme="light"] .bg-neutral-900\/20,
+[data-theme="light"] .bg-neutral-900\/15,
+[data-theme="light"] .bg-neutral-900\/10,
+html.light .bg-neutral-900\/40,
+html.light .bg-neutral-900\/30,
+html.light .bg-neutral-900\/20 {
+  background-color: #f1f5f9 !important;
+}
+
+/* 4. Secondary Elements / Inputs / Tabs / Sub-containers */
+[data-theme="light"] .bg-neutral-850,
+[data-theme="light"] .bg-neutral-800,
+[data-theme="light"] .bg-neutral-800\/100,
+[data-theme="light"] .bg-neutral-800\/95,
+[data-theme="light"] .bg-neutral-800\/90,
+[data-theme="light"] .bg-neutral-800\/85,
+[data-theme="light"] .bg-neutral-800\/80,
+[data-theme="light"] .bg-neutral-800\/75,
+[data-theme="light"] .bg-neutral-800\/70,
+[data-theme="light"] .bg-neutral-800\/65,
+[data-theme="light"] .bg-neutral-800\/60,
+[data-theme="light"] .bg-neutral-800\/55,
+[data-theme="light"] .bg-neutral-800\/50,
+[data-theme="light"] .bg-neutral-800\/40,
+[data-theme="light"] .bg-neutral-800\/30,
+[data-theme="light"] .bg-neutral-800\/20,
+[data-theme="light"] .bg-neutral-800\/10,
+html.light .bg-neutral-850,
+html.light .bg-neutral-800,
+html.light .bg-neutral-800\/90,
+html.light .bg-neutral-800\/80,
+html.light .bg-neutral-800\/70,
+html.light .bg-neutral-800\/60,
+html.light .bg-neutral-800\/50,
+html.light .bg-neutral-800\/40,
+html.light .bg-neutral-800\/30,
+html.light .bg-neutral-800\/20 {
+  background-color: #f1f5f9 !important;
+}
+
+[data-theme="light"] .bg-neutral-700,
+[data-theme="light"] .bg-neutral-700\/80,
+[data-theme="light"] .bg-neutral-700\/60,
+[data-theme="light"] .bg-neutral-700\/40,
+html.light .bg-neutral-700 {
+  background-color: #e2e8f0 !important;
+}
+
+/* 5. Hover States */
+[data-theme="light"] .hover\:bg-neutral-900:hover,
+[data-theme="light"] .hover\:bg-neutral-900\/90:hover,
+[data-theme="light"] .hover\:bg-neutral-900\/80:hover,
+[data-theme="light"] .hover\:bg-neutral-900\/60:hover,
+html.light .hover\:bg-neutral-900:hover,
+html.light .hover\:bg-neutral-900\/80:hover,
+html.light .hover\:bg-neutral-900\/60:hover {
+  background-color: #f1f5f9 !important;
+}
+
+[data-theme="light"] .hover\:bg-neutral-800:hover,
+[data-theme="light"] .hover\:bg-neutral-800\/90:hover,
+[data-theme="light"] .hover\:bg-neutral-800\/80:hover,
+[data-theme="light"] .hover\:bg-neutral-800\/70:hover,
+[data-theme="light"] .hover\:bg-neutral-800\/60:hover,
+[data-theme="light"] .hover\:bg-neutral-800\/50:hover,
+[data-theme="light"] .hover\:bg-neutral-800\/40:hover,
+html.light .hover\:bg-neutral-800:hover,
+html.light .hover\:bg-neutral-800\/90:hover,
+html.light .hover\:bg-neutral-800\/80:hover,
+html.light .hover\:bg-neutral-800\/60:hover,
+html.light .hover\:bg-neutral-800\/40:hover {
+  background-color: #e2e8f0 !important;
+}
+
+[data-theme="light"] .hover\:bg-neutral-700:hover,
+[data-theme="light"] .hover\:bg-neutral-700\/50:hover,
+html.light .hover\:bg-neutral-700:hover,
+html.light .hover\:bg-neutral-700\/50:hover {
+  background-color: #cbd5e1 !important;
+}
+
+/* 6. Hairline Borders & Dividers */
+[data-theme="light"] .border-neutral-900,
+[data-theme="light"] .border-neutral-850,
+[data-theme="light"] .border-neutral-800,
+[data-theme="light"] .border-neutral-800\/90,
+[data-theme="light"] .border-neutral-800\/80,
+[data-theme="light"] .border-neutral-800\/70,
+[data-theme="light"] .border-neutral-800\/60,
+[data-theme="light"] .border-neutral-800\/50,
+[data-theme="light"] .border-neutral-800\/40,
+[data-theme="light"] .border-neutral-800\/30,
+[data-theme="light"] .border-neutral-800\/20,
+html.light .border-neutral-900,
+html.light .border-neutral-800,
+html.light .border-neutral-800\/90,
+html.light .border-neutral-800\/80,
+html.light .border-neutral-800\/60,
+html.light .border-neutral-800\/40 {
+  border-color: #e2e8f0 !important;
+}
+
+[data-theme="light"] .border-neutral-700,
+[data-theme="light"] .border-neutral-700\/80,
+[data-theme="light"] .border-neutral-700\/60,
+[data-theme="light"] .border-neutral-700\/50,
+[data-theme="light"] .border-neutral-700\/40,
+html.light .border-neutral-700,
+html.light .border-neutral-700\/80,
+html.light .border-neutral-700\/60 {
+  border-color: #cbd5e1 !important;
+}
+
+[data-theme="light"] .hover\:border-neutral-700:hover,
+[data-theme="light"] .hover\:border-neutral-600:hover,
+html.light .hover\:border-neutral-700:hover,
+html.light .hover\:border-neutral-600:hover {
+  border-color: #94a3b8 !important;
+}
+
+[data-theme="light"] .divide-neutral-800,
+[data-theme="light"] .divide-neutral-800\/80,
+[data-theme="light"] .divide-neutral-800\/60,
+[data-theme="light"] .divide-neutral-800\/40,
+html.light .divide-neutral-800,
+html.light .divide-neutral-800\/40 {
+  border-color: #e2e8f0 !important;
+}
+
+/* 7. Typographic Contrast Hierarchy */
+[data-theme="light"] .text-white,
+html.light .text-white {
+  color: #0f172a !important;
+}
+
+[data-theme="light"] .text-neutral-100,
+html.light .text-neutral-100 {
+  color: #0f172a !important;
+}
+
+[data-theme="light"] .text-neutral-200,
+html.light .text-neutral-200 {
+  color: #1e293b !important;
+}
+
+[data-theme="light"] .text-neutral-300,
+html.light .text-neutral-300 {
+  color: #334155 !important;
+}
+
+[data-theme="light"] .text-neutral-400,
+html.light .text-neutral-400 {
+  color: #64748b !important;
+}
+
+[data-theme="light"] .text-neutral-500,
+html.light .text-neutral-500 {
+  color: #94a3b8 !important;
+}
+
+[data-theme="light"] .text-neutral-600,
+html.light .text-neutral-600 {
+  color: #cbd5e1 !important;
+}
+
+[data-theme="light"] .hover\:text-white:hover,
+[data-theme="light"] .group:hover .group-hover\:text-white,
+html.light .hover\:text-white:hover,
+html.light .group:hover .group-hover\:text-white {
+  color: #0f172a !important;
+}
+
+[data-theme="light"] .hover\:text-neutral-100:hover,
+[data-theme="light"] .hover\:text-neutral-200:hover,
+html.light .hover\:text-neutral-100:hover,
+html.light .hover\:text-neutral-200:hover {
+  color: #0f172a !important;
+}
+
+/* 8. Form Controls, Inputs, Textareas, Selects & Placeholders */
+[data-theme="light"] input:not([type="checkbox"]):not([type="radio"]):not([type="range"]),
+[data-theme="light"] textarea,
+[data-theme="light"] select,
+html.light input:not([type="checkbox"]):not([type="radio"]):not([type="range"]),
+html.light textarea,
+html.light select {
+  background-color: #ffffff !important;
+  color: #0f172a !important;
+  border-color: #cbd5e1 !important;
+}
+
+[data-theme="light"] input::placeholder,
+[data-theme="light"] textarea::placeholder,
+html.light input::placeholder,
+html.light textarea::placeholder {
+  color: #94a3b8 !important;
+}
+
+[data-theme="light"] input:focus,
+[data-theme="light"] textarea:focus,
+[data-theme="light"] select:focus,
+html.light input:focus,
+html.light textarea:focus,
+html.light select:focus {
+  border-color: #3b82f6 !important;
+  box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.15) !important;
+}
+
+/* Range Sliders */
+[data-theme="light"] input[type="range"],
+html.light input[type="range"] {
+  background-color: #e2e8f0 !important;
+}
+
+/* 9. Modal Backdrops, Overlays & Elevated Containers */
+[data-theme="light"] .bg-black\/80,
+[data-theme="light"] .bg-black\/70,
+[data-theme="light"] .bg-black\/60,
+[data-theme="light"] .bg-black\/50,
+[data-theme="light"] .bg-black\/40,
+html.light .bg-black\/80,
+html.light .bg-black\/70,
+html.light .bg-black\/60,
+html.light .bg-black\/50 {
+  background-color: rgba(15, 23, 42, 0.45) !important;
+  backdrop-filter: blur(4px);
+}
+
+[data-theme="light"] #settings-modal-content,
+[data-theme="light"] #equalizer-modal-content,
+[data-theme="light"] #audio-trimmer-modal-content,
+[data-theme="light"] #queue-drawer-panel,
+[data-theme="light"] #command-palette-card,
+[data-theme="light"] #stats-modal-card,
+[data-theme="light"] #deduplicator-modal-card,
+[data-theme="light"] #merger-modal-card,
+[data-theme="light"] #trimmer-modal-card,
+[data-theme="light"] #tag-editor-modal-card,
+[data-theme="light"] #create-playlist-modal-card,
+[data-theme="light"] #edit-playlist-modal-card,
+[data-theme="light"] #manage-sidebar-playlists-card,
+[data-theme="light"] #manage-sidebar-modal-card,
+[data-theme="light"] #delete-track-modal-card,
+[data-theme="light"] #bulk-delete-modal-card,
+[data-theme="light"] #delete-playlist-modal-card,
+[data-theme="light"] .modal-container {
+  background-color: #ffffff !important;
+  border-color: #e2e8f0 !important;
+  box-shadow: 0 25px 50px -12px rgba(15, 23, 42, 0.18), 0 0 0 1px rgba(15, 23, 42, 0.05) !important;
+}
+
+/* 10. Dropdown Menus & Context Floating Menus */
+[data-theme="light"] .bg-neutral-900\/95,
+[data-theme="light"] .bg-neutral-900\/98,
+html.light .bg-neutral-900\/95,
+html.light .bg-neutral-900\/98 {
+  background-color: #ffffff !important;
+  border-color: #e2e8f0 !important;
+  box-shadow: 0 12px 30px -4px rgba(15, 23, 42, 0.12), 0 4px 6px -2px rgba(15, 23, 42, 0.05) !important;
+}
+
+/* 11. Saturated Accent Text Readability for Light Mode */
+[data-theme="light"] .text-emerald-400,
+[data-theme="light"] .text-emerald-300,
+html.light .text-emerald-400,
+html.light .text-emerald-300 {
+  color: #059669 !important;
+}
+
+[data-theme="light"] .text-violet-400,
+[data-theme="light"] .text-violet-300,
+html.light .text-violet-400,
+html.light .text-violet-300 {
+  color: #7c3aed !important;
+}
+
+[data-theme="light"] .text-blue-400,
+[data-theme="light"] .text-blue-300,
+html.light .text-blue-400,
+html.light .text-blue-300 {
+  color: #2563eb !important;
+}
+
+[data-theme="light"] .text-amber-400,
+[data-theme="light"] .text-amber-300,
+html.light .text-amber-400,
+html.light .text-amber-300 {
+  color: #d97706 !important;
+}
+
+[data-theme="light"] .text-rose-400,
+[data-theme="light"] .text-rose-300,
+html.light .text-rose-400,
+html.light .text-rose-300 {
+  color: #e11d48 !important;
+}
+
+[data-theme="light"] .text-cyan-400,
+[data-theme="light"] .text-cyan-300,
+html.light .text-cyan-400,
+html.light .text-cyan-300 {
+  color: #0891b2 !important;
+}
+
+[data-theme="light"] .text-sky-400,
+[data-theme="light"] .text-sky-300,
+html.light .text-sky-400,
+html.light .text-sky-300 {
+  color: #0284c7 !important;
+}
+
+[data-theme="light"] .text-red-400,
+[data-theme="light"] .text-red-300,
+html.light .text-red-400,
+html.light .text-red-300 {
+  color: #dc2626 !important;
+}
+
+[data-theme="light"] .text-purple-400,
+[data-theme="light"] .text-purple-300,
+html.light .text-purple-400,
+html.light .text-purple-300 {
+  color: #9333ea !important;
+}
+
+/* 12. Soft Saturated Pill Badges (Pastel Tints) */
+[data-theme="light"] .bg-emerald-500\/20,
+[data-theme="light"] .bg-emerald-500\/15,
+[data-theme="light"] .bg-emerald-950\/40,
+[data-theme="light"] .bg-emerald-950\/25,
+html.light .bg-emerald-500\/20,
+html.light .bg-emerald-500\/15,
+html.light .bg-emerald-950\/40,
+html.light .bg-emerald-950\/25 {
+  background-color: #ecfdf5 !important;
+  color: #047857 !important;
+  border-color: #a7f3d0 !important;
+}
+
+[data-theme="light"] .bg-violet-500\/20,
+[data-theme="light"] .bg-violet-500\/15,
+[data-theme="light"] .bg-violet-950\/25,
+html.light .bg-violet-500\/20,
+html.light .bg-violet-500\/15,
+html.light .bg-violet-950\/25 {
+  background-color: #f5f3ff !important;
+  color: #6d28d9 !important;
+  border-color: #ddd6fe !important;
+}
+
+[data-theme="light"] .bg-blue-500\/20,
+[data-theme="light"] .bg-blue-500\/15,
+[data-theme="light"] .bg-blue-950\/25,
+html.light .bg-blue-500\/20,
+html.light .bg-blue-500\/15,
+html.light .bg-blue-950\/25 {
+  background-color: #eff6ff !important;
+  color: #1d4ed8 !important;
+  border-color: #bfdbfe !important;
+}
+
+[data-theme="light"] .bg-amber-500\/20,
+[data-theme="light"] .bg-amber-500\/15,
+[data-theme="light"] .bg-amber-950\/25,
+html.light .bg-amber-500\/20,
+html.light .bg-amber-500\/15,
+html.light .bg-amber-950\/25 {
+  background-color: #fffbeb !important;
+  color: #b45309 !important;
+  border-color: #fde68a !important;
+}
+
+[data-theme="light"] .bg-rose-500\/20,
+[data-theme="light"] .bg-rose-500\/15,
+[data-theme="light"] .bg-rose-950\/25,
+html.light .bg-rose-500\/20,
+html.light .bg-rose-500\/15,
+html.light .bg-rose-950\/25 {
+  background-color: #fff1f2 !important;
+  color: #be123c !important;
+  border-color: #fecdd3 !important;
+}
+
+[data-theme="light"] .bg-cyan-500\/20,
+[data-theme="light"] .bg-cyan-500\/15,
+[data-theme="light"] .bg-cyan-950\/25,
+html.light .bg-cyan-500\/20,
+html.light .bg-cyan-500\/15,
+html.light .bg-cyan-950\/25 {
+  background-color: #ecfeff !important;
+  color: #0e7490 !important;
+  border-color: #a5f3fc !important;
+}
+
+[data-theme="light"] .bg-red-500\/20,
+[data-theme="light"] .bg-red-500\/15,
+[data-theme="light"] .bg-red-500\/10,
+[data-theme="light"] .bg-red-950\/60,
+[data-theme="light"] .bg-red-950\/40,
+html.light .bg-red-500\/20,
+html.light .bg-red-500\/10,
+html.light .bg-red-950\/60 {
+  background-color: #fef2f2 !important;
+  color: #b91c1c !important;
+  border-color: #fecaca !important;
+}
+
+/* 13. Solid Saturated Action Buttons (Ensure crisp readable text on buttons) */
+[data-theme="light"] .bg-emerald-500,
+[data-theme="light"] .bg-emerald-600,
+[data-theme="light"] .bg-amber-500,
+[data-theme="light"] .bg-cyan-500,
+html.light .bg-emerald-500,
+html.light .bg-emerald-600,
+html.light .bg-amber-500,
+html.light .bg-cyan-500 {
+  color: #0f172a !important;
+}
+
+[data-theme="light"] .bg-emerald-500 *,
+[data-theme="light"] .bg-emerald-600 *,
+[data-theme="light"] .bg-amber-500 *,
+[data-theme="light"] .bg-cyan-500 *,
+html.light .bg-emerald-500 *,
+html.light .bg-emerald-600 *,
+html.light .bg-amber-500 *,
+html.light .bg-cyan-500 * {
+  color: #0f172a !important;
+}
+
+[data-theme="light"] .bg-violet-500,
+[data-theme="light"] .bg-violet-600,
+[data-theme="light"] .bg-blue-500,
+[data-theme="light"] .bg-blue-600,
+[data-theme="light"] .bg-rose-500,
+[data-theme="light"] .bg-rose-600,
+[data-theme="light"] .bg-red-500,
+[data-theme="light"] .bg-red-600,
+html.light .bg-violet-500,
+html.light .bg-violet-600,
+html.light .bg-blue-500,
+html.light .bg-blue-600,
+html.light .bg-rose-500,
+html.light .bg-rose-600,
+html.light .bg-red-500,
+html.light .bg-red-600 {
+  color: #ffffff !important;
+}
+
+[data-theme="light"] .bg-violet-500 *,
+[data-theme="light"] .bg-violet-600 *,
+[data-theme="light"] .bg-blue-500 *,
+[data-theme="light"] .bg-blue-600 *,
+[data-theme="light"] .bg-rose-500 *,
+[data-theme="light"] .bg-rose-600 *,
+[data-theme="light"] .bg-red-500 *,
+[data-theme="light"] .bg-red-600 *,
+html.light .bg-violet-500 *,
+html.light .bg-violet-600 *,
+html.light .bg-blue-500 *,
+html.light .bg-blue-600 *,
+html.light .bg-rose-500 *,
+html.light .bg-rose-600 *,
+html.light .bg-red-500 *,
+html.light .bg-red-600 * {
+  color: #ffffff !important;
+}
+
+/* 14. Key Layout & View Specifics */
+
+/* Sidebar */
+[data-theme="light"] #app-sidebar {
+  background-color: #ffffff !important;
+  border-right-color: #e2e8f0 !important;
+  box-shadow: 1px 0 3px rgba(0, 0, 0, 0.02);
+}
+
+[data-theme="light"] #app-sidebar kbd {
+  background-color: #f1f5f9 !important;
+  border-color: #cbd5e1 !important;
+  color: #475569 !important;
+}
+
+/* Desktop Bottom Player Bar */
+[data-theme="light"] #desktop-player-bar {
+  background-color: rgba(255, 255, 255, 0.98) !important;
+  border-top-color: #e2e8f0 !important;
+  box-shadow: 0 -4px 20px -2px rgba(15, 23, 42, 0.06);
+}
+
+/* Main Content Workspace */
+[data-theme="light"] #main-content-scroll,
+[data-theme="light"] #library-view,
+[data-theme="light"] #youtube-downloader-view,
+[data-theme="light"] #playlist-detail-view {
+  background-color: #f8fafc !important;
+}
+
+/* Table Header and Selected Rows in LibraryView & PlaylistView */
+[data-theme="light"] thead tr {
+  background-color: #f8fafc !important;
+  border-bottom-color: #e2e8f0 !important;
+}
+
+[data-theme="light"] thead th {
+  color: #64748b !important;
+}
+
+[data-theme="light"] tbody tr:hover {
+  background-color: #f1f5f9 !important;
+}
+
+[data-theme="light"] tbody tr.bg-neutral-800\/60 {
+  background-color: #e2e8f0 !important;
+}
+
+/* Active Track Left Border Highlights */
+[data-theme="light"] .border-l-emerald-400 {
+  border-left-color: #059669 !important;
+}
+
+[data-theme="light"] .border-l-violet-400 {
+  border-left-color: #7c3aed !important;
+}
+
+[data-theme="light"] .border-l-blue-400 {
+  border-left-color: #2563eb !important;
+}
+
+[data-theme="light"] .border-l-amber-400 {
+  border-left-color: #d97706 !important;
+}
+
+[data-theme="light"] .border-l-rose-400 {
+  border-left-color: #e11d48 !important;
+}
+
+[data-theme="light"] .border-l-cyan-400 {
+  border-left-color: #0891b2 !important;
+}
+
+/* Mini Player Card & Docks */
+[data-theme="light"] #floating-mini-player-card,
+[data-theme="light"] #compact-player-top-dock,
+[data-theme="light"] #compact-player-bottom-dock {
+  background-color: #ffffff !important;
+  border-color: #e2e8f0 !important;
+  box-shadow: 0 15px 35px -5px rgba(15, 23, 42, 0.15) !important;
+}
+
+/* =========================================================================
+   15. TARGETED ENHANCEMENTS FOR SPECIFIC MENUS, EQUALIZER & YOUTUBE
+   ========================================================================= */
+
+/* YouTube Downloader Header Banner in Light Mode */
+[data-theme="light"] #youtube-downloader-banner,
+html.light #youtube-downloader-banner {
+  background: linear-gradient(135deg, #fff1f2 0%, #ffffff 50%, #fef2f2 100%) !important;
+  border-color: #fecdd3 !important;
+  box-shadow: 0 10px 25px -5px rgba(225, 29, 72, 0.08) !important;
+}
+
+[data-theme="light"] #youtube-downloader-banner h1,
+html.light #youtube-downloader-banner h1 {
+  color: #0f172a !important;
+}
+
+[data-theme="light"] #youtube-downloader-banner p,
+html.light #youtube-downloader-banner p {
+  color: #475569 !important;
+}
+
+[data-theme="light"] #youtube-downloader-banner strong,
+html.light #youtube-downloader-banner strong {
+  color: #0f172a !important;
+}
+
+/* Playlist Detail View Header Banner in Light Mode */
+[data-theme="light"] #playlist-header-banner,
+html.light #playlist-header-banner {
+  background: linear-gradient(180deg, #ffffff 0%, #f8fafc 100%) !important;
+  border-color: #e2e8f0 !important;
+  box-shadow: 0 10px 25px -5px rgba(15, 23, 42, 0.06) !important;
+}
+
+/* Manage Sidebar Playlists Modal, Edit Playlist & Create Playlist Modals */
+[data-theme="light"] #manage-sidebar-playlists-card .border-b,
+[data-theme="light"] #edit-playlist-modal-card .border-b,
+[data-theme="light"] #create-playlist-modal-card .border-b {
+  background-color: #f8fafc !important;
+  border-bottom-color: #e2e8f0 !important;
+}
+
+[data-theme="light"] #manage-sidebar-playlists-card .text-white,
+[data-theme="light"] #edit-playlist-modal-card .text-white,
+[data-theme="light"] #create-playlist-modal-card .text-white {
+  color: #0f172a !important;
+}
+
+/* Equalizer Modal Bottom Cards & DSP Modules */
+[data-theme="light"] #equalizer-modal-content .grid > div,
+[data-theme="light"] #equalizer-modal-content .bg-neutral-950\/40,
+[data-theme="light"] #equalizer-modal-content .bg-neutral-950\/50,
+[data-theme="light"] #equalizer-modal-content .bg-neutral-900\/60,
+html.light #equalizer-modal-content .grid > div {
+  background-color: #f8fafc !important;
+  border-color: #e2e8f0 !important;
+}
+
+[data-theme="light"] #equalizer-modal-content .text-neutral-200,
+[data-theme="light"] #equalizer-modal-content .text-neutral-300 {
+  color: #0f172a !important;
+  font-weight: 600;
+}
+
+[data-theme="light"] #equalizer-modal-content .text-neutral-400,
+[data-theme="light"] #equalizer-modal-content .text-neutral-500 {
+  color: #64748b !important;
+}
+
+[data-theme="light"] #equalizer-modal-content button.bg-neutral-900,
+[data-theme="light"] #equalizer-modal-content button.bg-neutral-800 {
+  background-color: #ffffff !important;
+  border: 1px solid #e2e8f0 !important;
+  color: #1e293b !important;
+}
+
+[data-theme="light"] #equalizer-modal-content button.bg-neutral-900:hover,
+[data-theme="light"] #equalizer-modal-content button.bg-neutral-800:hover {
+  background-color: #f1f5f9 !important;
+  color: #0f172a !important;
+}
+
+/* Ensure Light Mode Gradients on Smart Playlist Covers in AllPlaylistsView */
+[data-theme="light"] .bg-gradient-to-br.from-rose-900\/60 {
+  background: linear-gradient(135deg, #ffe4e6 0%, #fecdd3 100%) !important;
+}
+
+[data-theme="light"] .bg-gradient-to-br.from-emerald-900\/60 {
+  background: linear-gradient(135deg, #d1fae5 0%, #a7f3d0 100%) !important;
+}
+
+[data-theme="light"] .bg-gradient-to-br.from-red-900\/60 {
+  background: linear-gradient(135deg, #fee2e2 0%, #fca5a5 100%) !important;
+}
+
+/* =========================================================================
+   PURE GLASS DESIGN SYSTEM (0% Opaque to 100% Pure Crystal Frosted Glass)
+   Dynamically modulated by playerSettings.glassIntensity slider (0 to 100%)
+   ========================================================================= */
+
+.glass-sidebar {
+  background-color: var(--glass-sidebar-bg, rgba(10, 10, 15, 0.55)) !important;
+  backdrop-filter: blur(var(--glass-blur, 20px)) saturate(140%);
+  -webkit-backdrop-filter: blur(var(--glass-blur, 20px)) saturate(140%);
+  border-right-color: var(--glass-border, rgba(255, 255, 255, 0.08)) !important;
+  transition: background-color 0.25s ease, backdrop-filter 0.25s ease, border-color 0.25s ease;
+}
+
+.glass-main {
+  background-color: var(--glass-main-bg, rgba(6, 6, 10, 0.45)) !important;
+  backdrop-filter: blur(calc(var(--glass-blur, 20px) * 0.45));
+  -webkit-backdrop-filter: blur(calc(var(--glass-blur, 20px) * 0.45));
+  transition: background-color 0.25s ease, backdrop-filter 0.25s ease;
+}
+
+.glass-player {
+  background-color: var(--glass-player-bg, rgba(12, 12, 18, 0.6)) !important;
+  backdrop-filter: blur(var(--glass-blur, 20px)) saturate(160%);
+  -webkit-backdrop-filter: blur(var(--glass-blur, 20px)) saturate(160%);
+  border-top-color: var(--glass-border, rgba(255, 255, 255, 0.08)) !important;
+  box-shadow: 0 -8px 32px rgba(0, 0, 0, calc(0.15 + var(--glass-factor, 0.7) * 0.25));
+  transition: background-color 0.25s ease, backdrop-filter 0.25s ease, border-color 0.25s ease, box-shadow 0.25s ease;
+}
+
+.glass-card {
+  background-color: var(--glass-card-bg, rgba(20, 20, 28, 0.5)) !important;
+  backdrop-filter: blur(calc(var(--glass-blur, 20px) * 0.75));
+  -webkit-backdrop-filter: blur(calc(var(--glass-blur, 20px) * 0.75));
+  border-color: var(--glass-border, rgba(255, 255, 255, 0.08)) !important;
+}
+
+.glass-modal {
+  backdrop-filter: blur(calc(var(--glass-blur, 20px) + 10px)) saturate(150%);
+  -webkit-backdrop-filter: blur(calc(var(--glass-blur, 20px) + 10px)) saturate(150%);
+  border-color: var(--glass-border, rgba(255, 255, 255, 0.12)) !important;
+  box-shadow: 0 25px 60px -15px rgba(0, 0, 0, calc(0.35 + var(--glass-factor, 0.7) * 0.35)) !important;
+}
+

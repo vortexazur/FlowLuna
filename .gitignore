@@ -1,0 +1,14 @@
+node_modules/
+build/
+dist/
+dist-electron/
+release/
+coverage/
+.DS_Store
+*.log
+.env*
+!.env.example
+bin/*.exe
+yt-dlp.exe
+yt-dlp
+yt-dlp-nightly
