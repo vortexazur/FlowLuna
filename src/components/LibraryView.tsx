@@ -36,13 +36,14 @@ import {
   RefreshCw,
   FolderPlus,
 } from 'lucide-react';
-import { Track, Playlist, AccentColor, AudioFormat } from '../types';
+import { Track, Playlist, AccentColor, AudioFormat, PlayerSettings } from '../types';
 import { saveAudioToPC } from '../utils/fileSaver';
 import { getAudioBlob } from '../services/audioDb';
 import { ExportTracksModal } from './ExportTracksModal';
 import { PlaylistIcon } from './PlaylistIcon';
 import { OpenFileDropdown } from './OpenFileDropdown';
 import { backgroundScanner } from '../services/backgroundScanner';
+import { getT } from '../i18n';
 
 interface LibraryViewProps {
   tracks: Track[];
@@ -64,6 +65,7 @@ interface LibraryViewProps {
   onOpenDeduplicator?: () => void;
   onOpenMerger?: () => void;
   onOpenStats?: () => void;
+  settings?: PlayerSettings;
 }
 
 const ACCENT_BTN: Record<AccentColor, string> = {
@@ -113,7 +115,9 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
   onOpenDeduplicator,
   onOpenMerger,
   onOpenStats,
+  settings,
 }: LibraryViewProps) => {
+  const t = getT(settings?.language);
   const [viewMode, setViewMode] = useState<'list' | 'grid'>('list');
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedFormat, setSelectedFormat] = useState<string>('all');
@@ -517,13 +521,13 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
           </div>
           <div>
             <h1 className="text-2xl font-black text-white tracking-tight flex items-center gap-2.5 flex-wrap">
-              <span>Bibliothèque Audio PC</span>
+              <span>{t.libraryTitle}</span>
               <span className="text-xs font-mono font-semibold px-2 py-0.5 rounded-full bg-emerald-950 border border-emerald-500/30 text-emerald-400">
-                {musicTracks.length} {musicTracks.length > 1 ? 'morceaux' : 'morceau'}
+                {musicTracks.length} {musicTracks.length > 1 ? (settings?.language === 'fr' ? 'morceaux' : 'tracks') : (settings?.language === 'fr' ? 'morceau' : 'track')}
               </span>
             </h1>
             <p className="text-xs text-neutral-400 mt-0.5">
-              Gérez, organisez et écoutez vos fichiers locaux détectés automatiquement ou ouverts à la volée
+              {t.librarySubtitle}
             </p>
           </div>
         </div>
@@ -539,7 +543,7 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
             title="Analyser le PC à la recherche de fichiers audio (Musique, OneDrive, Téléchargements)"
           >
             <RefreshCw className={`w-3.5 h-3.5 ${isScanningPc ? 'animate-spin text-emerald-400' : 'text-emerald-400'}`} />
-            <span>{isScanningPc ? 'Analyse...' : 'Scanner le PC'}</span>
+            <span>{isScanningPc ? t.scanningPc : t.scanPcBtn}</span>
           </button>
 
           {/* Menu déroulant Actions de la Bibliothèque */}
@@ -552,9 +556,9 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
                 setIsHeaderMenuOpen(!isHeaderMenuOpen);
               }}
               className="px-3.5 py-2.5 rounded-xl text-xs font-semibold flex items-center gap-2 border border-neutral-700/80 bg-neutral-900/90 hover:bg-neutral-800 text-neutral-200 hover:text-white transition-all shadow-xs cursor-pointer"
-              title="Actions de la bibliothèque"
+              title={t.actionsMenu}
             >
-              <span>Actions</span>
+              <span>{t.actionsMenu}</span>
               <ChevronDown className={`w-3.5 h-3.5 text-neutral-400 transition-transform ${isHeaderMenuOpen ? 'rotate-180' : ''}`} />
             </button>
 
@@ -849,11 +853,11 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
 
       {/* Tracks Table (Vue Liste) */}
       {filtered.length > 0 && viewMode === 'list' && (
-        <div className="overflow-x-auto">
-          <table className="w-full text-left text-xs border-collapse">
+        <div className="w-full overflow-hidden rounded-xl border border-neutral-800/80 bg-neutral-950/20">
+          <table className="w-full table-fixed text-left text-xs border-collapse">
             <thead>
               <tr className="border-b border-neutral-800 text-neutral-400 uppercase tracking-wider font-semibold">
-                <th className="py-3 px-3 w-10 text-center">
+                <th className="py-3 px-2 sm:px-3 w-10 text-center">
                   {isSelectionMode ? (
                     <button
                       type="button"
@@ -868,17 +872,17 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
                       )}
                     </button>
                   ) : (
-                    '#'
+                    t.colIndex
                   )}
                 </th>
-                <th className="py-3 px-3">Titre & Artiste</th>
-                <th className="py-3 px-3 hidden sm:table-cell">Album</th>
-                <th className="py-3 px-3 hidden md:table-cell">Format</th>
-                <th className="py-3 px-3 w-16 text-center">Favori</th>
-                <th className="py-3 px-3 w-20 text-right">
+                <th className="py-3 px-2 sm:px-3">{t.colTitleArtist}</th>
+                <th className="py-3 px-2 sm:px-3 hidden md:table-cell w-36 lg:w-48">{t.colAlbum}</th>
+                <th className="py-3 px-2 sm:px-3 hidden sm:table-cell w-16 sm:w-20">{t.colFormat}</th>
+                <th className="py-3 px-1 sm:px-2 w-12 text-center">{t.colFavorite}</th>
+                <th className="py-3 px-1 sm:px-2 w-16 text-right">
                   <Clock className="w-3.5 h-3.5 inline" />
                 </th>
-                <th className="py-3 px-3 w-24 text-right">Actions</th>
+                <th className="py-3 px-2 sm:px-3 w-14 text-right">{t.colActions}</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-neutral-800/40">
@@ -906,7 +910,7 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
                     }}
                   >
                     <td
-                      className={`py-3 px-3 text-center font-mono ${
+                      className={`py-2.5 px-2 sm:px-3 text-center font-mono ${
                         isCurrentTrack ? ACCENT_TEXT[accent] : 'text-neutral-500 group-hover:text-white'
                       }`}
                       onClick={(e) => {
@@ -918,9 +922,9 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
                       {renderRowIndex(track, idx, isSelected, isCurrentTrack)}
                     </td>
 
-                    <td className="py-3 px-3">
-                      <div className="flex items-center gap-3">
-                        <div className="relative w-10 h-10 rounded-lg overflow-hidden flex-shrink-0 bg-neutral-800">
+                    <td className="py-2.5 px-2 sm:px-3 min-w-0 overflow-hidden">
+                      <div className="flex items-center gap-2.5 min-w-0">
+                        <div className="relative w-9 h-9 sm:w-10 sm:h-10 rounded-lg overflow-hidden flex-shrink-0 bg-neutral-800">
                           <img
                             src={
                               track.coverUrl ||
@@ -936,7 +940,7 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
                             </div>
                           )}
                         </div>
-                        <div className="min-w-0">
+                        <div className="min-w-0 flex-1">
                           <div className={`font-semibold truncate transition-colors ${
                             isCurrentTrack ? `${ACCENT_TEXT[accent]} font-bold` : 'text-neutral-200 group-hover:text-white'
                           }`}>
@@ -949,11 +953,11 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
                       </div>
                     </td>
 
-                    <td className="py-3 px-3 text-neutral-400 hidden sm:table-cell truncate max-w-[160px]">
-                      {track.album}
+                    <td className="py-2.5 px-2 sm:px-3 text-neutral-400 hidden md:table-cell truncate">
+                      {track.album || '—'}
                     </td>
 
-                    <td className="py-3 px-3 hidden md:table-cell">
+                    <td className="py-2.5 px-2 sm:px-3 hidden sm:table-cell">
                       <div className="flex items-center gap-1.5">
                         <span className={`font-mono text-[10px] uppercase px-1.5 py-0.5 rounded font-semibold ${
                           track.isVideo
@@ -974,7 +978,7 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
                     </td>
 
                     <td
-                      className="py-3 px-3 text-center"
+                      className="py-2.5 px-1 sm:px-2 text-center"
                       onClick={(e) => {
                         e.stopPropagation();
                         onToggleFavorite(track.id);
@@ -991,11 +995,11 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
                       </button>
                     </td>
 
-                    <td className="py-3 px-3 text-right font-mono text-neutral-400">
+                    <td className="py-2.5 px-1 sm:px-2 text-right font-mono text-neutral-400">
                       {formatDuration(track.duration)}
                     </td>
 
-                    <td className="py-3 px-3 text-right">
+                    <td className="py-2.5 px-2 sm:px-3 text-right">
                       {/* Bouton d'action unique avec menu déroulant dynamique */}
                       <div className="flex items-center justify-end">
                         <button
@@ -1006,8 +1010,8 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
                               ? 'bg-neutral-800 text-white shadow-sm ring-1 ring-neutral-700'
                               : 'text-neutral-400 hover:text-white hover:bg-neutral-800/80'
                           }`}
-                          title="Actions sur le morceau"
-                          aria-label="Actions sur le morceau"
+                          title={t.colActions}
+                          aria-label={t.colActions}
                         >
                           <MoreVertical className="w-4 h-4" />
                         </button>

@@ -24,6 +24,7 @@ import {
 } from 'lucide-react';
 import { Track, AccentColor, PlayerSettings } from '../types';
 import { AudioVisualizer } from './AudioVisualizer';
+import { getT } from '../i18n';
 
 interface PlayerBarProps {
   currentTrack: Track | null;
@@ -121,6 +122,7 @@ export const PlayerBar: React.FC<PlayerBarProps> = ({
   onUpdateSettings,
   onOpenTrimmer,
 }) => {
+  const t = getT(settings?.language);
   const formatTime = (secs: number) => {
     const m = Math.floor(secs / 60);
     const s = Math.floor(secs % 60);
@@ -239,7 +241,7 @@ export const PlayerBar: React.FC<PlayerBarProps> = ({
             <div className="w-14 h-14 rounded-xl bg-neutral-900 border border-neutral-800 flex items-center justify-center">
               <Activity className="w-5 h-5 opacity-40" />
             </div>
-            <span>Sélectionnez un titre</span>
+            <span>{t.selectTrack}</span>
           </div>
         )}
       </div>
@@ -255,7 +257,7 @@ export const PlayerBar: React.FC<PlayerBarProps> = ({
             className={`p-1.5 rounded-full transition-colors ${
               shuffle ? ACCENT_TEXT[accent] : 'text-neutral-400 hover:text-white'
             }`}
-            title="Lecture aléatoire (S)"
+            title={`${t.shuffle} (S)`}
           >
             <Shuffle className="w-4 h-4" />
           </button>
@@ -265,7 +267,7 @@ export const PlayerBar: React.FC<PlayerBarProps> = ({
             id="player-prev-btn"
             onClick={onPrev}
             className="p-1.5 text-neutral-300 hover:text-white transition-colors"
-            title="Titre précédent (P ou ←)"
+            title={`${t.previous} (P / ←)`}
           >
             <SkipBack className="w-5 h-5" />
           </button>
@@ -275,7 +277,7 @@ export const PlayerBar: React.FC<PlayerBarProps> = ({
             id="player-play-pause-btn"
             onClick={onTogglePlay}
             className={`p-2.5 rounded-full shadow-lg transition-transform hover:scale-105 active:scale-95 ${ACCENT_BG[accent]}`}
-            title="Lecture / Pause (Espace)"
+            title={isPlaying ? `${t.pause} (Espace)` : `${t.play} (Espace)`}
           >
             {isPlaying ? (
               <Pause className="w-5 h-5 fill-current" />
@@ -294,7 +296,7 @@ export const PlayerBar: React.FC<PlayerBarProps> = ({
                 ? 'text-neutral-300 hover:text-red-400 hover:bg-neutral-800'
                 : 'text-neutral-600 cursor-not-allowed opacity-40'
             }`}
-            title="Arrêt total (Reset et mise à vide du lecteur) (X)"
+            title={`${t.stop} (X)`}
           >
             <Square className="w-4.5 h-4.5 fill-current" />
           </button>

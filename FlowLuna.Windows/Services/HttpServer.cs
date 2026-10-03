@@ -207,7 +207,7 @@ public class HttpServer
             await ctx.Response.Body.FlushAsync();
 
             var count = 0;
-            while (!ctx.RequestAborted.IsCancellationRequested && count < 60)
+            while (!ctx.RequestAborted.IsCancellationRequested && count < 120)
             {
                 await Task.Delay(500, ctx.RequestAborted);
                 if (ActiveJobs.TryGetValue(jobId, out var current))
@@ -217,6 +217,98 @@ public class HttpServer
                     if (current.Status is "finished" or "error") break;
                 }
                 count++;
+            }
+        });
+
+        // Media Inspection
+        _app.MapPost("/api/downloader/inspect", async (HttpContext ctx) =>
+        {
+            using var reader = new StreamReader(ctx.Request.Body);
+            var bodyText = await reader.ReadToEndAsync();
+            using var doc = JsonDocument.Parse(bodyText);
+            var url = doc.RootElement.GetProperty("url").GetString();
+            if (string.IsNullOrWhiteSpace(url)) return Results.BadRequest(new { error = "URL requise" });
+
+            var result = await DownloaderEngine.InspectUrlAsync(url);
+            return Results.Json(result);
+        });
+
+        // Direct Browser/PC Download
+        _app.MapGet("/api/downloader/download", async (HttpContext ctx) =>
+        {
+            var url = ctx.Request.Query["url"].ToString();
+            var jobId = ctx.Request.Query["jobId"].ToString();
+            var mediaType = ctx.Request.Query["type"].ToString();
+            var audioFormat = ctx.Request.Query["audioFormat"].ToString();
+            var audioBitrate = ctx.Request.Query["audioBitrate"].ToString();
+            var videoFormat = ctx.Request.Query["videoFormat"].ToString();
+            var videoQuality = ctx.Request.Query["videoQuality"].ToString();
+            var title = ctx.Request.Query["title"].ToString();
+            var artist = ctx.Request.Query["artist"].ToString();
+
+            if (string.IsNullOrWhiteSpace(url)) return Results.BadRequest("Paramètre url requis");
+
+            var req = new DownloadRequest(jobId, url, mediaType, audioFormat, audioBitrate, videoFormat, videoQuality, title, artist);
+
+            try
+            {
+                var filePath = await DownloaderEngine.DownloadToTempAsync(req, prog =>
+                {
+                    if (!string.IsNullOrWhiteSpace(jobId)) ActiveJobs[jobId] = prog;
+                });
+
+                var fileName = Path.GetFileName(filePath);
+                var mime = Path.GetExtension(filePath).ToLowerInvariant() switch
+                {
+                    ".flac" => "audio/flac",
+                    ".wav" => "audio/wav",
+                    ".m4a" => "audio/mp4",
+                    ".ogg" => "audio/ogg",
+                    ".mp4" => "video/mp4",
+                    ".mkv" => "video/x-matroska",
+                    ".webm" => "video/webm",
+                    _ => "audio/mpeg"
+                };
+
+                return Results.File(filePath, contentType: mime, fileDownloadName: fileName);
+            }
+            catch (Exception ex)
+            {
+                if (!string.IsNullOrWhiteSpace(jobId))
+                {
+                    ActiveJobs[jobId] = new YtDlpProgressUpdate("error", 0, Message: ex.Message);
+                }
+                return Results.Problem(ex.Message);
+            }
+        });
+
+        // Save Directly to FlowLuna Music Library
+        _app.MapPost("/api/downloader/save-to-app", async (HttpContext ctx) =>
+        {
+            using var reader = new StreamReader(ctx.Request.Body);
+            var bodyText = await reader.ReadToEndAsync();
+            var req = JsonSerializer.Deserialize<DownloadRequest>(bodyText);
+            if (req == null || string.IsNullOrWhiteSpace(req.Url))
+            {
+                return Results.BadRequest(new { error = "Requête invalide ou URL manquante" });
+            }
+
+            try
+            {
+                var track = await DownloaderEngine.SaveDirectlyToAppLibraryAsync(req, prog =>
+                {
+                    if (!string.IsNullOrWhiteSpace(req.JobId)) ActiveJobs[req.JobId] = prog;
+                });
+
+                return Results.Json(new { success = true, track });
+            }
+            catch (Exception ex)
+            {
+                if (!string.IsNullOrWhiteSpace(req.JobId))
+                {
+                    ActiveJobs[req.JobId] = new YtDlpProgressUpdate("error", 0, Message: ex.Message);
+                }
+                return Results.Json(new { success = false, error = ex.Message });
             }
         });
 

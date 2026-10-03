@@ -21,6 +21,7 @@ import {
 } from 'lucide-react';
 import { PlayerSettings, AccentColor } from '../types';
 import { SUPPORTED_LANGUAGES, getT } from '../i18n';
+import { CountryFlag } from './CountryFlag';
 
 interface SettingsModalProps {
   isOpen: boolean;
@@ -243,8 +244,8 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
               <Globe className="w-4 h-4 text-emerald-400" />
               <span>{t.languageSection}</span>
             </h3>
-            <span className="text-[11px] font-mono text-emerald-400 bg-emerald-950/80 px-2.5 py-0.5 rounded-full border border-emerald-500/25 font-semibold flex items-center gap-1.5">
-              <span>{currentLang.flag}</span>
+            <span className="text-[11px] font-mono text-emerald-400 bg-emerald-950/80 px-2.5 py-1 rounded-full border border-emerald-500/25 font-semibold flex items-center gap-2">
+              <CountryFlag code={currentLang.code} size="sm" />
               <span>{currentLang.name}</span>
             </span>
           </div>
@@ -252,7 +253,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
             {t.languageDescription}
           </p>
 
-          <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 pt-1">
+          <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5 pt-1">
             {SUPPORTED_LANGUAGES.map((lang) => {
               const isSelected = (settings.language || 'fr') === lang.code;
               return (
@@ -268,7 +269,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                   }`}
                 >
                   <div className="flex items-center gap-2.5 min-w-0">
-                    <span className="text-lg select-none leading-none">{lang.flag}</span>
+                    <CountryFlag code={lang.code} size="md" />
                     <div className="min-w-0">
                       <div className="text-xs font-semibold truncate text-white">{lang.name}</div>
                       <div className="text-[10px] text-neutral-400 truncate">{lang.nativeName}</div>

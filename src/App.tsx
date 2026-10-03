@@ -1113,6 +1113,7 @@ export default function App() {
       return (
         <DownloaderView
           accent={playerSettings.accent}
+          settings={playerSettings}
           onTrackImported={async (newTrack) => {
             await saveTrack(newTrack);
             setTracks((prev) => [newTrack, ...prev.filter((t) => t.id !== newTrack.id)]);
@@ -1158,6 +1159,7 @@ export default function App() {
         onOpenDeduplicator={() => setIsDeduplicatorOpen(true)}
         onOpenMerger={() => setIsMergerOpen(true)}
         onOpenStats={() => setIsStatsOpen(true)}
+        settings={playerSettings}
       />
     );
   };
@@ -1175,22 +1177,22 @@ export default function App() {
     '--glass-blur': `${Math.round(14 + glassFactor * 26)}px`,
     '--glass-border': isDark
       ? `rgba(255, 255, 255, ${0.06 + glassFactor * 0.14})`
-      : `rgba(0, 0, 0, ${0.06 + glassFactor * 0.08})`,
+      : `rgba(203, 213, 225, ${0.45 + glassFactor * 0.35})`,
     '--glass-sidebar-bg': isDark
       ? `rgba(10, 10, 15, ${Math.max(0.18, 0.95 - glassFactor * 0.77)})`
-      : `rgba(248, 250, 252, ${Math.max(0.3, 0.95 - glassFactor * 0.65)})`,
+      : `rgba(255, 255, 255, ${Math.max(0.42, 0.92 - glassFactor * 0.50)})`,
     '--glass-main-bg': isDark
       ? `rgba(6, 6, 10, ${Math.max(0.12, 0.92 - glassFactor * 0.8)})`
-      : `rgba(241, 245, 249, ${Math.max(0.25, 0.92 - glassFactor * 0.67)})`,
+      : `rgba(248, 250, 252, ${Math.max(0.35, 0.90 - glassFactor * 0.55)})`,
     '--glass-player-bg': isDark
       ? `rgba(12, 12, 18, ${Math.max(0.22, 0.95 - glassFactor * 0.73)})`
-      : `rgba(255, 255, 255, ${Math.max(0.35, 0.95 - glassFactor * 0.6)})`,
+      : `rgba(255, 255, 255, ${Math.max(0.50, 0.95 - glassFactor * 0.45)})`,
     '--glass-card-bg': isDark
       ? `rgba(20, 20, 28, ${Math.max(0.16, 0.9 - glassFactor * 0.74)})`
-      : `rgba(255, 255, 255, ${Math.max(0.35, 0.9 - glassFactor * 0.55)})`,
+      : `rgba(255, 255, 255, ${Math.max(0.45, 0.92 - glassFactor * 0.47)})`,
     '--glass-modal-bg': isDark
       ? `rgba(14, 14, 22, ${Math.max(0.45, 0.95 - glassFactor * 0.5)})`
-      : `rgba(255, 255, 255, ${Math.max(0.65, 0.95 - glassFactor * 0.3)})`,
+      : `rgba(255, 255, 255, ${Math.max(0.72, 0.96 - glassFactor * 0.24)})`,
   } as React.CSSProperties;
 
   return (
@@ -1200,7 +1202,7 @@ export default function App() {
       style={glassStyle}
       className={`w-screen h-screen flex flex-col overflow-hidden transition-colors duration-200 relative ${
         playerSettings.theme === 'light'
-          ? 'light bg-slate-50 text-slate-900'
+          ? 'light bg-slate-100/90 text-slate-900'
           : 'dark bg-neutral-950 text-neutral-100'
       }`}
     >
@@ -1208,33 +1210,66 @@ export default function App() {
       <div
         className="absolute inset-0 pointer-events-none overflow-hidden transition-opacity duration-700 z-0"
         style={{
-          opacity: Math.max(0.12, glassFactor),
+          opacity: Math.max(0.25, glassFactor),
         }}
       >
         <div
-          className="absolute -top-[20%] -left-[10%] w-[55vw] h-[55vw] rounded-full blur-[130px] opacity-40 transition-all duration-1000"
+          className="absolute -top-[15%] -left-[10%] w-[55vw] h-[55vw] rounded-full blur-[110px] transition-all duration-1000"
           style={{
             background:
               playerSettings.accent === 'emerald'
-                ? 'radial-gradient(circle, rgba(16, 185, 129, 0.45) 0%, rgba(6, 78, 59, 0.15) 70%, transparent 100%)'
+                ? (isDark
+                    ? 'radial-gradient(circle, rgba(16, 185, 129, 0.45) 0%, rgba(6, 78, 59, 0.15) 70%, transparent 100%)'
+                    : 'radial-gradient(circle, rgba(52, 211, 153, 0.35) 0%, rgba(167, 243, 208, 0.2) 65%, transparent 100%)')
                 : playerSettings.accent === 'violet'
-                ? 'radial-gradient(circle, rgba(139, 92, 246, 0.45) 0%, rgba(76, 29, 149, 0.15) 70%, transparent 100%)'
+                ? (isDark
+                    ? 'radial-gradient(circle, rgba(139, 92, 246, 0.45) 0%, rgba(76, 29, 149, 0.15) 70%, transparent 100%)'
+                    : 'radial-gradient(circle, rgba(167, 139, 250, 0.35) 0%, rgba(221, 214, 254, 0.2) 65%, transparent 100%)')
                 : playerSettings.accent === 'cyan'
-                ? 'radial-gradient(circle, rgba(6, 182, 212, 0.45) 0%, rgba(21, 94, 117, 0.15) 70%, transparent 100%)'
+                ? (isDark
+                    ? 'radial-gradient(circle, rgba(6, 182, 212, 0.45) 0%, rgba(21, 94, 117, 0.15) 70%, transparent 100%)'
+                    : 'radial-gradient(circle, rgba(34, 211, 238, 0.35) 0%, rgba(165, 243, 252, 0.2) 65%, transparent 100%)')
                 : playerSettings.accent === 'rose'
-                ? 'radial-gradient(circle, rgba(244, 63, 94, 0.45) 0%, rgba(136, 19, 55, 0.15) 70%, transparent 100%)'
+                ? (isDark
+                    ? 'radial-gradient(circle, rgba(244, 63, 94, 0.45) 0%, rgba(136, 19, 55, 0.15) 70%, transparent 100%)'
+                    : 'radial-gradient(circle, rgba(251, 113, 133, 0.35) 0%, rgba(254, 205, 211, 0.2) 65%, transparent 100%)')
                 : playerSettings.accent === 'amber'
-                ? 'radial-gradient(circle, rgba(245, 158, 11, 0.45) 0%, rgba(120, 53, 15, 0.15) 70%, transparent 100%)'
-                : 'radial-gradient(circle, rgba(59, 130, 246, 0.45) 0%, rgba(30, 58, 138, 0.15) 70%, transparent 100%)',
+                ? (isDark
+                    ? 'radial-gradient(circle, rgba(245, 158, 11, 0.45) 0%, rgba(120, 53, 15, 0.15) 70%, transparent 100%)'
+                    : 'radial-gradient(circle, rgba(251, 191, 36, 0.35) 0%, rgba(254, 243, 199, 0.2) 65%, transparent 100%)')
+                : (isDark
+                    ? 'radial-gradient(circle, rgba(59, 130, 246, 0.45) 0%, rgba(30, 58, 138, 0.15) 70%, transparent 100%)'
+                    : 'radial-gradient(circle, rgba(96, 165, 250, 0.35) 0%, rgba(191, 219, 254, 0.2) 65%, transparent 100%)'),
           }}
         />
+
         <div
-          className="absolute -bottom-[25%] -right-[15%] w-[60vw] h-[60vw] rounded-full blur-[140px] opacity-35 transition-all duration-1000"
+          className="absolute -bottom-[20%] -right-[10%] w-[50vw] h-[50vw] rounded-full blur-[120px] transition-all duration-1000"
           style={{
             background:
-              playerSettings.theme === 'light'
-                ? 'radial-gradient(circle, rgba(147, 197, 253, 0.4) 0%, rgba(224, 231, 255, 0.2) 60%, transparent 100%)'
-                : 'radial-gradient(circle, rgba(79, 70, 229, 0.35) 0%, rgba(30, 27, 75, 0.1) 65%, transparent 100%)',
+              playerSettings.accent === 'emerald'
+                ? (isDark
+                    ? 'radial-gradient(circle, rgba(6, 182, 212, 0.25) 0%, transparent 70%)'
+                    : 'radial-gradient(circle, rgba(110, 231, 183, 0.25) 0%, transparent 70%)')
+                : playerSettings.accent === 'violet'
+                ? (isDark
+                    ? 'radial-gradient(circle, rgba(244, 63, 94, 0.25) 0%, transparent 70%)'
+                    : 'radial-gradient(circle, rgba(244, 114, 182, 0.25) 0%, transparent 70%)')
+                : playerSettings.accent === 'cyan'
+                ? (isDark
+                    ? 'radial-gradient(circle, rgba(59, 130, 246, 0.25) 0%, transparent 70%)'
+                    : 'radial-gradient(circle, rgba(147, 197, 253, 0.25) 0%, transparent 70%)')
+                : playerSettings.accent === 'rose'
+                ? (isDark
+                    ? 'radial-gradient(circle, rgba(139, 92, 246, 0.25) 0%, transparent 70%)'
+                    : 'radial-gradient(circle, rgba(196, 181, 253, 0.25) 0%, transparent 70%)')
+                : playerSettings.accent === 'amber'
+                ? (isDark
+                    ? 'radial-gradient(circle, rgba(239, 68, 68, 0.25) 0%, transparent 70%)'
+                    : 'radial-gradient(circle, rgba(252, 165, 165, 0.25) 0%, transparent 70%)')
+                : (isDark
+                    ? 'radial-gradient(circle, rgba(16, 185, 129, 0.25) 0%, transparent 70%)'
+                    : 'radial-gradient(circle, rgba(167, 243, 208, 0.25) 0%, transparent 70%)'),
           }}
         />
         <div
@@ -1623,6 +1658,7 @@ export default function App() {
         tracks={tracks}
         onPlayTrack={(track) => playTrackAt(0, [track, ...queue.filter((t) => t.id !== track.id)])}
         accent={playerSettings.accent}
+        settings={playerSettings}
       />
 
       {/* Global Command Palette (Ctrl+K) */}

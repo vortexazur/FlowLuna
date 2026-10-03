@@ -23,7 +23,8 @@ import {
   FolderDown,
   RefreshCw,
 } from 'lucide-react';
-import { AccentColor, Track } from '../types';
+import { AccentColor, Track, PlayerSettings } from '../types';
+import { getT } from '../i18n';
 
 interface InspectedMedia {
   id: string;
@@ -63,6 +64,7 @@ interface DownloaderViewProps {
   accent: AccentColor;
   onTrackImported?: (track: Track) => void;
   onPlayTrack?: (track: Track) => void;
+  settings?: PlayerSettings;
 }
 
 const ACCENT_BG_CLASSES: Record<AccentColor, string> = {
@@ -105,7 +107,9 @@ export const DownloaderView: React.FC<DownloaderViewProps> = ({
   accent,
   onTrackImported,
   onPlayTrack,
+  settings,
 }) => {
+  const t = getT(settings?.language);
   const [inputUrl, setInputUrl] = useState('');
   const [isInspecting, setIsInspecting] = useState(false);
   const [inspectError, setInspectError] = useState<string | null>(null);
@@ -249,8 +253,17 @@ export const DownloaderView: React.FC<DownloaderViewProps> = ({
         const update = JSON.parse(e.data);
         setDownloadProgressData(update);
         if (update.message) setDownloadProgressStep(update.message);
-        if (update.status === 'finished') {
+        if (update.status === 'finished' || update.percent >= 100) {
           eventSource.close();
+          setDownloadProgressData({ percent: 100, message: t.downloadComplete });
+          setDownloadProgressStep(t.downloadComplete);
+          setDownloadSuccessMessage(
+            `"${customTitle || inspectedMedia.title}" a été téléchargé avec succès sur votre PC !`
+          );
+          setTimeout(() => {
+            setIsDownloading(false);
+            setDownloadProgressStep('');
+          }, 4500);
         }
       } catch {}
     };
@@ -294,15 +307,6 @@ export const DownloaderView: React.FC<DownloaderViewProps> = ({
       timestamp: Date.now(),
       durationStr: inspectedMedia.durationStr,
     });
-
-    setDownloadSuccessMessage(
-      `Téléchargement de "${customTitle || inspectedMedia.title}" lancé sur votre PC !`
-    );
-
-    setTimeout(() => {
-      setIsDownloading(false);
-      setDownloadProgressStep('');
-    }, 5000);
   };
 
   // Save to App Library & Offline Cache with live progress
@@ -907,39 +911,52 @@ export const DownloaderView: React.FC<DownloaderViewProps> = ({
 
                 {/* Real-time Progress / Success / Error feedback */}
                 {isDownloading && (
-                  <div className="p-4 rounded-xl bg-neutral-950/90 border border-neutral-800 text-xs text-neutral-300 flex flex-col gap-2.5 animate-in fade-in shadow-xl">
+                  <div className="p-4 sm:p-5 rounded-2xl bg-neutral-950/95 border-2 border-red-500/40 text-xs text-neutral-300 flex flex-col gap-3.5 animate-in fade-in shadow-2xl shadow-red-950/30">
                     <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-2 min-w-0">
+                      <div className="flex items-center gap-2.5 min-w-0">
                         <RefreshCw className="w-4 h-4 animate-spin text-red-400 shrink-0" />
-                        <span className="font-semibold text-white truncate">
-                          {downloadProgressStep || 'Traitement du flux multimédia...'}
+                        <span className="font-bold text-white text-sm truncate">
+                          {downloadProgressStep || t.downloadingState}
                         </span>
                       </div>
-                      <span className="font-mono font-bold text-red-400 text-xs shrink-0 pl-2">
+                      <span className="px-3 py-1 rounded-full bg-red-500/20 text-red-300 border border-red-500/40 font-mono font-black text-sm shrink-0 pl-2 shadow-sm">
                         {Math.round(downloadProgressData?.percent || 0)}%
                       </span>
                     </div>
 
-                    {/* Progress Bar */}
-                    <div className="w-full h-2 rounded-full bg-neutral-850 overflow-hidden relative border border-neutral-800">
-                      <div
-                        className="h-full bg-gradient-to-r from-red-600 via-amber-500 to-emerald-400 rounded-full transition-all duration-300"
-                        style={{ width: `${Math.min(100, Math.max(3, downloadProgressData?.percent || 0))}%` }}
-                      />
+                    {/* Prominent High-Visibility 0% to 100% Progress Bar */}
+                    <div className="flex flex-col gap-1.5">
+                      <div className="w-full h-4 sm:h-5 rounded-full bg-neutral-900 overflow-hidden relative border border-neutral-700/80 shadow-inner p-0.5">
+                        <div
+                          className="h-full bg-gradient-to-r from-red-600 via-amber-500 to-emerald-400 rounded-full transition-all duration-300 shadow-md relative"
+                          style={{ width: `${Math.min(100, Math.max(2, downloadProgressData?.percent || 0))}%` }}
+                        >
+                          {/* Shimmer light sweep */}
+                          <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/30 to-transparent animate-pulse" />
+                        </div>
+                      </div>
+                      <div className="flex items-center justify-between text-[10px] font-mono font-semibold text-neutral-400 px-1">
+                        <span>0%</span>
+                        <span className="text-neutral-500">50%</span>
+                        <span>100%</span>
+                      </div>
                     </div>
 
                     {/* Metrics: Speed, ETA, Size */}
                     {(downloadProgressData?.speed || downloadProgressData?.eta || downloadProgressData?.totalSize) && (
-                      <div className="flex items-center justify-between text-[11px] text-neutral-400 font-mono pt-0.5">
-                        {downloadProgressData.speed ? (
-                          <span className="text-amber-400 font-medium">⚡ {downloadProgressData.speed}</span>
-                        ) : <span />}
-                        {downloadProgressData.eta ? (
-                          <span className="text-neutral-300 font-medium">⏱ Restant: {downloadProgressData.eta}</span>
-                        ) : null}
-                        {downloadProgressData.totalSize ? (
-                          <span className="text-cyan-400 font-medium">📦 {downloadProgressData.totalSize}</span>
-                        ) : null}
+                      <div className="grid grid-cols-3 gap-2 text-center text-[11px] font-mono pt-1 border-t border-neutral-800/80">
+                        <div className="bg-neutral-900/80 py-1.5 px-2 rounded-lg border border-neutral-800">
+                          <span className="text-neutral-500 block text-[9px] uppercase font-bold">{t.speedLabel}</span>
+                          <span className="text-amber-400 font-bold">{downloadProgressData.speed || '—'}</span>
+                        </div>
+                        <div className="bg-neutral-900/80 py-1.5 px-2 rounded-lg border border-neutral-800">
+                          <span className="text-neutral-500 block text-[9px] uppercase font-bold">{t.etaLabel}</span>
+                          <span className="text-neutral-200 font-bold">{downloadProgressData.eta || '—'}</span>
+                        </div>
+                        <div className="bg-neutral-900/80 py-1.5 px-2 rounded-lg border border-neutral-800">
+                          <span className="text-neutral-500 block text-[9px] uppercase font-bold">{t.sizeLabel}</span>
+                          <span className="text-cyan-400 font-bold">{downloadProgressData.totalSize || '—'}</span>
+                        </div>
                       </div>
                     )}
                   </div>

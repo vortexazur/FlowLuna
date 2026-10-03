@@ -4,14 +4,15 @@
 
 ![FlowLuna Banner](public/logo.jpg)
 
-[![Version](https://img.shields.io/badge/version-1.0.5-emerald.svg?style=for-the-badge)](https://github.com/vortexazur/FlowLuna/releases)
+[![Version](https://img.shields.io/badge/version-1.0.1-emerald.svg?style=for-the-badge)](https://github.com/vortexazur/FlowLuna/releases)
 [![Platform](https://img.shields.io/badge/platform-Windows%2010%20%7C%2011%20x64-blue.svg?style=for-the-badge&logo=windows)](https://github.com/vortexazur/FlowLuna)
-[![Electron](https://img.shields.io/badge/Electron-44.5-47848F.svg?style=for-the-badge&logo=electron)](https://www.electronjs.org/)
+[![.NET 9](https://img.shields.io/badge/.NET-9.0-512BD4.svg?style=for-the-badge&logo=dotnet)](https://dotnet.microsoft.com/)
+[![WebView2](https://img.shields.io/badge/WebView2-Evergreen-0078D7.svg?style=for-the-badge&logo=microsoftedge)](https://developer.microsoft.com/microsoft-edge/webview2/)
 [![License](https://img.shields.io/badge/licence-MIT-green.svg?style=for-the-badge)](LICENSE)
 [![Build Status](https://img.shields.io/badge/CI-GitHub%20Actions-brightgreen.svg?style=for-the-badge&logo=githubactions)](https://github.com/vortexazur/FlowLuna/actions)
 
 <p align="center">
-  <strong>Lecteur multimédia audiophile haute fidélité pour Windows avec interface Pure Glass, égaliseur 10 bandes, visualiseur réactif, mini-lecteur détachable et extraction avancée yt-dlp & FFmpeg.</strong>
+  <strong>Lecteur multimédia audiophile haute fidélité pour Windows avec interface Pure Glass, égaliseur 10 bandes, visualiseur réactif, architecture native C# .NET 9 + WebView2 et extraction avancée yt-dlp & FFmpeg.</strong>
 </p>
 
 [Télécharger la Dernière Version](https://github.com/vortexazur/FlowLuna/releases) • [Fonctionnalités Clés](#-fonctionnalités-clés) • [Installation](#-installation) • [Raccourcis Clavier](#-raccourcis-clavier) • [Architecture](#-architecture-technique)
@@ -22,7 +23,7 @@
 
 ## ✨ Présentation
 
-**FlowLuna** est une application de bureau conçue pour offrir une expérience d'écoute sans compromis sous Windows. Propulsée par **Electron**, **React 19**, **Vite** et un backend optimisé **Node.js / Express**, elle réunit le meilleur du traitement audio numérique, de la lecture locale ultra-fluide et de l'extraction multimédia haute performance.
+**FlowLuna** est une application de bureau conçue pour offrir une expérience d'écoute sans compromis sous Windows. Propulsée par **C# .NET 9**, **Microsoft Edge WebView2**, **React 19**, **Vite** et un serveur in-process ultra-rapide **ASP.NET Core Kestrel**, elle réunit le meilleur du traitement audio numérique, de la lecture locale ultra-fluide et de l'extraction multimédia haute performance avec une empreinte mémoire et disque réduite à seulement ~70 Mo.
 
 ---
 
@@ -76,10 +77,14 @@
 
 ## 📦 Installation
 
-### Installateur Standard Windows (.exe)
+### 1. Exécutable Autonome Haute Performance C# .NET 9 (.exe)
 1. Rendez-vous dans la section [Releases](https://github.com/vortexazur/FlowLuna/releases).
-2. Téléchargez le fichier `FlowLuna-Setup-1.0.5.exe`.
-3. Lancez l'exécutable pour installer FlowLuna sur votre PC avec raccourcis automatiques sur le Bureau et le Menu Démarrer.
+2. Téléchargez `FlowLuna.exe` (exécutable unique autonome ~70 Mo avec runtime et WebView2).
+3. Double-cliquez pour lancer immédiatement sans installation requise ni dépendance externe.
+
+### 2. Installateur Standard Windows (.exe)
+1. Téléchargez `FlowLuna-Setup-1.0.1.exe`.
+2. Lancez l'exécutable pour installer FlowLuna avec raccourcis sur le Bureau et le Menu Démarrer.
 
 ---
 
@@ -112,19 +117,16 @@ cd FlowLuna
 npm install
 ```
 
-### 2. Lancer en mode développement (Serveur + Electron)
+### 2. Lancer la version Native C# .NET 9 + WebView2
 ```bash
-npm run electron:dev
+# Compile le frontend React et lance le conteneur natif .NET 9
+npm run dotnet:run
 ```
-*Le serveur backend démarre sur `http://localhost:3000` et la fenêtre Electron s'ouvre automatiquement avec Rechargement à Chaud (HMR).*
 
-### 3. Compiler l'application de production
+### 3. Compiler l'exécutable unique C# .NET 9 pour production
 ```bash
-# Compilation complète du frontend Vite, du serveur Express et des bundles Electron
-npm run build
-
-# Génération des installeurs Windows NSIS et Portable dans release/
-npm run dist
+# Génère un binaire autonome auto-extractible optimisé dans release-dotnet/FlowLuna.exe
+npm run dotnet:publish
 ```
 
 ---
@@ -133,24 +135,24 @@ npm run dist
 
 ```
 flowluna/
-├── bin/                          # Binaires Windows externes exclus de l'ASAR
+├── FlowLuna.Windows/             # Hôte natif C# .NET 9 & WebView2 (Prêt Microsoft Store)
+│   ├── Program.cs                # Point d'entrée STA, boucle d'événements & initialisation
+│   ├── MainWindow.cs             # Fenêtre WPF frameless, DWM Acrylic backdrop Win32 & Tray
+│   └── Services/
+│       ├── HttpServer.cs         # Serveur Kestrel in-process local (endpoints REST & audio)
+│       ├── DownloaderEngine.cs   # Moteur yt-dlp C# avec parsing regex & flux SSE
+│       └── LibraryScanner.cs     # Indexation multithreadée ultra-rapide des disques
+├── bin/                          # Binaires Windows externes exclus
 │   ├── yt-dlp.exe                # Moteur d'extraction et métadonnées
 │   ├── ffmpeg.exe                # Moteur de transcodage et normalisation audio
 │   └── ffprobe.exe               # Analyseur de flux multimédia
-├── electron/                     # Processus principal Electron
-│   ├── main.ts                   # Fenêtre frameless, Tray, raccourcis globaux & cycle de vie
-│   └── preload.ts                # ContextBridge sécurisé (window.electronAPI)
 ├── src/                          # Application Frontend React 19 + Tailwind CSS
-│   ├── components/               # Composants d'interface (TitleBar, Equalizer, Downloader...)
-│   ├── services/                 # Moteurs audio, IndexedDB, gestionnaire de binaires
-│   │   ├── audioEngine.ts        # Web Audio API, EQ 10 bandes, filtres biquad
-│   │   └── binaryManager.ts      # Résolution dynamique et auto-mise à jour yt-dlp
-│   └── types.ts                  # Types et interfaces TypeScript
-├── server.ts                     # Backend Express (API REST, SSE progression, streaming audio)
-├── electron-builder.json5        # Configuration d'empaquetage NSIS & Portable
-├── vite.config.ts                # Configuration Vite avec base relative './'
-└── .github/workflows/            # Intégration continue & Déploiement
-    └── release.yml               # Pipeline de compilation et publication GitHub Releases
+│   ├── components/               # Composants d'interface (Pure Glass, Visualiseur, Library...)
+│   ├── services/                 # Moteurs audio Web Audio API, filtres biquad
+│   ├── i18n.ts                   # Internationalisation 9 langues (FR, EN, ES, DE, IT, PT, JA, ZH, RU)
+│   └── types.ts                  # Modèles de données & constantes
+├── release-dotnet/               # Sortie du binaire unique autonome C# (FlowLuna.exe)
+└── vite.config.ts                # Configuration Vite avec base relative './'
 ```
 
 ---

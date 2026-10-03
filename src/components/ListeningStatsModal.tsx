@@ -10,7 +10,8 @@ import {
   PieChart,
   Play,
 } from 'lucide-react';
-import { Track, AccentColor } from '../types';
+import { Track, AccentColor, PlayerSettings } from '../types';
+import { getT } from '../i18n';
 
 interface ListeningStatsModalProps {
   isOpen: boolean;
@@ -18,6 +19,7 @@ interface ListeningStatsModalProps {
   tracks: Track[];
   onPlayTrack: (track: Track) => void;
   accent: AccentColor;
+  settings?: PlayerSettings;
 }
 
 function formatDuration(sec: number): string {
@@ -47,7 +49,18 @@ export const ListeningStatsModal: React.FC<ListeningStatsModalProps> = ({
   onClose,
   tracks,
   onPlayTrack,
+  settings,
 }) => {
+  const t = getT(settings?.language);
+
+  // STRICT FILTER: Count ONLY music audio tracks, excluding all videos and video containers
+  const musicTracks = useMemo(() => {
+    const videoExts = new Set(['mp4', 'mkv', 'mov', 'webm', 'avi', 'm4v']);
+    return tracks.filter(
+      (t) => !t.isVideo && !videoExts.has((t.format || '').toLowerCase())
+    );
+  }, [tracks]);
+
   const stats = useMemo(() => {
     let totalPlays = 0;
     let totalListenTimeSeconds = 0;
@@ -55,7 +68,7 @@ export const ListeningStatsModal: React.FC<ListeningStatsModalProps> = ({
     const formatCounts: Record<string, number> = {};
     const artistPlays: Record<string, { count: number; tracksCount: number }> = {};
 
-    for (const track of tracks) {
+    for (const track of musicTracks) {
       const plays = track.playCount || 0;
       totalPlays += plays;
       totalListenTimeSeconds += plays * (track.duration || 180);
@@ -74,8 +87,8 @@ export const ListeningStatsModal: React.FC<ListeningStatsModalProps> = ({
       artistPlays[artist].tracksCount += 1;
     }
 
-    // Top Tracks
-    const topTracks = [...tracks]
+    // Top Tracks (Music only)
+    const topTracks = [...musicTracks]
       .filter((t) => (t.playCount || 0) > 0)
       .sort((a, b) => (b.playCount || 0) - (a.playCount || 0))
       .slice(0, 5);
@@ -90,11 +103,11 @@ export const ListeningStatsModal: React.FC<ListeningStatsModalProps> = ({
     const formatBreakdown = Object.entries(formatCounts).map(([fmt, count]) => ({
       format: fmt,
       count,
-      percent: Math.round((count / Math.max(1, tracks.length)) * 100),
+      percent: Math.round((count / Math.max(1, musicTracks.length)) * 100),
     }));
 
     return {
-      totalTracks: tracks.length,
+      totalTracks: musicTracks.length,
       totalPlays,
       totalListenTimeSeconds,
       totalLibraryDuration,
@@ -102,7 +115,7 @@ export const ListeningStatsModal: React.FC<ListeningStatsModalProps> = ({
       topArtists,
       formatBreakdown,
     };
-  }, [tracks]);
+  }, [musicTracks]);
 
   if (!isOpen) return null;
 
@@ -124,8 +137,8 @@ export const ListeningStatsModal: React.FC<ListeningStatsModalProps> = ({
               <BarChart3 className="w-5 h-5" />
             </div>
             <div>
-              <h2 className="text-lg font-bold tracking-tight">Statistiques & Récapitulatif d'Écoute</h2>
-              <p className="text-xs text-neutral-400">Votre activité musicale et vos préférences d'écoute</p>
+              <h2 className="text-lg font-bold tracking-tight">{t.statsTitle}</h2>
+              <p className="text-xs text-neutral-400">{t.statsSubtitle}</p>
             </div>
           </div>
           <button
@@ -143,42 +156,42 @@ export const ListeningStatsModal: React.FC<ListeningStatsModalProps> = ({
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
             <div className="bg-neutral-950/60 border border-neutral-800/80 rounded-xl p-3 flex flex-col justify-between">
               <div className="flex items-center justify-between text-neutral-400 mb-1">
-                <span className="text-[11px]">Temps d'écoute</span>
+                <span className="text-[11px]">{t.statListeningTime}</span>
                 <Clock className="w-3.5 h-3.5 text-emerald-400" />
               </div>
               <div className="text-base font-bold text-white">
                 {formatTotalTime(stats.totalListenTimeSeconds)}
               </div>
-              <div className="text-[10px] text-neutral-500">Estimé d'après vos lectures</div>
+              <div className="text-[10px] text-neutral-500">{t.statListeningTimeDesc}</div>
             </div>
 
             <div className="bg-neutral-950/60 border border-neutral-800/80 rounded-xl p-3 flex flex-col justify-between">
               <div className="flex items-center justify-between text-neutral-400 mb-1">
-                <span className="text-[11px]">Lectures totales</span>
+                <span className="text-[11px]">{t.statTotalPlays}</span>
                 <Headphones className="w-3.5 h-3.5 text-cyan-400" />
               </div>
               <div className="text-base font-bold text-white">{stats.totalPlays}</div>
-              <div className="text-[10px] text-neutral-500">Titres joués</div>
+              <div className="text-[10px] text-neutral-500">{t.statTotalPlaysDesc}</div>
             </div>
 
             <div className="bg-neutral-950/60 border border-neutral-800/80 rounded-xl p-3 flex flex-col justify-between">
               <div className="flex items-center justify-between text-neutral-400 mb-1">
-                <span className="text-[11px]">Bibliothèque</span>
+                <span className="text-[11px]">{t.statLibraryCount}</span>
                 <Music className="w-3.5 h-3.5 text-amber-400" />
               </div>
               <div className="text-base font-bold text-white">{stats.totalTracks}</div>
-              <div className="text-[10px] text-neutral-500">Morceaux uniques</div>
+              <div className="text-[10px] text-neutral-500">{t.statLibraryCountDesc}</div>
             </div>
 
             <div className="bg-neutral-950/60 border border-neutral-800/80 rounded-xl p-3 flex flex-col justify-between">
               <div className="flex items-center justify-between text-neutral-400 mb-1">
-                <span className="text-[11px]">Durée totale</span>
+                <span className="text-[11px]">{t.statTotalDuration}</span>
                 <Disc3 className="w-3.5 h-3.5 text-violet-400" />
               </div>
               <div className="text-base font-bold text-white">
                 {formatTotalTime(stats.totalLibraryDuration)}
               </div>
-              <div className="text-[10px] text-neutral-500">Audio en stock</div>
+              <div className="text-[10px] text-neutral-500">{t.statTotalDurationDesc}</div>
             </div>
           </div>
 
@@ -186,12 +199,12 @@ export const ListeningStatsModal: React.FC<ListeningStatsModalProps> = ({
           <div className="flex flex-col gap-2">
             <h3 className="text-xs font-bold text-neutral-300 uppercase tracking-wider flex items-center gap-1.5">
               <Flame className="w-4 h-4 text-amber-400" />
-              <span>Titres les plus écoutés</span>
+              <span>{t.topTracksTitle}</span>
             </h3>
 
             {stats.topTracks.length === 0 ? (
               <div className="p-4 rounded-xl bg-neutral-950/40 border border-neutral-800 text-center text-xs text-neutral-500">
-                Écoutez des morceaux pour générer votre classement des titres favoris.
+                {t.emptyStatsMsg}
               </div>
             ) : (
               <div className="flex flex-col gap-1.5">

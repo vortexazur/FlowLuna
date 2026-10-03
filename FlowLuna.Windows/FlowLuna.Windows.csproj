@@ -8,7 +8,7 @@
     <UseWPF>true</UseWPF>
     <AssemblyName>FlowLuna</AssemblyName>
     <RootNamespace>FlowLuna</RootNamespace>
-    <Version>1.0.5</Version>
+    <Version>1.0.1</Version>
     <ApplicationIcon>..\public\favicon.ico</ApplicationIcon>
   </PropertyGroup>
 
