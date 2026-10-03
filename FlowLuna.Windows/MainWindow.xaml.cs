@@ -25,6 +25,13 @@ public partial class MainWindow : Window
 
     private const int WM_NCLBUTTONDOWN = 0xA1;
     private const int HTCAPTION = 0x2;
+    private const int WM_APPCOMMAND = 0x0319;
+    private const int APPCOMMAND_MEDIA_NEXTTRACK = 11;
+    private const int APPCOMMAND_MEDIA_PREVIOUSTRACK = 12;
+    private const int APPCOMMAND_MEDIA_STOP = 13;
+    private const int APPCOMMAND_MEDIA_PLAY_PAUSE = 14;
+    private const int APPCOMMAND_MEDIA_PLAY = 46;
+    private const int APPCOMMAND_MEDIA_PAUSE = 47;
 
     public MainWindow()
     {
@@ -36,6 +43,10 @@ public partial class MainWindow : Window
     private async void MainWindow_Loaded(object sender, RoutedEventArgs e)
     {
         ApplyWindows11Backdrop();
+
+        // Hook Windows messages for hardware media keys & SMTC
+        var source = HwndSource.FromHwnd(new WindowInteropHelper(this).Handle);
+        source?.AddHook(WndProc);
 
         // 1. Start embedded Kestrel minimal API server in-process
         await _httpServer.StartAsync(3000);
@@ -156,9 +167,61 @@ public partial class MainWindow : Window
         }
     }
 
+    private IntPtr WndProc(IntPtr hwnd, int msg, IntPtr wParam, IntPtr lParam, ref bool handled)
+    {
+        if (msg == WM_APPCOMMAND)
+        {
+            int cmd = (int)((long)lParam >> 16) & ~0xF000;
+            switch (cmd)
+            {
+                case APPCOMMAND_MEDIA_PLAY_PAUSE:
+                    SendMediaControl("play-pause");
+                    handled = true;
+                    break;
+                case APPCOMMAND_MEDIA_PLAY:
+                    SendMediaControl("play");
+                    handled = true;
+                    break;
+                case APPCOMMAND_MEDIA_PAUSE:
+                    SendMediaControl("pause");
+                    handled = true;
+                    break;
+                case APPCOMMAND_MEDIA_NEXTTRACK:
+                    SendMediaControl("next");
+                    handled = true;
+                    break;
+                case APPCOMMAND_MEDIA_PREVIOUSTRACK:
+                    SendMediaControl("prev");
+                    handled = true;
+                    break;
+                case APPCOMMAND_MEDIA_STOP:
+                    SendMediaControl("stop");
+                    handled = true;
+                    break;
+            }
+        }
+        return IntPtr.Zero;
+    }
+
+    private void SendMediaControl(string command)
+    {
+        try
+        {
+            if (WebViewControl?.CoreWebView2 != null)
+            {
+                WebViewControl.CoreWebView2.ExecuteScriptAsync(
+                    $"window.dispatchEvent(new CustomEvent('media-control', {{ detail: '{command}' }}));"
+                );
+            }
+        }
+        catch { }
+    }
+
     protected override async void OnClosed(EventArgs e)
     {
         base.OnClosed(e);
+        await DiscordRpcService.Instance.ClearPresenceAsync();
+        DiscordRpcService.Instance.Dispose();
         await _httpServer.StopAsync();
     }
 }

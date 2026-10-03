@@ -18,6 +18,7 @@ import {
   Terminal,
   FolderPlus,
   Music,
+  Radio,
 } from 'lucide-react';
 import { PlayerSettings, AccentColor } from '../types';
 import { SUPPORTED_LANGUAGES, getT } from '../i18n';
@@ -519,25 +520,53 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
             </div>
 
             {/* Harmonisation du Volume Sonore */}
-            <div className="flex items-center justify-between bg-neutral-950/40 p-3 rounded-lg border border-neutral-800/80">
-              <div className="pr-4">
-                <div className="flex items-center gap-2">
-                  <span className="font-semibold text-neutral-200 block">{t.normalization}</span>
-                  <span className="text-[10px] uppercase font-mono px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-300 font-semibold">
-                    {t.normalizationBadge}
+            <div className="flex flex-col gap-2.5 bg-neutral-950/40 p-3 rounded-lg border border-neutral-800/80">
+              <div className="flex items-center justify-between">
+                <div className="pr-4">
+                  <div className="flex items-center gap-2">
+                    <span className="font-semibold text-neutral-200 block">{t.normalization}</span>
+                    <span className="text-[10px] uppercase font-mono px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-300 font-semibold">
+                      {t.normalizationBadge}
+                    </span>
+                  </div>
+                  <span className="text-neutral-400 text-[11px] block mt-0.5">
+                    {t.normalizationDesc}
                   </span>
                 </div>
-                <span className="text-neutral-400 text-[11px] block mt-0.5">
-                  {t.normalizationDesc}
-                </span>
+                <input
+                  type="checkbox"
+                  id="settings-volume-normalization-toggle"
+                  checked={settings.volumeNormalization}
+                  onChange={(e) => updateSetting('volumeNormalization', e.target.checked)}
+                  className="w-4 h-4 rounded accent-emerald-500 cursor-pointer flex-shrink-0"
+                />
               </div>
-              <input
-                type="checkbox"
-                id="settings-volume-normalization-toggle"
-                checked={settings.volumeNormalization}
-                onChange={(e) => updateSetting('volumeNormalization', e.target.checked)}
-                className="w-4 h-4 rounded accent-emerald-500 cursor-pointer flex-shrink-0"
-              />
+
+              {settings.volumeNormalization && (
+                <div className="pt-2 border-t border-neutral-800/60 flex items-center gap-2">
+                  <span className="text-[11px] text-neutral-400 font-medium">Standard cible :</span>
+                  <div className="flex items-center gap-1.5 flex-1">
+                    {[
+                      { id: 'streaming', label: t.targetStreaming },
+                      { id: 'replaygain', label: t.targetReplayGain },
+                      { id: 'broadcast', label: t.targetBroadcast },
+                    ].map((target) => (
+                      <button
+                        key={target.id}
+                        type="button"
+                        onClick={() => updateSetting('normalizationTarget', target.id as any)}
+                        className={`text-[10px] px-2.5 py-1 rounded-md font-medium transition-colors cursor-pointer ${
+                          (settings.normalizationTarget ?? 'streaming') === target.id
+                            ? 'bg-emerald-500/30 text-emerald-300 border border-emerald-500/50 font-bold'
+                            : 'bg-neutral-900 text-neutral-400 hover:text-neutral-200'
+                        }`}
+                      >
+                        {target.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
 
             {/* Auto Cache Favorites */}
@@ -590,6 +619,60 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                   className="w-4 h-4 rounded accent-emerald-500 cursor-pointer"
                 />
               </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Intégrations Système & Connectivité (SMTC & Discord RPC) */}
+        <div className="flex flex-col gap-4 border-t border-neutral-800 pt-4">
+          <h3 className="text-xs uppercase tracking-wider text-neutral-400 font-bold flex items-center gap-2">
+            <Radio className="w-4 h-4 text-violet-400" />
+            {t.integrationsSection}
+          </h3>
+
+          <div className="space-y-3 text-xs">
+            {/* Windows SMTC */}
+            <div className="flex items-center justify-between bg-neutral-950/40 p-3 rounded-lg border border-neutral-800/80">
+              <div className="pr-4">
+                <div className="flex items-center gap-2">
+                  <span className="font-semibold text-neutral-200 block">{t.smtcTitle}</span>
+                  <span className="text-[10px] uppercase font-mono px-1.5 py-0.5 rounded bg-blue-500/20 text-blue-300 font-semibold">
+                    {t.smtcBadge}
+                  </span>
+                </div>
+                <span className="text-neutral-400 text-[11px] block mt-0.5">
+                  {t.smtcDesc}
+                </span>
+              </div>
+              <input
+                type="checkbox"
+                id="settings-smtc-toggle"
+                checked={settings.smtcEnabled ?? true}
+                onChange={(e) => updateSetting('smtcEnabled', e.target.checked)}
+                className="w-4 h-4 rounded accent-blue-500 cursor-pointer flex-shrink-0"
+              />
+            </div>
+
+            {/* Discord Rich Presence */}
+            <div className="flex items-center justify-between bg-neutral-950/40 p-3 rounded-lg border border-neutral-800/80">
+              <div className="pr-4">
+                <div className="flex items-center gap-2">
+                  <span className="font-semibold text-neutral-200 block">{t.discordRpcTitle}</span>
+                  <span className="text-[10px] uppercase font-mono px-1.5 py-0.5 rounded bg-violet-500/20 text-violet-300 font-semibold">
+                    {t.discordRpcBadge}
+                  </span>
+                </div>
+                <span className="text-neutral-400 text-[11px] block mt-0.5">
+                  {t.discordRpcDesc}
+                </span>
+              </div>
+              <input
+                type="checkbox"
+                id="settings-discord-rpc-toggle"
+                checked={settings.discordRpcEnabled ?? true}
+                onChange={(e) => updateSetting('discordRpcEnabled', e.target.checked)}
+                className="w-4 h-4 rounded accent-violet-500 cursor-pointer flex-shrink-0"
+              />
             </div>
           </div>
         </div>

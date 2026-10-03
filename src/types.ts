@@ -115,6 +115,9 @@ export interface PlayerSettings {
   maxCacheSizeMb: number; // e.g. 1024 MB
   highQualityStream: boolean;
   volumeNormalization: boolean;
+  normalizationTarget?: 'streaming' | 'replaygain' | 'broadcast'; // 'streaming' (-14 LUFS), 'replaygain' (-18 LUFS), 'broadcast' (-23 LUFS)
+  discordRpcEnabled?: boolean; // Discord Rich Presence
+  smtcEnabled?: boolean; // Windows System Media Transport Controls
   compactMode: boolean;
   compactPlayerDock?: CompactPlayerDock;
   compactPlayerGhost?: boolean;

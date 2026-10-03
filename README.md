@@ -32,7 +32,7 @@
 ### 🎛️ Égaliseur Graphique 10 Bandes & DSP Audio
 - Égaliseur paramétrique 10 bandes (32 Hz à 16 kHz) avec contrôle indépendant du gain (±12 dB).
 - Presets audiophiles prédéfinis : *Flat, Bass Boost, Treble Boost, Électronique, Rock, Acoustique, Vocal, etc.*
-- Traitements sonores intégrés : Amplification des basses (*Bass Boost*), clarté des aigus (*Treble Boost*), pré-amplification (*Preamp Gain*) et normalisation dynamique du volume sonore.
+- Traitements sonores intégrés : Amplification des basses (*Bass Boost*), clarté des aigus (*Treble Boost*), pré-amplification (*Preamp Gain*) et **normalisation sonore intelligente EBU R128 / ReplayGain** (-14 LUFS, -18 LUFS, -23 LUFS) avec limiteur True Peak à -1.0 dBTP.
 
 ### 📊 Visualiseur Audio Temps Réel
 - Analyseur de fréquences FFT interactif connecté directement au moteur Web Audio.
@@ -41,7 +41,7 @@
 
 ### ⚡ Downloader Universel Haute Performance (yt-dlp & FFmpeg)
 - **Binaires natifs Windows 64-bit :** `yt-dlp.exe` et `ffmpeg.exe` intégrés hors ASAR pour un accès direct et des vitesses d'exécution optimales.
-- **Suivi temps réel :** Progression en direct avec jauge en pourcentage, vitesse de téléchargement en Mo/s, compte à rebours ETA et taille estimée du flux.
+- **Suivi temps réel :** Progression en direct avec jauge de 0 à 100%, vitesse de téléchargement en Mo/s, compte à rebours ETA et taille estimée du flux.
 - **Formats audio sans perte & vidéo HD :** Téléchargement en *FLAC, MP3 (320 kbps HD), WAV, AAC, Opus* ou vidéos jusqu'en *4K UHD / 1080p*.
 - **Compatibilité multi-plateformes :** Extraction depuis YouTube, SoundCloud, TikTok, Instagram, X/Twitter, etc.
 - **Auto-mise à jour sécurisée :** Vérification et mise à jour de `yt-dlp` en un clic depuis les paramètres, avec fallback automatique dans `%APPDATA%/FlowLuna/bin/` pour contourner les verrous de permissions de Windows.
@@ -50,10 +50,11 @@
 - Fenêtre flottante ultra-compacte détachable en mode *Always-on-Top*.
 - Continuez à travailler, jouer ou naviguer tout en conservant le contrôle de la lecture, de la pochette et du volume sans encombrer l'écran.
 
-### 🪟 Intégration Native Windows Frameless & Systray
+### 🪟 Intégration Native Windows Frameless, SMTC & Discord RPC
+- **Windows SMTC (System Media Transport Controls) :** Vignette multimédia officielle Windows 11/10 avec pochette d'album haute résolution, titre, artiste et commandes lors du réglage de volume ou sur l'écran de verrouillage.
+- **Discord Rich Presence (RPC) :** Affiche automatiquement votre musique en temps réel sur votre profil Discord via Named Pipes locaux.
+- **Raccourcis Clavier Multimédias Globaux :** Pilotez la lecture avec les touches matérielles de votre clavier ou casque (`Play/Pause`, `Suivant`, `Précédent`, `Stop`) via le hook Win32 `WM_APPCOMMAND`.
 - **Barre de titre Frameless Glass :** Design translucide avec zones de glissement fluide et commandes de fenêtre intégrées (*Réduire, Agrandir/Restaurer, Fermer*).
-- **Icône dans la zone de notification (Systray) :** Minimisation discrète avec menu contextuel complet (titre en cours, Lecture/Pause, Suivant, Précédent, Quitter).
-- **Raccourcis Clavier Multimédias Globaux :** Pilotez la lecture avec les touches matérielles de votre clavier (`MediaPlayPause`, `MediaNextTrack`, `MediaPreviousTrack`), même lorsque FlowLuna est minimisé ou en arrière-plan.
 
 ### 💾 Bibliothèque Locale & Outils de Production
 - Analyse et importation ultra-rapides de dossiers musicaux locaux.

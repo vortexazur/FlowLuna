@@ -136,6 +136,7 @@ export class VLCMediaPlayer {
   private equalizer: VLCEqualizer = new VLCEqualizer('Flat');
   private stereoWidth: number = 1.0;
   private isNormalizationActive: boolean = true;
+  private normalizationTarget: 'streaming' | 'replaygain' | 'broadcast' = 'streaming';
   private isConnected: boolean = false;
   private playbackRate: number = 1.0;
   private volumeLevel: number = 85; // 0..100
@@ -465,20 +466,51 @@ export class VLCMediaPlayer {
     this.rlGainNode.gain.setTargetAtTime(cross, t, 0.05);
   }
 
-  public setNormalization(enabled: boolean) {
+  public setNormalization(enabled: boolean, target: 'streaming' | 'replaygain' | 'broadcast' = 'streaming') {
     this.isNormalizationActive = enabled;
+    this.normalizationTarget = target;
     if (!this.isConnected || !this.audioContext) return;
     const now = this.audioContext.currentTime;
 
     if (enabled) {
-      this.dynamicsCompressorNode?.threshold.setTargetAtTime(-20, now, 0.05);
-      this.dynamicsCompressorNode?.ratio.setTargetAtTime(8, now, 0.05);
-      this.limiterNode?.threshold.setTargetAtTime(-1.5, now, 0.05);
+      if (target === 'streaming') {
+        // -14 LUFS Streaming Target (EBU R128 / Spotify / YouTube Music / Apple Music standard)
+        this.dynamicsCompressorNode?.threshold.setTargetAtTime(-16, now, 0.05);
+        this.dynamicsCompressorNode?.knee.setTargetAtTime(18, now, 0.05);
+        this.dynamicsCompressorNode?.ratio.setTargetAtTime(6, now, 0.05);
+        this.dynamicsCompressorNode?.attack.setTargetAtTime(0.003, now, 0.05);
+        this.dynamicsCompressorNode?.release.setTargetAtTime(0.20, now, 0.05);
+        this.normalizerGainNode?.gain.setTargetAtTime(1.15, now, 0.05);
+        this.limiterNode?.threshold.setTargetAtTime(-1.0, now, 0.05);
+      } else if (target === 'replaygain') {
+        // -18 LUFS ReplayGain Standard (89 dB SPL classic audiophile calibration)
+        this.dynamicsCompressorNode?.threshold.setTargetAtTime(-20, now, 0.05);
+        this.dynamicsCompressorNode?.knee.setTargetAtTime(24, now, 0.05);
+        this.dynamicsCompressorNode?.ratio.setTargetAtTime(4, now, 0.05);
+        this.dynamicsCompressorNode?.attack.setTargetAtTime(0.005, now, 0.05);
+        this.dynamicsCompressorNode?.release.setTargetAtTime(0.30, now, 0.05);
+        this.normalizerGainNode?.gain.setTargetAtTime(1.0, now, 0.05);
+        this.limiterNode?.threshold.setTargetAtTime(-1.0, now, 0.05);
+      } else {
+        // -23 LUFS Broadcast Target (EBU R128 original television & cinema standard)
+        this.dynamicsCompressorNode?.threshold.setTargetAtTime(-24, now, 0.05);
+        this.dynamicsCompressorNode?.knee.setTargetAtTime(28, now, 0.05);
+        this.dynamicsCompressorNode?.ratio.setTargetAtTime(3.5, now, 0.05);
+        this.dynamicsCompressorNode?.attack.setTargetAtTime(0.008, now, 0.05);
+        this.dynamicsCompressorNode?.release.setTargetAtTime(0.35, now, 0.05);
+        this.normalizerGainNode?.gain.setTargetAtTime(0.85, now, 0.05);
+        this.limiterNode?.threshold.setTargetAtTime(-1.0, now, 0.05);
+      }
     } else {
       this.dynamicsCompressorNode?.threshold.setTargetAtTime(0, now, 0.05);
       this.dynamicsCompressorNode?.ratio.setTargetAtTime(1, now, 0.05);
+      this.normalizerGainNode?.gain.setTargetAtTime(1.0, now, 0.05);
       this.limiterNode?.threshold.setTargetAtTime(0, now, 0.05);
     }
+  }
+
+  public getNormalizationTarget(): 'streaming' | 'replaygain' | 'broadcast' {
+    return this.normalizationTarget;
   }
 
   public getFrequencyData(array: Uint8Array): void {

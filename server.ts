@@ -385,6 +385,14 @@ app.post('/api/downloader/update-ytdlp', async (req, res) => {
   }
 });
 
+app.post('/api/discord/presence', express.json(), (req, res) => {
+  res.json({ success: true });
+});
+
+app.post('/api/discord/clear', (req, res) => {
+  res.json({ success: true });
+});
+
 function hasValidCookies(): boolean {
   try {
     return fs.existsSync(COOKIES_PATH) && fs.statSync(COOKIES_PATH).size > 15;

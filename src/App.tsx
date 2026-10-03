@@ -49,6 +49,7 @@ import { DownloaderView } from './components/DownloaderView';
 import { backgroundScanner } from './services/backgroundScanner';
 import { Layers, Maximize2 } from 'lucide-react';
 import { TitleBar } from './components/TitleBar';
+import { discordRpc } from './services/discordRpcService';
 
 const DEFAULT_PLAYER_SETTINGS: PlayerSettings = {
   language: 'fr',
@@ -62,6 +63,9 @@ const DEFAULT_PLAYER_SETTINGS: PlayerSettings = {
   maxCacheSizeMb: 1024,
   highQualityStream: true,
   volumeNormalization: true,
+  normalizationTarget: 'streaming',
+  discordRpcEnabled: true,
+  smtcEnabled: true,
   compactMode: false,
   compactPlayerDock: 'bottom',
   compactPlayerGhost: false,
@@ -203,7 +207,7 @@ export default function App() {
 
       const savedSettings = await getSetting<PlayerSettings>('player_settings', DEFAULT_PLAYER_SETTINGS);
       setPlayerSettings(savedSettings);
-      audioEngine.setVolumeNormalization(savedSettings.volumeNormalization);
+      audioEngine.setVolumeNormalization(savedSettings.volumeNormalization, savedSettings.normalizationTarget ?? 'streaming');
 
       const savedEq = await getSetting<EqualizerSettings>('equalizer_settings', DEFAULT_EQ_SETTINGS);
       setEqualizerSettings(savedEq);
@@ -237,9 +241,9 @@ export default function App() {
     if (audioRef.current) {
       audioEngine.init(audioRef.current);
       audioEngine.applyEqualizer(equalizerSettings);
-      audioEngine.setVolumeNormalization(playerSettings.volumeNormalization);
+      audioEngine.setVolumeNormalization(playerSettings.volumeNormalization, playerSettings.normalizationTarget ?? 'streaming');
     }
-  }, [equalizerSettings, playerSettings.volumeNormalization]);
+  }, [equalizerSettings, playerSettings.volumeNormalization, playerSettings.normalizationTarget]);
 
   // Launch automatic background library scanner (discovers local audio tracks without manual import)
   useEffect(() => {
@@ -925,25 +929,38 @@ export default function App() {
     };
   }, [handleNext]);
 
-  // MediaSession API for OS integration (Taskbar, Media Keys, Lockscreen)
+  // Windows SMTC (System Media Transport Controls) API for OS integration
   useEffect(() => {
     if (!('mediaSession' in navigator)) return;
 
-    if (currentPlayingTrack) {
+    if (currentPlayingTrack && (playerSettings.smtcEnabled ?? true)) {
       navigator.mediaSession.metadata = new MediaMetadata({
         title: currentPlayingTrack.title,
         artist: currentPlayingTrack.artist,
-        album: currentPlayingTrack.album || 'PlayZic',
+        album: currentPlayingTrack.album || 'FlowLuna',
         artwork: currentPlayingTrack.coverUrl
-          ? [{ src: currentPlayingTrack.coverUrl, sizes: '512x512', type: 'image/png' }]
+          ? [
+              { src: currentPlayingTrack.coverUrl, sizes: '512x512', type: 'image/png' },
+              { src: currentPlayingTrack.coverUrl, sizes: '256x256', type: 'image/jpeg' },
+            ]
           : [],
       });
       navigator.mediaSession.playbackState = isPlaying ? 'playing' : 'paused';
+
+      if ('setPositionState' in navigator.mediaSession && duration > 0) {
+        try {
+          navigator.mediaSession.setPositionState({
+            duration: Math.max(0, duration),
+            playbackRate: playerSettings.playbackSpeed ?? 1.0,
+            position: Math.min(Math.max(0, currentTime), duration),
+          });
+        } catch { }
+      }
     } else {
       navigator.mediaSession.metadata = null;
       navigator.mediaSession.playbackState = 'none';
     }
-  }, [currentPlayingTrack, isPlaying]);
+  }, [currentPlayingTrack, isPlaying, duration, currentTime, playerSettings.smtcEnabled, playerSettings.playbackSpeed]);
 
   useEffect(() => {
     if (!('mediaSession' in navigator)) return;
@@ -969,10 +986,32 @@ export default function App() {
           handleSeek(details.seekTime);
         }
       });
+      navigator.mediaSession.setActionHandler('seekbackward', (details) => {
+        const offset = details.seekOffset || 10;
+        if (audioRef.current) {
+          handleSeek(Math.max(0, audioRef.current.currentTime - offset));
+        }
+      });
+      navigator.mediaSession.setActionHandler('seekforward', (details) => {
+        const offset = details.seekOffset || 10;
+        if (audioRef.current) {
+          handleSeek(Math.min(audioRef.current.duration || 0, audioRef.current.currentTime + offset));
+        }
+      });
     } catch (err) {
       console.warn('Error setting MediaSession handlers:', err);
     }
   }, [isPlaying, handleTogglePlay, handleStop, handlePrev, handleNext, handleSeek]);
+
+  // Discord Rich Presence (RPC) Synchronizer
+  useEffect(() => {
+    discordRpc.updatePresence(
+      currentPlayingTrack,
+      isPlaying,
+      currentTime,
+      playerSettings.discordRpcEnabled ?? true
+    );
+  }, [currentPlayingTrack, isPlaying, playerSettings.discordRpcEnabled]);
 
   // Navigation handler
   const handleNavigate = (view: string, playlistId?: string) => {
@@ -1000,7 +1039,8 @@ export default function App() {
   // Save updated settings
   const handleUpdatePlayerSettings = async (settings: PlayerSettings) => {
     setPlayerSettings(settings);
-    audioEngine.setVolumeNormalization(settings.volumeNormalization);
+    audioEngine.setVolumeNormalization(settings.volumeNormalization, settings.normalizationTarget ?? 'streaming');
+    discordRpc.updatePresence(currentPlayingTrack, isPlaying, currentTime, settings.discordRpcEnabled ?? true);
     await saveSetting('player_settings', settings);
   };
 

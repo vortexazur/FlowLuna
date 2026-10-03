@@ -352,6 +352,46 @@ public class HttpServer
             }
         });
 
+        // Discord Rich Presence Endpoints
+        _app.MapPost("/api/discord/presence", async (HttpContext ctx) =>
+        {
+            try
+            {
+                using var reader = new StreamReader(ctx.Request.Body);
+                var bodyText = await reader.ReadToEndAsync();
+                var req = JsonSerializer.Deserialize<DiscordPresenceRequest>(bodyText, new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+                if (req == null) return Results.BadRequest();
+
+                await DiscordRpcService.Instance.UpdatePresenceAsync(
+                    req.Title ?? "Musique",
+                    req.Artist ?? "Artiste Inconnu",
+                    req.Album,
+                    req.Duration,
+                    req.Position,
+                    req.IsPlaying
+                );
+
+                return Results.Ok(new { success = true });
+            }
+            catch (Exception ex)
+            {
+                return Results.Problem(ex.Message);
+            }
+        });
+
+        _app.MapPost("/api/discord/clear", async () =>
+        {
+            try
+            {
+                await DiscordRpcService.Instance.ClearPresenceAsync();
+                return Results.Ok(new { success = true });
+            }
+            catch (Exception ex)
+            {
+                return Results.Problem(ex.Message);
+            }
+        });
+
         // 5. Static React SPA files serving
         var possibleWwwRoots = new[]
         {
@@ -412,3 +452,12 @@ public class HttpServer
         }
     }
 }
+
+public record DiscordPresenceRequest(
+    string? Title,
+    string? Artist,
+    string? Album,
+    double Duration,
+    double Position,
+    bool IsPlaying
+);

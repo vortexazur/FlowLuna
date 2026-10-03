@@ -1,6 +1,6 @@
-# FlowLuna v1.0.1 — Architecture C# .NET 9 + WebView2 & Améliorations Majeures
+# FlowLuna v1.0.1 — Architecture C# .NET 9 + WebView2, Windows SMTC, Discord RPC & EBU R128
 
-🎉 **FlowLuna v1.0.1** marque un tournant technologique majeur avec l'arrivée du runtime **C# .NET 9 + WebView2**, divisant la taille de l'application par plus de 4 (~70 Mo) tout en apportant des améliorations clés demandées par la communauté.
+🎉 **FlowLuna v1.0.1** marque un tournant technologique majeur avec l'arrivée du runtime **C# .NET 9 + WebView2**, divisant la taille de l'application par plus de 4 (~70 Mo) tout en apportant les intégrations système et audio les plus avancées pour Windows 11 et 10.
 
 ---
 
@@ -14,29 +14,46 @@
 
 ---
 
-## 🛠️ 2. Correctifs & Nouveautés de la v1.0.1
+## 🎶 2. Nouvelles Intégrations Système & DSP Audio
+
+### 🪟 Intégration Native Windows SMTC (System Media Transport Controls)
+- **Vignette Multimédia Officielle Windows 11 & 10 :** Affichage de la pochette d'album en haute résolution, du titre et de l'artiste dans la vignette native Windows lors des changements de volume ou sur l'écran de verrouillage.
+- **Contrôles Matériels & Barre de Progression Interactive :** Prise en charge des touches clavier multimédias (`Play/Pause`, `Suivant`, `Précédent`, `Stop`) et curseur de position synchronisé en temps réel via l'API W3C MediaSession et le hook Win32 `WM_APPCOMMAND`.
+
+### 🎮 Discord Rich Presence Natif (RPC)
+- **Diffusion Temps Réel :** Affichage automatique de votre statut d'écoute sur votre profil Discord (*« Écoute [Titre] par [Artiste] sur FlowLuna »*).
+- **Pochette & Bouton d'Écoute :** Affichage du temps écoulé, du logo FlowLuna et d'un bouton direct vers le lecteur.
+- **Protocole IPC Natif :** Communication directe et légère via les Named Pipes locaux Windows (`\\.\pipe\discord-ipc-*`).
+
+### 🎚️ Normalisation Sonore Intelligente EBU R128 / ReplayGain
+- **Calibrage ITU-R BS.1770 / EBU R128 :** Égalisation dynamique et transparente du volume sans pompage ni distorsion.
+- **3 Profils Audiophiles Sélectionnables :**
+  - **Streaming (-14 LUFS)** *(Recommandé)* : Norme Spotify, YouTube Music, Apple Music et Tidal.
+  - **ReplayGain (-18 LUFS)** : Étalonnage audiophile classique (89 dB SPL).
+  - **Broadcast / Cinéma (-23 LUFS)** : Norme EBU R128 pour diffusion cinéma et télévision.
+- **Limiteur True Peak intégré à -1.0 dBTP :** Élimine tout risque d'écrêtage inter-échantillons sur les convertisseurs DAC.
+
+---
+
+## 🛠️ 3. Correctifs & Améliorations de l'Interface
 
 ### 📐 Bibliothèque Audio — Colonnes 100% Visibles sans Défilement
 - Ajustement complet de la table (`table-fixed` avec gestion responsive).
-- Les colonnes **Favori**, **Durée** et le menu **Actions** sont désormais toujours visibles à l'écran, sans aucun défilement horizontal nécessaire, même sur les résolutions d'écran compactes.
-- Retrait de la mention "PC" du titre : désormais affiché sobrement en **« Bibliothèque Audio »**.
+- Les colonnes **Favori**, **Durée** et le menu **Actions** sont désormais toujours visibles à l'écran, sans aucun défilement horizontal nécessaire.
+- Retrait de la mention "PC" du titre : désormais sobrement nommé **« Bibliothèque Audio »**.
 
 ### 📊 Statistiques d'Écoute Dédiées aux Musiques
-- Le modal de statistiques filtre et comptabilise désormais **strictement les pistes audio**.
-- Les fichiers vidéo (`.mp4`, `.mkv`, `.mov`, `.webm`, `.avi`, `.m4v`) sont exclus des compteurs de streams, de durée d'écoute et des classements de tops titres/artistes.
+- Filtrage strict ne comptabilisant que les musiques audio (vidéos `.mp4`, `.mkv`, etc. exclues).
 
 ### 📥 Téléchargeur — Jauge de Progression Temps Réel 0 à 100%
-- Ajout d'une barre de progression proéminente avec indicateurs d'étapes (0%, 50%, 100%) et animation lumineuse shimmer.
-- Affichage dynamique de la vitesse de téléchargement (Mo/s), de l'estimation de temps restant (ETA) et de la taille du fichier.
-- Synchronisation fluide avec le moteur de téléchargement C# / yt-dlp via Server-Sent Events (SSE).
+- Jauge lumineuse continue avec repères d'étapes (0%, 50%, 100%), pourcentage en direct, vitesse en Mo/s, compte à rebours ETA et taille estimée.
 
 ### 🌐 Internationalisation (i18n) & Drapeaux Vectoriels HD
-- **Drapeaux Vectoriels SVG Dédiés :** Remplacement des emojis drapeaux (qui s'affichaient sous forme de lettres carrées « FR », « GB » sur Windows) par des drapeaux vectoriels nets et colorés.
-- **Traduction Complète dans les 9 Langues :** Révision exhaustive des textes et libellés en Français, Anglais, Espagnol, Allemand, Italien, Portugais, Japonais, Chinois et Russe.
+- Remplacement des emojis drapeaux carrés Windows par des drapeaux vectoriels SVG nets et colorés.
+- Traduction intégrale révisée dans les 9 langues.
 
 ### ☀️ Thème Clair & Rendu Pure Glass Sublimé
-- Refonte des contrastes du thème clair : les panneaux en verre dépoli conservent leur transparence translucide et leurs reflets spéculaires sans perte de lisibilité du texte.
-- Ajout d'orbes ambiants lumineux dynamiques s'adaptant à l'arrière-plan clair.
+- Translucidité cristal et reflets spéculaires magnifiés sur fond clair, avec orbes ambiants lumineux et contraste de texte préservé.
 
 ---
 
@@ -58,7 +75,7 @@ Get-FileHash -Algorithm SHA256 "FlowLuna.exe"
 
 | Fichier | Empreinte SHA-256 |
 |---|---|
-| `FlowLuna.exe` | `FCA3F967773597C9434DBA57268BCC5A5799ADFD1189F87C9068DD48CA87B544` |
+| `FlowLuna.exe` | `9EC15346837CDE705591E4934E65B5988DD9DCC5F57139A6DA1061BB9EEDFD4B` |
 
 ---
 

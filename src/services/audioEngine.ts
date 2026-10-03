@@ -28,8 +28,12 @@ class AudioEngine {
     this.vlcPlayer.play();
   }
 
-  public setVolumeNormalization(enabled: boolean) {
-    this.vlcPlayer.setNormalization(enabled);
+  public setVolumeNormalization(enabled: boolean, target: 'streaming' | 'replaygain' | 'broadcast' = 'streaming') {
+    this.vlcPlayer.setNormalization(enabled, target);
+  }
+
+  public getNormalizationTarget(): 'streaming' | 'replaygain' | 'broadcast' {
+    return this.vlcPlayer.getNormalizationTarget();
   }
 
   public resetNormalization() {
