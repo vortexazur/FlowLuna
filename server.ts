@@ -5,7 +5,6 @@ import os from 'os';
 import http from 'http';
 import https from 'https';
 import { execFile, spawn } from 'child_process';
-import { createServer as createViteServer } from 'vite';
 import { GoogleGenAI } from '@google/genai';
 import {
   getYtdlpPath,
@@ -18,6 +17,26 @@ import {
   parseYtdlpProgress,
   YtDlpProgressUpdate,
 } from './src/services/binaryManager';
+
+export function getFlowLunaDataDir(): string {
+  const base = process.env.APPDATA || (process.platform === 'darwin' ? path.join(os.homedir(), 'Library', 'Preferences') : path.join(os.homedir(), '.config'));
+  const dir = path.join(base, 'FlowLuna');
+  if (!fs.existsSync(dir)) {
+    fs.mkdirSync(dir, { recursive: true });
+  }
+  return dir;
+}
+
+export function getDownloadDir(isVideo: boolean): string {
+  if (process.env.NODE_ENV !== 'production' && fs.existsSync(path.join(process.cwd(), 'public'))) {
+    const dir = path.join(process.cwd(), isVideo ? 'public/videos' : 'public/audio');
+    if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+    return dir;
+  }
+  const dir = path.join(getFlowLunaDataDir(), isVideo ? 'videos' : 'audio');
+  if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+  return dir;
+}
 
 const app = express();
 const PORT = Number(process.env.PORT) || 3000;
@@ -285,7 +304,9 @@ app.use((req, res, next) => {
   next();
 });
 
-const COOKIES_PATH = path.join(process.cwd(), 'cookies.txt');
+const COOKIES_PATH = fs.existsSync(path.join(process.cwd(), 'cookies.txt'))
+  ? path.join(process.cwd(), 'cookies.txt')
+  : path.join(getFlowLunaDataDir(), 'cookies.txt');
 
 // Real-time Download Jobs Progress Tracker
 const activeJobListeners = new Map<string, Set<(data: YtDlpProgressUpdate) => void>>();
@@ -1874,10 +1895,7 @@ app.post('/api/downloader/save-to-app', async (req, res) => {
     const isVideo = mediaType === 'video';
     const ext = isVideo ? (['mp4', 'mkv', 'webm'].includes(videoFormat) ? videoFormat : 'mp4') : (['mp3', 'flac', 'wav', 'm4a', 'ogg', 'opus'].includes(audioFormat) ? audioFormat : 'mp3');
 
-    const downloadDir = path.join(process.cwd(), isVideo ? 'public/videos' : 'public/audio');
-    if (!fs.existsSync(downloadDir)) {
-      fs.mkdirSync(downloadDir, { recursive: true });
-    }
+    const downloadDir = getDownloadDir(isVideo);
 
     const fileBaseName = `${Date.now()}_${sanitizeFileName(cleanMeta.fileName || `${cleanMeta.artist} - ${cleanMeta.title}`)}`;
     const outputTemplate = path.join(downloadDir, `${fileBaseName}.%(ext)s`);
@@ -2522,7 +2540,9 @@ const DEFAULT_COVERS = [
 app.get('/api/library/scan', async (req, res) => {
   try {
     const searchDirs: { dir: string; isPublic: boolean; urlPrefix: string }[] = [
+      { dir: getDownloadDir(false), isPublic: true, urlPrefix: '/audio' },
       { dir: path.join(process.cwd(), 'public', 'audio'), isPublic: true, urlPrefix: '/audio' },
+      { dir: path.join(os.homedir(), 'Music'), isPublic: false, urlPrefix: '/api/library/stream?file=' },
       { dir: path.join(process.cwd(), 'audio'), isPublic: false, urlPrefix: '/api/library/stream?file=' },
       { dir: path.join(process.cwd(), 'music'), isPublic: false, urlPrefix: '/api/library/stream?file=' },
     ];
@@ -2671,25 +2691,68 @@ app.get('/api/library/stream', (req, res) => {
   }
 });
 
+// Media directories static routing
+app.use('/audio', express.static(getDownloadDir(false)));
+app.use('/videos', express.static(getDownloadDir(true)));
+if (fs.existsSync(path.join(process.cwd(), 'public', 'audio'))) {
+  app.use('/audio', express.static(path.join(process.cwd(), 'public', 'audio')));
+}
+if (fs.existsSync(path.join(process.cwd(), 'public', 'videos'))) {
+  app.use('/videos', express.static(path.join(process.cwd(), 'public', 'videos')));
+}
+
 // Vite middleware & Static Serving
-async function startServer() {
+export async function startServer(port: number = PORT): Promise<{ app: express.Express; server: http.Server }> {
   if (process.env.NODE_ENV !== 'production') {
+    const { createServer: createViteServer } = await import('vite');
     const vite = await createViteServer({
       server: { middlewareMode: true },
       appType: 'spa',
     });
     app.use(vite.middlewares);
   } else {
-    const distPath = path.join(process.cwd(), 'dist');
+    const candidates = [
+      __dirname,
+      path.join(__dirname, 'dist'),
+      path.join(__dirname, '..', 'dist'),
+      path.join(process.cwd(), 'dist'),
+    ];
+    const distPath = candidates.find((p) => fs.existsSync(path.join(p, 'index.html'))) || candidates[0];
+    console.log(`[FlowLuna Server] Serving static files from: ${distPath}`);
     app.use(express.static(distPath));
     app.get('*', (req, res) => {
-      res.sendFile(path.join(distPath, 'index.html'));
+      const indexFile = path.join(distPath, 'index.html');
+      if (fs.existsSync(indexFile)) {
+        res.sendFile(indexFile);
+      } else {
+        res.status(404).send('FlowLuna client files not found at ' + distPath);
+      }
     });
   }
 
-  app.listen(PORT, '0.0.0.0', () => {
-    console.log(`Server running on http://localhost:${PORT}`);
+  return new Promise((resolve, reject) => {
+    const server = app.listen(port, '127.0.0.1', () => {
+      console.log(`[FlowLuna Server] Running on http://127.0.0.1:${port}`);
+      resolve({ app, server });
+    });
+
+    server.on('error', (err: any) => {
+      if (err.code === 'EADDRINUSE') {
+        console.warn(`[FlowLuna Server] Port ${port} is already in use. Assuming active server.`);
+        resolve({ app, server });
+      } else {
+        console.error(`[FlowLuna Server] Server error:`, err);
+        reject(err);
+      }
+    });
   });
 }
 
-startServer();
+export { app };
+
+// Auto-start only when run directly from command line (node or tsx), not when imported by Electron
+if (!process.versions.electron) {
+  startServer().catch((err) => {
+    console.error('[FlowLuna Server] Failed to start:', err);
+  });
+}

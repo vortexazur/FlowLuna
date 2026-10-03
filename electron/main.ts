@@ -2,12 +2,10 @@ import { app, BrowserWindow, ipcMain, Tray, Menu, nativeImage, globalShortcut, s
 import path from 'path';
 import fs from 'fs';
 import http from 'http';
-import { fork, ChildProcess } from 'child_process';
 import { getBinariesStatusReport, updateYtdlp } from '../src/services/binaryManager';
 
 let mainWindow: BrowserWindow | null = null;
 let tray: Tray | null = null;
-let serverProcess: ChildProcess | null = null;
 
 let currentTrackInfo = {
   title: 'Aucune lecture',
@@ -17,7 +15,10 @@ let currentTrackInfo = {
 
 const isDev = !app.isPackaged && process.env.NODE_ENV !== 'production';
 const PORT = process.env.PORT || 3000;
-const SERVER_URL = `http://localhost:${PORT}`;
+const SERVER_URL = `http://127.0.0.1:${PORT}`;
+
+app.name = 'FlowLuna';
+app.setAppUserModelId('com.flowluna.player');
 
 // Prevent multiple instances
 const gotTheLock = app.requestSingleInstanceLock();
@@ -51,11 +52,12 @@ function getAppIconPath(): string {
   return '';
 }
 
-function waitForServer(url: string, timeoutMs: number = 20000): Promise<boolean> {
+function waitForServer(url: string, timeoutMs: number = 5000): Promise<boolean> {
   const startTime = Date.now();
   return new Promise((resolve) => {
     const check = () => {
       const req = http.get(url, (res) => {
+        res.resume(); // free socket
         if (res.statusCode && res.statusCode < 500) {
           resolve(true);
         } else {
@@ -63,7 +65,7 @@ function waitForServer(url: string, timeoutMs: number = 20000): Promise<boolean>
         }
       });
       req.on('error', () => retry());
-      req.setTimeout(1500, () => {
+      req.setTimeout(800, () => {
         req.destroy();
         retry();
       });
@@ -74,7 +76,7 @@ function waitForServer(url: string, timeoutMs: number = 20000): Promise<boolean>
         console.warn(`[Electron] Timeout waiting for server at ${url}`);
         resolve(false);
       } else {
-        setTimeout(check, 300);
+        setTimeout(check, 100);
       }
     };
 
@@ -82,43 +84,39 @@ function waitForServer(url: string, timeoutMs: number = 20000): Promise<boolean>
   });
 }
 
-function startEmbeddedServer(): void {
+async function ensureServerRunning(): Promise<void> {
   if (isDev) {
-    // In development, the user runs the dev server via npm scripts or tsx
+    // In dev mode, wait briefly for the external tsx dev server
+    await waitForServer(SERVER_URL, 6000);
     return;
   }
 
+  // In production, start embedded Express server in-process
   try {
-    const possiblePaths = [
-      path.join(__dirname, 'server.cjs'),
+    const candidates = [
       path.join(__dirname, '..', 'dist', 'server.cjs'),
-      path.join(__dirname, '..', 'server.cjs'),
+      path.join(__dirname, 'server.cjs'),
+      path.join(process.resourcesPath, 'app.asar', 'dist', 'server.cjs'),
       path.join(process.cwd(), 'dist', 'server.cjs'),
     ];
-    const serverScript = possiblePaths.find((p) => fs.existsSync(p));
+    const serverScript = candidates.find((p) => fs.existsSync(p));
     if (serverScript) {
-      console.log(`[Electron] Starting production backend from ${serverScript}`);
-      serverProcess = fork(serverScript, [], {
-        env: {
-          ...process.env,
-          NODE_ENV: 'production',
-          PORT: String(PORT),
-        },
-        stdio: 'inherit',
-      });
-
-      serverProcess.on('error', (err) => {
-        console.error('[Electron] Backend server process error:', err);
-      });
-      serverProcess.on('exit', (code) => {
-        console.log(`[Electron] Backend server process exited with code ${code}`);
-      });
+      console.log(`[Electron] Starting embedded server in-process from ${serverScript}`);
+      const serverModule = require(serverScript);
+      if (typeof serverModule.startServer === 'function') {
+        await serverModule.startServer(Number(PORT));
+        console.log('[Electron] Server ready');
+        return;
+      }
     } else {
-      console.warn(`[Electron] Server bundle not found at ${serverScript}`);
+      console.warn('[Electron] Production server bundle not found at candidate paths');
     }
   } catch (err) {
-    console.error('[Electron] Failed to fork server process:', err);
+    console.error('[Electron] Error starting embedded server:', err);
   }
+
+  // Fallback check
+  await waitForServer(SERVER_URL, 3000);
 }
 
 function createMainWindow(): void {
@@ -139,7 +137,7 @@ function createMainWindow(): void {
       contextIsolation: true,
       nodeIntegration: false,
       sandbox: false,
-      webSecurity: true,
+      webSecurity: false,
     },
   });
 
@@ -151,10 +149,26 @@ function createMainWindow(): void {
     mainWindow?.webContents.send('window-maximized-changed', false);
   });
 
+  let hasShown = false;
+  const showWindow = () => {
+    if (hasShown || !mainWindow) return;
+    hasShown = true;
+    mainWindow.show();
+    mainWindow.focus();
+  };
+
   mainWindow.once('ready-to-show', () => {
-    mainWindow?.show();
-    mainWindow?.focus();
+    showWindow();
   });
+
+  mainWindow.webContents.once('dom-ready', () => {
+    showWindow();
+  });
+
+  // Safety fallback: if ready-to-show takes more than 1500ms, force show
+  setTimeout(() => {
+    showWindow();
+  }, 1500);
 
   // Open external links in default browser
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {
@@ -164,11 +178,17 @@ function createMainWindow(): void {
     return { action: 'deny' };
   });
 
-  // Load URL
   const targetUrl = process.env.ELECTRON_START_URL || SERVER_URL;
-  waitForServer(targetUrl, 25000).then(() => {
-    mainWindow?.loadURL(targetUrl);
+
+  // Handle load failure with automatic retry
+  mainWindow.webContents.on('did-fail-load', (_event, errorCode, errorDescription, validatedURL) => {
+    console.warn(`[Electron] Failed to load ${validatedURL} (${errorCode}: ${errorDescription}), retrying in 400ms...`);
+    setTimeout(() => {
+      mainWindow?.loadURL(targetUrl);
+    }, 400);
   });
+
+  mainWindow.loadURL(targetUrl);
 }
 
 function updateTrayMenu(): void {
@@ -321,12 +341,13 @@ function setupIpcHandlers(): void {
 }
 
 // App lifecycle
-app.whenReady().then(() => {
+app.whenReady().then(async () => {
   setupIpcHandlers();
-  startEmbeddedServer();
-  createMainWindow();
   createTray();
   registerGlobalShortcuts();
+
+  await ensureServerRunning();
+  createMainWindow();
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) {
@@ -337,11 +358,6 @@ app.whenReady().then(() => {
 
 app.on('will-quit', () => {
   globalShortcut.unregisterAll();
-  if (serverProcess) {
-    try {
-      serverProcess.kill('SIGTERM');
-    } catch {}
-  }
 });
 
 app.on('window-all-closed', () => {
