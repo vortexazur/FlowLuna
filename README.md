@@ -4,7 +4,7 @@
 
 ![FlowLuna Banner](public/logo.jpg)
 
-[![Version](https://img.shields.io/badge/version-1.0.1-emerald.svg?style=for-the-badge)](https://github.com/vortexazur/FlowLuna/releases)
+[![Version](https://img.shields.io/badge/version-1.1.0-emerald.svg?style=for-the-badge)](https://github.com/vortexazur/FlowLuna/releases)
 [![Platform](https://img.shields.io/badge/platform-Windows%2010%20%7C%2011%20x64-blue.svg?style=for-the-badge&logo=windows)](https://github.com/vortexazur/FlowLuna)
 [![.NET 9](https://img.shields.io/badge/.NET-9.0-512BD4.svg?style=for-the-badge&logo=dotnet)](https://dotnet.microsoft.com/)
 [![WebView2](https://img.shields.io/badge/WebView2-Evergreen-0078D7.svg?style=for-the-badge&logo=microsoftedge)](https://developer.microsoft.com/microsoft-edge/webview2/)
@@ -84,7 +84,7 @@
 3. Double-cliquez pour lancer immédiatement sans installation requise ni dépendance externe.
 
 ### 2. Installateur Standard Windows (.exe)
-1. Téléchargez `FlowLuna-Setup-1.0.1.exe`.
+1. Téléchargez `FlowLuna-Setup-1.1.0.exe`.
 2. Lancez l'exécutable pour installer FlowLuna avec raccourcis sur le Bureau et le Menu Démarrer.
 
 ---
