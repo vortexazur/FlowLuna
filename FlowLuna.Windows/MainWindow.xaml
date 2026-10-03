@@ -10,8 +10,7 @@
         MinHeight="180" MinWidth="320"
         WindowStartupLocation="CenterScreen"
         WindowStyle="None"
-        Background="#0a0a0a"
-        Icon="wwwroot\favicon.ico">
+        Background="#0a0a0a">
 
     <WindowChrome.WindowChrome>
         <WindowChrome CaptionHeight="0"

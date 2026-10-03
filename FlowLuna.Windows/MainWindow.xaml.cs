@@ -39,6 +39,17 @@ public partial class MainWindow : Window
     public MainWindow()
     {
         InitializeComponent();
+        try
+        {
+            var iconPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "wwwroot", "icon.ico");
+            if (!File.Exists(iconPath))
+                iconPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "wwwroot", "favicon.ico");
+            if (File.Exists(iconPath))
+            {
+                Icon = System.Windows.Media.Imaging.BitmapFrame.Create(new Uri(iconPath));
+            }
+        }
+        catch { }
         Loaded += MainWindow_Loaded;
         StateChanged += MainWindow_StateChanged;
     }
