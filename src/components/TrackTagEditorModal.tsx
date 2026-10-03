@@ -132,7 +132,7 @@ export const TrackTagEditorModal: React.FC<TrackTagEditorModalProps> = ({
     >
       <div
         id="track-tag-editor-content"
-        className="w-full max-w-xl rounded-2xl border border-neutral-800 bg-neutral-900/98 text-neutral-100 p-6 shadow-2xl flex flex-col gap-5"
+        className="w-full max-w-xl max-h-[90vh] overflow-y-auto rounded-2xl border border-neutral-800 bg-neutral-900/98 glass-modal text-neutral-100 p-6 shadow-2xl flex flex-col gap-5"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}

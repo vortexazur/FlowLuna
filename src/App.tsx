@@ -713,13 +713,17 @@ export default function App() {
   };
 
   // Open local files or folders (Screenbox)
-  const handleImportFiles = async (files: FileList | File[]) => {
+  const handleImportFiles = async (files: FileList | File[] | Track[]) => {
     const fileList = Array.isArray(files) ? files : Array.from(files);
     const imported: Track[] = [];
-    for (const file of fileList) {
+    for (const item of fileList) {
       try {
-        const track = await processLocalAudioFile(file);
-        imported.push(track);
+        if ('url' in item && 'format' in item && 'id' in item) {
+          imported.push(item as Track);
+        } else {
+          const track = await processLocalAudioFile(item as File);
+          imported.push(track);
+        }
       } catch (err) {
         console.warn('File processing error:', err);
       }
@@ -742,13 +746,17 @@ export default function App() {
   };
 
   // Add media (videos or songs) to the queue from the QueueDrawer '+' button
-  const handleAddMediaToQueue = async (files: FileList | File[]) => {
+  const handleAddMediaToQueue = async (files: FileList | File[] | Track[]) => {
     const fileList = Array.isArray(files) ? files : Array.from(files);
     const imported: Track[] = [];
-    for (const file of fileList) {
+    for (const item of fileList) {
       try {
-        const track = await processLocalAudioFile(file);
-        imported.push(track);
+        if ('url' in item && 'format' in item && 'id' in item) {
+          imported.push(item as Track);
+        } else {
+          const track = await processLocalAudioFile(item as File);
+          imported.push(track);
+        }
       } catch (err) {
         console.warn('File processing error in queue:', err);
       }
@@ -1164,22 +1172,25 @@ export default function App() {
   const glassStyle = {
     '--glass-intensity': `${glassIntensity}%`,
     '--glass-factor': `${glassFactor}`,
-    '--glass-blur': `${Math.round(glassFactor * 28)}px`,
+    '--glass-blur': `${Math.round(14 + glassFactor * 26)}px`,
     '--glass-border': isDark
-      ? `rgba(255, 255, 255, ${0.05 + glassFactor * 0.12})`
-      : `rgba(0, 0, 0, ${0.05 + glassFactor * 0.08})`,
+      ? `rgba(255, 255, 255, ${0.06 + glassFactor * 0.14})`
+      : `rgba(0, 0, 0, ${0.06 + glassFactor * 0.08})`,
     '--glass-sidebar-bg': isDark
-      ? `rgba(10, 10, 15, ${Math.max(0.3, 1 - glassFactor * 0.65)})`
-      : `rgba(248, 250, 252, ${Math.max(0.4, 1 - glassFactor * 0.55)})`,
+      ? `rgba(10, 10, 15, ${Math.max(0.18, 0.95 - glassFactor * 0.77)})`
+      : `rgba(248, 250, 252, ${Math.max(0.3, 0.95 - glassFactor * 0.65)})`,
     '--glass-main-bg': isDark
-      ? `rgba(6, 6, 10, ${Math.max(0.25, 1 - glassFactor * 0.7)})`
-      : `rgba(241, 245, 249, ${Math.max(0.35, 1 - glassFactor * 0.58)})`,
+      ? `rgba(6, 6, 10, ${Math.max(0.12, 0.92 - glassFactor * 0.8)})`
+      : `rgba(241, 245, 249, ${Math.max(0.25, 0.92 - glassFactor * 0.67)})`,
     '--glass-player-bg': isDark
-      ? `rgba(12, 12, 18, ${Math.max(0.38, 1 - glassFactor * 0.6)})`
-      : `rgba(255, 255, 255, ${Math.max(0.48, 1 - glassFactor * 0.5)})`,
+      ? `rgba(12, 12, 18, ${Math.max(0.22, 0.95 - glassFactor * 0.73)})`
+      : `rgba(255, 255, 255, ${Math.max(0.35, 0.95 - glassFactor * 0.6)})`,
     '--glass-card-bg': isDark
-      ? `rgba(20, 20, 28, ${Math.max(0.25, 1 - glassFactor * 0.65)})`
-      : `rgba(255, 255, 255, ${Math.max(0.5, 1 - glassFactor * 0.45)})`,
+      ? `rgba(20, 20, 28, ${Math.max(0.16, 0.9 - glassFactor * 0.74)})`
+      : `rgba(255, 255, 255, ${Math.max(0.35, 0.9 - glassFactor * 0.55)})`,
+    '--glass-modal-bg': isDark
+      ? `rgba(14, 14, 22, ${Math.max(0.45, 0.95 - glassFactor * 0.5)})`
+      : `rgba(255, 255, 255, ${Math.max(0.65, 0.95 - glassFactor * 0.3)})`,
   } as React.CSSProperties;
 
   return (

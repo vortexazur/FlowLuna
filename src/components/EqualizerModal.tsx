@@ -96,7 +96,7 @@ export const EqualizerModal: React.FC<EqualizerModalProps> = ({
     >
       <div
         id="equalizer-modal-content"
-        className="w-full max-w-3xl rounded-xl border border-neutral-800 bg-neutral-900/95 text-neutral-100 p-6 shadow-2xl flex flex-col gap-6"
+        className="w-full max-w-3xl max-h-[90vh] overflow-y-auto rounded-2xl border border-neutral-800 bg-neutral-900/95 glass-modal text-neutral-100 p-6 shadow-2xl flex flex-col gap-6"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}

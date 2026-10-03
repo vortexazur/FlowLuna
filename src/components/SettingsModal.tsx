@@ -16,6 +16,8 @@ import {
   HardDrive,
   Cpu,
   Terminal,
+  FolderPlus,
+  Music,
 } from 'lucide-react';
 import { PlayerSettings, AccentColor } from '../types';
 import { SUPPORTED_LANGUAGES, getT } from '../i18n';
@@ -60,10 +62,14 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   onClose,
   settings,
   onChange,
+  onDataReload,
 }) => {
   const [binariesStatus, setBinariesStatus] = useState<any>(null);
   const [isUpdatingYtdlp, setIsUpdatingYtdlp] = useState(false);
   const [updateMessage, setUpdateMessage] = useState<{ text: string; type: 'success' | 'error' | 'info' } | null>(null);
+  const [isScanningSettings, setIsScanningSettings] = useState(false);
+  const [scanMessage, setScanMessage] = useState<{ text: string; type: 'success' | 'error' } | null>(null);
+  const [customFolders, setCustomFolders] = useState<string[]>([]);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -72,17 +78,81 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
         if (window.electronAPI) {
           const report = await window.electronAPI.getBinariesStatus();
           setBinariesStatus(report);
-          return;
+        } else {
+          const res = await fetch('/api/downloader/binaries-status');
+          if (res.ok) {
+            const report = await res.json();
+            setBinariesStatus(report);
+          }
         }
-        const res = await fetch('/api/downloader/binaries-status');
-        if (res.ok) {
-          const report = await res.json();
-          setBinariesStatus(report);
+      } catch {}
+
+      try {
+        const foldersRes = await fetch('/api/library/folders');
+        if (foldersRes.ok) {
+          const data = await foldersRes.json();
+          if (Array.isArray(data.folders)) {
+            setCustomFolders(data.folders);
+          }
         }
       } catch {}
     };
     fetchStatus();
   }, [isOpen]);
+
+  const handleScanMusicNow = async () => {
+    setIsScanningSettings(true);
+    setScanMessage(null);
+    try {
+      const res = await fetch('/api/library/scan');
+      if (res.ok) {
+        const data = await res.json();
+        setScanMessage({
+          text: `${data.count} morceaux locaux détectés et synchronisés !`,
+          type: 'success',
+        });
+        if (onDataReload) await onDataReload();
+      } else {
+        throw new Error('Erreur de scan');
+      }
+    } catch {
+      setScanMessage({
+        text: 'Échec de la numérisation des dossiers musicaux',
+        type: 'error',
+      });
+    } finally {
+      setIsScanningSettings(false);
+    }
+  };
+
+  const handleAddMusicFolder = async () => {
+    if (window.electronAPI?.selectMusicFolder) {
+      try {
+        const folder = await window.electronAPI.selectMusicFolder();
+        if (folder) {
+          setIsScanningSettings(true);
+          const res = await fetch('/api/library/add-folder', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ folderPath: folder }),
+          });
+          if (res.ok) {
+            const data = await res.json();
+            setCustomFolders((prev) => (prev.includes(folder) ? prev : [...prev, folder]));
+            setScanMessage({
+              text: `${data.count} morceaux ajoutés depuis ${folder} !`,
+              type: 'success',
+            });
+            if (onDataReload) await onDataReload();
+          }
+        }
+      } catch {
+        setScanMessage({ text: 'Erreur lors de l’ajout du dossier', type: 'error' });
+      } finally {
+        setIsScanningSettings(false);
+      }
+    }
+  };
 
   const handleUpdateYtdlp = async () => {
     setIsUpdatingYtdlp(true);
@@ -142,7 +212,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
     >
       <div
         id="settings-modal-content"
-        className="w-full max-w-2xl max-h-[90vh] overflow-y-auto rounded-2xl border border-neutral-800 bg-neutral-900/90 glass-modal text-neutral-100 p-6 shadow-2xl flex flex-col gap-6"
+        className="w-full max-w-3xl max-h-[90vh] overflow-y-auto rounded-2xl border border-neutral-800/80 bg-neutral-900/90 glass-modal text-neutral-100 p-6 sm:p-7 shadow-2xl flex flex-col gap-6"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
@@ -519,6 +589,74 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                   className="w-4 h-4 rounded accent-emerald-500 cursor-pointer"
                 />
               </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Bibliothèque Locale & Détection Musicale PC */}
+        <div className="flex flex-col gap-3.5 border-t border-neutral-800 pt-4">
+          <div className="flex items-center justify-between">
+            <h3 className="text-xs uppercase tracking-wider text-neutral-400 font-bold flex items-center gap-2">
+              <Music className="w-4 h-4 text-emerald-400" />
+              <span>Bibliothèque & Détection Musicale PC</span>
+            </h3>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={handleScanMusicNow}
+                disabled={isScanningSettings}
+                className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-emerald-950/80 hover:bg-emerald-900 text-emerald-300 border border-emerald-500/30 flex items-center gap-2 transition-all cursor-pointer disabled:opacity-50 shadow-xs"
+              >
+                <RefreshCw className={`w-3.5 h-3.5 ${isScanningSettings ? 'animate-spin text-emerald-400' : 'text-emerald-400'}`} />
+                <span>{isScanningSettings ? 'Scan...' : 'Scanner le PC'}</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={handleAddMusicFolder}
+                disabled={isScanningSettings}
+                className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-neutral-800 hover:bg-neutral-700 text-white border border-neutral-700/80 flex items-center gap-1.5 transition-all cursor-pointer disabled:opacity-50 shadow-xs"
+              >
+                <FolderPlus className="w-3.5 h-3.5 text-cyan-400" />
+                <span>Ajouter un dossier...</span>
+              </button>
+            </div>
+          </div>
+
+          <p className="text-xs text-neutral-400">
+            FlowLuna surveille automatiquement vos dossiers audio (<span className="text-white font-medium">Musique</span>, <span className="text-white font-medium">OneDrive</span>, <span className="text-white font-medium">Téléchargements</span> et dossiers personnalisés) et indexe instantanément les fichiers grâce au moteur embarqué FFprobe.
+          </p>
+
+          {/* Feedback alert */}
+          {scanMessage && (
+            <div
+              className={`p-3 rounded-xl border text-xs flex items-center gap-2.5 animate-in fade-in ${
+                scanMessage.type === 'success'
+                  ? 'bg-emerald-950/60 border-emerald-500/40 text-emerald-200'
+                  : 'bg-rose-950/60 border-rose-500/40 text-rose-200'
+              }`}
+            >
+              {scanMessage.type === 'success' ? (
+                <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+              ) : (
+                <AlertCircle className="w-4 h-4 text-rose-400 shrink-0" />
+              )}
+              <span>{scanMessage.text}</span>
+            </div>
+          )}
+
+          {/* Scanned directories listing */}
+          <div className="p-3 rounded-xl bg-neutral-950/60 border border-neutral-800/80 flex flex-col gap-2">
+            <span className="text-xs font-bold text-neutral-300">Dossiers surveillés & synchronisés :</span>
+            <div className="flex flex-wrap gap-1.5 text-[11px] font-mono text-neutral-400">
+              <span className="px-2 py-0.5 rounded bg-neutral-900 border border-neutral-800 text-neutral-300">📁 ~/Music</span>
+              <span className="px-2 py-0.5 rounded bg-neutral-900 border border-neutral-800 text-neutral-300">📁 ~/OneDrive/Music</span>
+              <span className="px-2 py-0.5 rounded bg-neutral-900 border border-neutral-800 text-neutral-300">📁 ~/Downloads</span>
+              {customFolders.map((f, i) => (
+                <span key={i} className="px-2 py-0.5 rounded bg-cyan-950/40 border border-cyan-500/20 text-cyan-300 truncate max-w-xs" title={f}>
+                  📁 {f}
+                </span>
+              ))}
             </div>
           </div>
         </div>

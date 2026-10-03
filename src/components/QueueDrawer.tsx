@@ -76,7 +76,7 @@ export const QueueDrawer: React.FC<QueueDrawerProps> = ({
     >
       <div
         id="queue-drawer-panel"
-        className="w-full max-w-md h-full bg-neutral-900 border-l border-neutral-800 text-neutral-100 flex flex-col shadow-2xl p-6 select-none"
+        className="w-full max-w-md h-full bg-neutral-900/90 glass-modal border-l border-white/10 text-neutral-100 flex flex-col shadow-2xl p-6 select-none"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Hidden input to pick videos or audio files to append to queue */}

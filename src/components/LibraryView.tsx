@@ -33,6 +33,8 @@ import {
   List,
   LayoutGrid,
   Radio,
+  RefreshCw,
+  FolderPlus,
 } from 'lucide-react';
 import { Track, Playlist, AccentColor, AudioFormat } from '../types';
 import { saveAudioToPC } from '../utils/fileSaver';
@@ -407,6 +409,68 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
     setTimeout(() => setNotification(null), 4000);
   };
 
+  const [isScanningPc, setIsScanningPc] = useState(false);
+
+  const handleScanPc = async () => {
+    if (isScanningPc) return;
+    setIsScanningPc(true);
+    try {
+      const newlyDiscovered = await backgroundScanner.runScan(false);
+      if (newlyDiscovered && newlyDiscovered.length > 0) {
+        setNotification({
+          message: `${newlyDiscovered.length} nouveau${newlyDiscovered.length > 1 ? 'x' : ''} morceau${newlyDiscovered.length > 1 ? 'x' : ''} indexé${newlyDiscovered.length > 1 ? 's' : ''} sur le PC !`,
+          type: 'success',
+        });
+      } else {
+        setNotification({
+          message: 'Bibliothèque locale synchronisée (dossiers PC analysés)',
+          type: 'success',
+        });
+      }
+    } catch {
+      setNotification({
+        message: 'Erreur lors de l’indexation des fichiers musicaux',
+        type: 'error',
+      });
+    } finally {
+      setIsScanningPc(false);
+      setTimeout(() => setNotification(null), 4000);
+    }
+  };
+
+  const handleAddCustomFolder = async () => {
+    if (window.electronAPI?.selectMusicFolder) {
+      try {
+        const folder = await window.electronAPI.selectMusicFolder();
+        if (folder) {
+          setIsScanningPc(true);
+          const resp = await fetch('/api/library/add-folder', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ folderPath: folder }),
+          });
+          if (resp.ok) {
+            const data = await resp.json();
+            if (data.success && Array.isArray(data.tracks)) {
+              if (onImportFiles) {
+                onImportFiles(data.tracks);
+              }
+              setNotification({
+                message: `${data.tracks.length} morceau${data.tracks.length > 1 ? 'x' : ''} indexé${data.tracks.length > 1 ? 's' : ''} depuis ${folder}`,
+                type: 'success',
+              });
+            }
+          }
+        }
+      } catch (err) {
+        console.error('Add folder error:', err);
+      } finally {
+        setIsScanningPc(false);
+        setTimeout(() => setNotification(null), 4000);
+      }
+    }
+  };
+
   const isAllFilteredSelected = filtered.length > 0 && selectedTrackIds.size === filtered.length;
 
   return (
@@ -464,7 +528,20 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
           </div>
         </div>
 
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2.5">
+          {/* Bouton rapide: Scanner le PC */}
+          <button
+            type="button"
+            id="library-scan-pc-btn"
+            onClick={handleScanPc}
+            disabled={isScanningPc}
+            className="px-3.5 py-2.5 rounded-xl text-xs font-semibold flex items-center gap-2 border border-emerald-500/30 bg-emerald-950/60 hover:bg-emerald-900/60 text-emerald-300 hover:text-emerald-100 transition-all shadow-xs cursor-pointer disabled:opacity-50"
+            title="Analyser le PC à la recherche de fichiers audio (Musique, OneDrive, Téléchargements)"
+          >
+            <RefreshCw className={`w-3.5 h-3.5 ${isScanningPc ? 'animate-spin text-emerald-400' : 'text-emerald-400'}`} />
+            <span>{isScanningPc ? 'Analyse...' : 'Scanner le PC'}</span>
+          </button>
+
           {/* Menu déroulant Actions de la Bibliothèque */}
           <div className="relative">
             <button
@@ -486,6 +563,31 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
                 className="absolute right-0 top-12 z-40 w-64 bg-neutral-900/95 backdrop-blur-md border border-neutral-700 rounded-xl shadow-2xl p-1.5 flex flex-col gap-1 text-left animate-in fade-in"
                 onClick={(e) => e.stopPropagation()}
               >
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsHeaderMenuOpen(false);
+                    handleAddCustomFolder();
+                  }}
+                  className="w-full text-left px-3 py-2 rounded-lg text-xs hover:bg-neutral-800 text-cyan-300 font-medium flex items-center gap-2.5 transition-colors cursor-pointer"
+                >
+                  <FolderPlus className="w-4 h-4 text-cyan-400" />
+                  <span>Ajouter un dossier musical...</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsHeaderMenuOpen(false);
+                    handleScanPc();
+                  }}
+                  className="w-full text-left px-3 py-2 rounded-lg text-xs hover:bg-neutral-800 text-emerald-300 font-medium flex items-center gap-2.5 transition-colors cursor-pointer"
+                >
+                  <RefreshCw className="w-4 h-4 text-emerald-400" />
+                  <span>Resynchroniser tout le PC</span>
+                </button>
+
+                <div className="h-px bg-neutral-800 my-0.5" />
                 {musicTracks.length > 0 && (
                   <button
                     type="button"

@@ -12,6 +12,8 @@ export interface ElectronAPI {
   updateTrayTrack: (info: { title: string; artist: string; isPlaying: boolean }) => Promise<void>;
   getBinariesStatus: () => Promise<any>;
   updateYtdlp: () => Promise<any>;
+  selectMusicFolder: () => Promise<string | null>;
+  selectMusicFiles: () => Promise<string[]>;
 }
 
 const api: ElectronAPI = {
@@ -39,6 +41,8 @@ const api: ElectronAPI = {
     ipcRenderer.invoke('update-tray-track', info),
   getBinariesStatus: () => ipcRenderer.invoke('get-binaries-status'),
   updateYtdlp: () => ipcRenderer.invoke('update-ytdlp'),
+  selectMusicFolder: () => ipcRenderer.invoke('select-music-folder'),
+  selectMusicFiles: () => ipcRenderer.invoke('select-music-files'),
 };
 
 contextBridge.exposeInMainWorld('electronAPI', api);

@@ -27,6 +27,8 @@ export interface ElectronAPIType {
   updateTrayTrack: (info: { title: string; artist: string; isPlaying: boolean }) => Promise<void>;
   getBinariesStatus: () => Promise<any>;
   updateYtdlp: () => Promise<any>;
+  selectMusicFolder: () => Promise<string | null>;
+  selectMusicFiles: () => Promise<string[]>;
 }
 
 declare global {

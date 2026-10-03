@@ -153,7 +153,7 @@ export const ExportTracksModal: React.FC<ExportTracksModalProps> = ({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md animate-in fade-in">
-      <div className="bg-neutral-900 border border-neutral-800 rounded-2xl w-full max-w-2xl max-h-[90vh] flex flex-col shadow-2xl overflow-hidden animate-in zoom-in-95 duration-150">
+      <div className="bg-neutral-900/95 glass-modal border border-neutral-800 rounded-2xl w-full max-w-2xl max-h-[90vh] flex flex-col shadow-2xl overflow-hidden animate-in zoom-in-95 duration-150">
         
         {/* Header */}
         <div className="flex items-center justify-between p-5 border-b border-neutral-800/80 bg-neutral-900/90">

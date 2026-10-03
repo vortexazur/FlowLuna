@@ -110,7 +110,7 @@ export const CreatePlaylistModal: React.FC<CreatePlaylistModalProps> = ({
     >
       <div
         id="create-playlist-modal-card"
-        className="w-full max-w-lg max-h-[90vh] bg-neutral-900 border border-neutral-800 rounded-2xl shadow-2xl overflow-hidden flex flex-col text-neutral-100 animate-in zoom-in-95 duration-150"
+        className="w-full max-w-xl max-h-[90vh] bg-neutral-900/95 glass-modal border border-neutral-800 rounded-2xl shadow-2xl overflow-hidden flex flex-col text-neutral-100 animate-in zoom-in-95 duration-150"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}

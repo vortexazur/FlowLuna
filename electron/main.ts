@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, Tray, Menu, nativeImage, globalShortcut, shell } from 'electron';
+import { app, BrowserWindow, ipcMain, Tray, Menu, nativeImage, globalShortcut, shell, dialog } from 'electron';
 import path from 'path';
 import fs from 'fs';
 import http from 'http';
@@ -135,6 +135,7 @@ function createMainWindow(): void {
     frame: false,
     titleBarStyle: 'hidden',
     backgroundColor: '#0a0a0a',
+    backgroundMaterial: process.platform === 'win32' ? 'acrylic' : undefined,
     icon: iconPath || undefined,
     show: false,
     webPreferences: {
@@ -347,6 +348,35 @@ function setupIpcHandlers(): void {
 
   ipcMain.handle('update-ytdlp', async () => {
     return await updateYtdlp();
+  });
+
+  ipcMain.handle('select-music-folder', async () => {
+    if (!mainWindow) return null;
+    const result = await dialog.showOpenDialog(mainWindow, {
+      title: 'Sélectionner un dossier musical - FlowLuna',
+      properties: ['openDirectory'],
+    });
+    if (result.canceled || result.filePaths.length === 0) {
+      return null;
+    }
+    return result.filePaths[0];
+  });
+
+  ipcMain.handle('select-music-files', async () => {
+    if (!mainWindow) return [];
+    const result = await dialog.showOpenDialog(mainWindow, {
+      title: 'Sélectionner des fichiers musicaux - FlowLuna',
+      properties: ['openFile', 'multiSelections'],
+      filters: [
+        {
+          name: 'Fichiers audio',
+          extensions: ['mp3', 'flac', 'wav', 'ogg', 'm4a', 'aac', 'webm', 'opus', 'wma', 'alac'],
+        },
+        { name: 'Tous les fichiers', extensions: ['*'] },
+      ],
+    });
+    if (result.canceled) return [];
+    return result.filePaths;
   });
 }
 

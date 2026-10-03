@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { Minus, Square, Copy, X, Music2 } from 'lucide-react';
-import { AccentColor, Track } from '../types';
+import { AccentColor, Track, APP_VERSION } from '../types';
 
 interface TitleBarProps {
   currentTrack?: Track | null;
@@ -57,7 +57,7 @@ export const TitleBar: React.FC<TitleBarProps> = ({ currentTrack, isPlaying, acc
         </div>
         <span className="font-bold tracking-wider text-[11px] text-white flex items-center gap-1.5">
           <span>FlowLuna</span>
-          <span className="text-[9px] px-1.5 py-0.2 rounded bg-neutral-800 text-neutral-400 font-mono">v1.0</span>
+          <span className="text-[9px] px-1.5 py-0.2 rounded bg-neutral-800 text-neutral-400 font-mono">v{APP_VERSION}</span>
         </span>
 
         {currentTrack && (

@@ -28,10 +28,6 @@
       {
         "target": "nsis",
         "arch": ["x64"]
-      },
-      {
-        "target": "portable",
-        "arch": ["x64"]
       }
     ],
     "icon": "public/icon.ico",
@@ -44,8 +40,5 @@
     "createStartMenuShortcut": true,
     "shortcutName": "FlowLuna",
     "runAfterFinish": true
-  },
-  "portable": {
-    "artifactName": "${productName}-Portable-${version}.${ext}"
   }
 }

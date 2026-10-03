@@ -4,7 +4,7 @@
 
 ![FlowLuna Banner](public/logo.jpg)
 
-[![Version](https://img.shields.io/badge/version-1.0.0-emerald.svg?style=for-the-badge)](https://github.com/vortexazur/FlowLuna/releases)
+[![Version](https://img.shields.io/badge/version-1.0.5-emerald.svg?style=for-the-badge)](https://github.com/vortexazur/FlowLuna/releases)
 [![Platform](https://img.shields.io/badge/platform-Windows%2010%20%7C%2011%20x64-blue.svg?style=for-the-badge&logo=windows)](https://github.com/vortexazur/FlowLuna)
 [![Electron](https://img.shields.io/badge/Electron-44.5-47848F.svg?style=for-the-badge&logo=electron)](https://www.electronjs.org/)
 [![License](https://img.shields.io/badge/licence-MIT-green.svg?style=for-the-badge)](LICENSE)
@@ -76,14 +76,10 @@
 
 ## 📦 Installation
 
-### Option 1 : Installateur Standard Windows (.exe)
+### Installateur Standard Windows (.exe)
 1. Rendez-vous dans la section [Releases](https://github.com/vortexazur/FlowLuna/releases).
-2. Téléchargez le fichier `FlowLuna-Setup-1.0.0.exe`.
+2. Téléchargez le fichier `FlowLuna-Setup-1.0.5.exe`.
 3. Lancez l'exécutable pour installer FlowLuna sur votre PC avec raccourcis automatiques sur le Bureau et le Menu Démarrer.
-
-### Option 2 : Version Portable (.exe)
-1. Téléchargez `FlowLuna-Portable-1.0.0.exe`.
-2. Exécutez directement l'application depuis n'importe quel dossier ou clé USB, sans installation ni modification de la base de registre.
 
 ---
 

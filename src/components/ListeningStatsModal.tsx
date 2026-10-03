@@ -114,7 +114,7 @@ export const ListeningStatsModal: React.FC<ListeningStatsModalProps> = ({
     >
       <div
         id="listening-stats-content"
-        className="w-full max-w-2xl max-h-[85vh] rounded-2xl border border-neutral-800 bg-neutral-900/98 text-neutral-100 shadow-2xl flex flex-col overflow-hidden"
+        className="w-full max-w-3xl max-h-[85vh] rounded-2xl border border-neutral-800 bg-neutral-900/98 glass-modal text-neutral-100 shadow-2xl flex flex-col overflow-hidden"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}

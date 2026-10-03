@@ -3,8 +3,8 @@ import { ChevronDown, Folder, FolderOpen, FolderArchive } from 'lucide-react';
 import { AccentColor } from '../types';
 
 interface OpenFileDropdownProps {
-  onOpenFiles: (files: FileList | File[]) => void;
-  onOpenFolder?: (files: File[]) => void;
+  onOpenFiles: (files: FileList | File[] | any[]) => void;
+  onOpenFolder?: (files: File[] | any[]) => void;
   className?: string;
   placement?: 'auto' | 'up' | 'down';
   accent?: AccentColor;
@@ -66,13 +66,64 @@ export const OpenFileDropdown: React.FC<OpenFileDropdownProps> = ({
     };
   }, [isOpen]);
 
-  const handleOpenFileClick = () => {
+  const handleOpenFileClick = async () => {
     setIsOpen(false);
+
+    if (window.electronAPI?.selectMusicFiles) {
+      try {
+        const filePaths = await window.electronAPI.selectMusicFiles();
+        if (filePaths && filePaths.length > 0) {
+          const resp = await fetch('/api/library/add-files', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ filePaths }),
+          });
+          if (resp.ok) {
+            const data = await resp.json();
+            if (data.success && Array.isArray(data.tracks) && data.tracks.length > 0) {
+              onOpenFiles(data.tracks);
+              return;
+            }
+          }
+        }
+        return;
+      } catch (err) {
+        console.warn('Native file dialog fallback:', err);
+      }
+    }
+
     fileInputRef.current?.click();
   };
 
   const handleOpenFolderClick = async () => {
     setIsOpen(false);
+
+    if (window.electronAPI?.selectMusicFolder) {
+      try {
+        const folderPath = await window.electronAPI.selectMusicFolder();
+        if (folderPath) {
+          const resp = await fetch('/api/library/add-folder', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ folderPath }),
+          });
+          if (resp.ok) {
+            const data = await resp.json();
+            if (data.success && Array.isArray(data.tracks)) {
+              if (onOpenFolder) {
+                onOpenFolder(data.tracks);
+              } else {
+                onOpenFiles(data.tracks);
+              }
+              return;
+            }
+          }
+        }
+        return;
+      } catch (err) {
+        console.warn('Native folder dialog fallback:', err);
+      }
+    }
 
     // Try modern File System Access API if available
     if ('showDirectoryPicker' in window) {

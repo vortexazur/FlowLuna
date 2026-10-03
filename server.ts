@@ -2393,7 +2393,7 @@ app.post('/api/audio/convert', async (req, res) => {
     ffmpegArgs.push(outputTempPath);
 
     await new Promise<void>((resolve, reject) => {
-      execFile('ffmpeg', ffmpegArgs, { timeout: 30000 }, (err, stdout, stderr) => {
+      execFile(getFfmpegPath(), ffmpegArgs, { timeout: 30000 }, (err, stdout, stderr) => {
         if (err) {
           console.warn('ffmpeg transcode error:', err, stderr);
           return reject(err);
@@ -2484,16 +2484,61 @@ interface ScannedAudioTrack {
   filePath: string;
 }
 
-function scanDirectoryForAudio(dirPath: string, basePublicPath: string = ''): string[] {
+function getCustomScannedDirs(): string[] {
+  try {
+    const configPath = path.join(getFlowLunaDataDir(), 'custom_folders.json');
+    if (fs.existsSync(configPath)) {
+      const data = JSON.parse(fs.readFileSync(configPath, 'utf-8'));
+      if (Array.isArray(data)) return data.filter((p) => typeof p === 'string' && fs.existsSync(p));
+    }
+  } catch {}
+  return [];
+}
+
+function saveCustomScannedDir(dirPath: string): string[] {
+  try {
+    const current = getCustomScannedDirs();
+    const resolved = path.resolve(dirPath);
+    if (!current.includes(resolved) && fs.existsSync(resolved)) {
+      current.push(resolved);
+      const configPath = path.join(getFlowLunaDataDir(), 'custom_folders.json');
+      fs.writeFileSync(configPath, JSON.stringify(current, null, 2), 'utf-8');
+    }
+    return current;
+  } catch {
+    return [];
+  }
+}
+
+const IGNORED_SCAN_DIRS = new Set([
+  'node_modules',
+  '.git',
+  '.vscode',
+  'appdata',
+  'localappdata',
+  'windows',
+  '$recycle.bin',
+  'system volume information',
+  'temp',
+  'cache',
+  'program files',
+  'program files (x86)',
+]);
+
+function scanDirectoryForAudio(dirPath: string, maxDepth: number = 4, currentDepth: number = 0): string[] {
   let results: string[] = [];
-  if (!fs.existsSync(dirPath)) return results;
+  if (!fs.existsSync(dirPath) || currentDepth > maxDepth) return results;
 
   try {
     const entries = fs.readdirSync(dirPath, { withFileTypes: true });
     for (const entry of entries) {
+      if (entry.name.startsWith('.')) continue;
+      const lowerName = entry.name.toLowerCase();
+      if (IGNORED_SCAN_DIRS.has(lowerName)) continue;
+
       const fullPath = path.join(dirPath, entry.name);
       if (entry.isDirectory()) {
-        results = results.concat(scanDirectoryForAudio(fullPath, basePublicPath ? path.join(basePublicPath, entry.name) : entry.name));
+        results = results.concat(scanDirectoryForAudio(fullPath, maxDepth, currentDepth + 1));
       } else if (entry.isFile()) {
         const ext = path.extname(entry.name).toLowerCase();
         if (AUDIO_EXTENSIONS.has(ext)) {
@@ -2501,18 +2546,19 @@ function scanDirectoryForAudio(dirPath: string, basePublicPath: string = ''): st
         }
       }
     }
-  } catch (err) {
-    console.warn(`Error scanning directory ${dirPath}:`, err);
+  } catch {
+    // Ignore permissions or locked directories
   }
   return results;
 }
 
 async function probeAudioFile(filePath: string): Promise<any> {
+  const ffprobePath = getFfprobePath();
   return new Promise((resolve) => {
     execFile(
-      'ffprobe',
+      ffprobePath,
       ['-v', 'quiet', '-print_format', 'json', '-show_format', '-show_streams', filePath],
-      { timeout: 8000 },
+      { timeout: 9000 },
       (err, stdout) => {
         if (err || !stdout) {
           return resolve(null);
@@ -2537,91 +2583,123 @@ const DEFAULT_COVERS = [
   'https://images.unsplash.com/photo-1470225620780-dba8ba36b745?w=600&auto=format&fit=crop&q=80',
 ];
 
+async function buildTrackMetadataFromFile(filePath: string, isPublic: boolean = false): Promise<ScannedAudioTrack | null> {
+  if (!fs.existsSync(filePath)) return null;
+
+  try {
+    const fileName = path.basename(filePath);
+    const ext = path.extname(fileName).toLowerCase().replace('.', '');
+    const stats = fs.statSync(filePath);
+
+    // Run ffprobe for precise metadata
+    const probeData = await probeAudioFile(filePath);
+    const formatData = probeData?.format || {};
+    const streamData = probeData?.streams?.[0] || {};
+    const tags = formatData.tags || streamData.tags || {};
+
+    const duration = Math.round(parseFloat(formatData.duration || streamData.duration || '180')) || 180;
+    const bitrate = Math.round(parseInt(formatData.bit_rate || streamData.bit_rate || '320000', 10) / 1000) || 320;
+
+    let title = tags.title || tags.TITLE || '';
+    let artist = tags.artist || tags.ARTIST || '';
+    const album = tags.album || tags.ALBUM || 'Bibliothèque Locale';
+
+    if (!title) {
+      const rawBaseName = path.basename(fileName, path.extname(fileName));
+      if (rawBaseName.includes(' - ')) {
+        const parts = rawBaseName.split(' - ');
+        artist = parts[0].trim();
+        title = parts.slice(1).join(' - ').trim();
+      } else {
+        title = rawBaseName.trim();
+        artist = 'Artiste Local';
+      }
+    }
+
+    if (!artist) {
+      artist = 'Artiste Local';
+    }
+
+    let playableUrl = '';
+    if (isPublic) {
+      const relFromPublic = path.relative(path.join(process.cwd(), 'public'), filePath);
+      playableUrl = `/${relFromPublic.replace(/\\/g, '/')}`;
+    } else {
+      playableUrl = `/api/library/stream?file=${encodeURIComponent(filePath)}`;
+    }
+
+    const trackId = `scanned-${Buffer.from(filePath).toString('base64url')}`;
+    const coverUrl = DEFAULT_COVERS[Math.abs(trackId.split('').reduce((acc, c) => acc + c.charCodeAt(0), 0)) % DEFAULT_COVERS.length];
+
+    return {
+      id: trackId,
+      title,
+      artist,
+      album,
+      duration,
+      format: ext,
+      bitrate,
+      url: playableUrl,
+      coverUrl,
+      source: isPublic ? 'default' : 'local',
+      isFavorite: false,
+      isCachedOffline: true,
+      cachedAt: stats.mtimeMs,
+      playCount: 0,
+      addedAt: stats.mtimeMs,
+      sizeInBytes: stats.size,
+      filePath,
+    };
+  } catch (err) {
+    console.warn(`Error building track metadata for ${filePath}:`, err);
+    return null;
+  }
+}
+
 app.get('/api/library/scan', async (req, res) => {
   try {
-    const searchDirs: { dir: string; isPublic: boolean; urlPrefix: string }[] = [
-      { dir: getDownloadDir(false), isPublic: true, urlPrefix: '/audio' },
-      { dir: path.join(process.cwd(), 'public', 'audio'), isPublic: true, urlPrefix: '/audio' },
-      { dir: path.join(os.homedir(), 'Music'), isPublic: false, urlPrefix: '/api/library/stream?file=' },
-      { dir: path.join(process.cwd(), 'audio'), isPublic: false, urlPrefix: '/api/library/stream?file=' },
-      { dir: path.join(process.cwd(), 'music'), isPublic: false, urlPrefix: '/api/library/stream?file=' },
+    const userFolder = req.query.folder as string;
+    if (userFolder && fs.existsSync(userFolder)) {
+      saveCustomScannedDir(userFolder);
+    }
+
+    const searchDirs: { dir: string; isPublic: boolean }[] = [
+      { dir: getDownloadDir(false), isPublic: true },
+      { dir: path.join(process.cwd(), 'public', 'audio'), isPublic: true },
+      { dir: path.join(process.cwd(), 'audio'), isPublic: false },
+      { dir: path.join(process.cwd(), 'music'), isPublic: false },
+      { dir: path.join(os.homedir(), 'Music'), isPublic: false },
+      { dir: path.join(os.homedir(), 'Musique'), isPublic: false },
+      { dir: path.join(os.homedir(), 'OneDrive', 'Music'), isPublic: false },
+      { dir: path.join(os.homedir(), 'OneDrive', 'Musique'), isPublic: false },
+      { dir: path.join(os.homedir(), 'Downloads'), isPublic: false },
+      { dir: path.join(os.homedir(), 'Téléchargements'), isPublic: false },
     ];
+
+    // Add user custom folders
+    for (const customDir of getCustomScannedDirs()) {
+      searchDirs.push({ dir: customDir, isPublic: false });
+    }
+
+    if (userFolder && fs.existsSync(userFolder)) {
+      searchDirs.unshift({ dir: path.resolve(userFolder), isPublic: false });
+    }
 
     const discoveredTracks: ScannedAudioTrack[] = [];
     const scannedPaths = new Set<string>();
 
     for (const target of searchDirs) {
       if (!fs.existsSync(target.dir)) continue;
-      const filePaths = scanDirectoryForAudio(target.dir);
+      const filePaths = scanDirectoryForAudio(target.dir, 4);
 
       for (const filePath of filePaths) {
         if (scannedPaths.has(filePath)) continue;
         scannedPaths.add(filePath);
 
-        const fileName = path.basename(filePath);
-        const ext = path.extname(fileName).toLowerCase().replace('.', '');
-        const stats = fs.statSync(filePath);
-
-        // Run ffprobe for precise metadata
-        const probeData = await probeAudioFile(filePath);
-        const formatData = probeData?.format || {};
-        const streamData = probeData?.streams?.[0] || {};
-        const tags = formatData.tags || streamData.tags || {};
-
-        const duration = Math.round(parseFloat(formatData.duration || streamData.duration || '180')) || 180;
-        const bitrate = Math.round(parseInt(formatData.bit_rate || streamData.bit_rate || '320000', 10) / 1000) || 320;
-
-        let title = tags.title || tags.TITLE || '';
-        let artist = tags.artist || tags.ARTIST || '';
-        const album = tags.album || tags.ALBUM || 'Bibliothèque Locale';
-
-        if (!title) {
-          const rawBaseName = path.basename(fileName, path.extname(fileName));
-          if (rawBaseName.includes(' - ')) {
-            const parts = rawBaseName.split(' - ');
-            artist = parts[0].trim();
-            title = parts.slice(1).join(' - ').trim();
-          } else {
-            title = rawBaseName.trim();
-            artist = 'Artiste Local';
-          }
+        const track = await buildTrackMetadataFromFile(filePath, target.isPublic);
+        if (track) {
+          discoveredTracks.push(track);
         }
-
-        if (!artist) {
-          artist = 'Artiste Local';
-        }
-
-        // Relative URL
-        let playableUrl = '';
-        if (target.isPublic) {
-          const relFromPublic = path.relative(path.join(process.cwd(), 'public'), filePath);
-          playableUrl = `/${relFromPublic.replace(/\\/g, '/')}`;
-        } else {
-          playableUrl = `/api/library/stream?file=${encodeURIComponent(filePath)}`;
-        }
-
-        const trackId = `scanned-${Buffer.from(filePath).toString('base64url')}`;
-        const coverUrl = DEFAULT_COVERS[Math.abs(trackId.split('').reduce((acc, c) => acc + c.charCodeAt(0), 0)) % DEFAULT_COVERS.length];
-
-        discoveredTracks.push({
-          id: trackId,
-          title,
-          artist,
-          album,
-          duration,
-          format: ext,
-          bitrate,
-          url: playableUrl,
-          coverUrl,
-          source: target.isPublic ? 'default' : 'local',
-          isFavorite: false,
-          isCachedOffline: true,
-          cachedAt: stats.mtimeMs,
-          playCount: 0,
-          addedAt: stats.mtimeMs,
-          sizeInBytes: stats.size,
-          filePath,
-        });
       }
     }
 
@@ -2637,6 +2715,67 @@ app.get('/api/library/scan', async (req, res) => {
   }
 });
 
+// Endpoint to add and immediately scan a custom directory
+app.post('/api/library/add-folder', express.json(), async (req, res) => {
+  try {
+    const { folderPath } = req.body;
+    if (!folderPath || !fs.existsSync(folderPath)) {
+      return res.status(400).json({ error: 'Dossier inexistant ou inaccessible' });
+    }
+
+    saveCustomScannedDir(folderPath);
+    const filePaths = scanDirectoryForAudio(folderPath, 5);
+    const tracks: ScannedAudioTrack[] = [];
+
+    for (const fp of filePaths) {
+      const track = await buildTrackMetadataFromFile(fp, false);
+      if (track) tracks.push(track);
+    }
+
+    res.json({
+      success: true,
+      folder: folderPath,
+      count: tracks.length,
+      tracks,
+    });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message || 'Erreur lors de l’analyse du dossier' });
+  }
+});
+
+// Endpoint to probe and return track metadata for a list of file paths (from native file dialog)
+app.post('/api/library/add-files', express.json(), async (req, res) => {
+  try {
+    const { filePaths } = req.body;
+    if (!Array.isArray(filePaths) || filePaths.length === 0) {
+      return res.status(400).json({ error: 'Aucun fichier fourni' });
+    }
+
+    const tracks: ScannedAudioTrack[] = [];
+    for (const fp of filePaths) {
+      if (typeof fp === 'string' && fs.existsSync(fp)) {
+        const track = await buildTrackMetadataFromFile(fp, false);
+        if (track) tracks.push(track);
+      }
+    }
+
+    res.json({
+      success: true,
+      count: tracks.length,
+      tracks,
+    });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message || 'Erreur lors de l’analyse des fichiers' });
+  }
+});
+
+// Endpoint to list scanned folders
+app.get('/api/library/folders', (_req, res) => {
+  res.json({
+    folders: getCustomScannedDirs(),
+  });
+});
+
 // Secure Local Audio Streamer for non-public directories
 app.get('/api/library/stream', (req, res) => {
   const reqFile = req.query.file as string;
@@ -2645,15 +2784,14 @@ app.get('/api/library/stream', (req, res) => {
   }
 
   const resolved = path.resolve(reqFile);
-  if (!resolved.startsWith(process.cwd()) && !resolved.startsWith(os.homedir()) && !resolved.startsWith('/tmp')) {
-    return res.status(403).send('Accès interdit');
-  }
-
   if (!fs.existsSync(resolved)) {
     return res.status(404).send('Fichier audio introuvable');
   }
 
   const ext = path.extname(resolved).toLowerCase();
+  if (!AUDIO_EXTENSIONS.has(ext)) {
+    return res.status(403).send('Format audio non autorisé');
+  }
   const mimeMap: Record<string, string> = {
     '.mp3': 'audio/mpeg',
     '.flac': 'audio/flac',
