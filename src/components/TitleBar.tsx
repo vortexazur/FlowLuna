@@ -57,7 +57,7 @@ export const TitleBar: React.FC<TitleBarProps> = ({ currentTrack, isPlaying, acc
         </div>
         <span className="font-bold tracking-wider text-[11px] text-white flex items-center gap-1.5">
           <span>FlowLuna</span>
-          <span className="text-[9px] px-1.5 py-0.2 rounded bg-neutral-800 text-neutral-400 font-mono">v2.4</span>
+          <span className="text-[9px] px-1.5 py-0.2 rounded bg-neutral-800 text-neutral-400 font-mono">v1.0</span>
         </span>
 
         {currentTrack && (

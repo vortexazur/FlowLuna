@@ -2703,7 +2703,13 @@ if (fs.existsSync(path.join(process.cwd(), 'public', 'videos'))) {
 
 // Vite middleware & Static Serving
 export async function startServer(port: number = PORT): Promise<{ app: express.Express; server: http.Server }> {
-  if (process.env.NODE_ENV !== 'production') {
+  const isPackagedOrProd =
+    process.env.NODE_ENV === 'production' ||
+    Boolean((process as any).resourcesPath) ||
+    !fs.existsSync(path.join(process.cwd(), 'src', 'App.tsx')) ||
+    Boolean((process as any).versions?.electron && process.env.NODE_ENV !== 'development');
+
+  if (!isPackagedOrProd) {
     const { createServer: createViteServer } = await import('vite');
     const vite = await createViteServer({
       server: { middlewareMode: true },
@@ -2719,8 +2725,14 @@ export async function startServer(port: number = PORT): Promise<{ app: express.E
     ];
     const distPath = candidates.find((p) => fs.existsSync(path.join(p, 'index.html'))) || candidates[0];
     console.log(`[FlowLuna Server] Serving static files from: ${distPath}`);
-    app.use(express.static(distPath));
+    app.use(express.static(distPath, {
+      index: 'index.html',
+      maxAge: '1h',
+    }));
     app.get('*', (req, res) => {
+      if (req.path.startsWith('/api/') || req.path.startsWith('/assets/')) {
+        return res.status(404).send('Asset not found: ' + req.path);
+      }
       const indexFile = path.join(distPath, 'index.html');
       if (fs.existsSync(indexFile)) {
         res.sendFile(indexFile);

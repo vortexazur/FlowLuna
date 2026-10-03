@@ -14,11 +14,16 @@ let currentTrackInfo = {
 };
 
 const isDev = !app.isPackaged && process.env.NODE_ENV !== 'production';
+if (!isDev) {
+  process.env.NODE_ENV = 'production';
+}
+
 const PORT = process.env.PORT || 3000;
 const SERVER_URL = `http://127.0.0.1:${PORT}`;
 
 app.name = 'FlowLuna';
 app.setAppUserModelId('com.flowluna.player');
+app.commandLine.appendSwitch('disable-gpu-shader-disk-cache');
 
 // Prevent multiple instances
 const gotTheLock = app.requestSingleInstanceLock();
@@ -186,6 +191,11 @@ function createMainWindow(): void {
     setTimeout(() => {
       mainWindow?.loadURL(targetUrl);
     }, 400);
+  });
+
+  // Forward renderer console messages to Node process
+  mainWindow.webContents.on('console-message', (_event, level, message, line, sourceId) => {
+    console.log(`[Renderer L${level}] ${message} (${sourceId}:${line})`);
   });
 
   mainWindow.loadURL(targetUrl);
