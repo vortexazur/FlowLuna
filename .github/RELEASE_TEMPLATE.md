@@ -71,11 +71,13 @@
 Pour vérifier l'intégrité de l'exécutable sous PowerShell :
 ```powershell
 Get-FileHash -Algorithm SHA256 "FlowLuna.exe"
+Get-FileHash -Algorithm SHA256 "FlowLuna-Setup-1.1.0.exe"
 ```
 
 | Fichier | Empreinte SHA-256 |
 |---|---|
 | `FlowLuna.exe` | `BB3A4755000CBE7B2F8153663DEA840D291DF80851F8272FF976389341849CBD` |
+| `FlowLuna-Setup-1.1.0.exe` | `91470B107F4361EC464B4D51F45B68893082E06BC2E8A08C5540532061F0E0A8` |
 
 ---
 
