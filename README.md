@@ -86,14 +86,9 @@ FlowLuna utilise le moteur multimédia **LibVLCSharp** ([VideoLAN](https://githu
 
 ## 📦 Installation
 
-### 1. Exécutable Autonome Haute Performance C# .NET 9 (.exe)
 1. Rendez-vous dans la section [Releases](https://github.com/vortexazur/FlowLuna/releases).
-2. Téléchargez `FlowLuna.exe` (exécutable unique autonome ~70 Mo avec runtime et WebView2).
-3. Double-cliquez pour lancer immédiatement sans installation requise ni dépendance externe.
-
-### 2. Installateur Standard Windows (.exe)
-1. Téléchargez `FlowLuna-Setup-1.1.1.exe`.
-2. Lancez l'exécutable pour installer FlowLuna avec raccourcis sur le Bureau et le Menu Démarrer.
+2. Téléchargez l'installateur officiel **`FlowLuna-Setup-1.1.1.exe`** (~110 Mo).
+3. Lancez l'exécutable : l'application installe automatiquement le binaire natif C# .NET 9 + WebView2, configure les dépendances audio LibVLCSharp et crée les raccourcis sur le Bureau et le Menu Démarrer.
 
 ---
 

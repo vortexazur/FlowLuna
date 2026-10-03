@@ -19,5 +19,6 @@ yt-dlp-nightly
 release-dotnet/
 FlowLuna.Windows/bin/
 FlowLuna.Windows/obj/
+FlowLuna.Windows/wwwroot/
 *.user
 *.suo

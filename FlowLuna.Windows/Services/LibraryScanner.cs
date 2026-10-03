@@ -129,6 +129,7 @@ public static class LibraryScanner
     public static async Task<JsonElement?> ProbeAudioFileAsync(string filePath)
     {
         var ffprobePath = BinaryManager.GetFfprobePath();
+        if (!File.Exists(ffprobePath)) return null;
         try
         {
             var psi = new ProcessStartInfo

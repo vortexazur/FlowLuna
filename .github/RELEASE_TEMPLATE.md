@@ -32,26 +32,23 @@
 
 ---
 
-## 📦 Fichiers Disponibles
+## 📦 Fichier Disponible
 
 | Fichier | Type | Description |
 |---|---|---|
-| `FlowLuna.exe` | **Exécutable Autonome C# .NET 9** (~70 Mo) | Binaire unique sans installation, ultra-rapide |
-| `FlowLuna-Setup-1.1.1.exe` | **Installateur Standard Windows** | Installeur avec raccourcis Bureau et Menu Démarrer |
+| `FlowLuna-Setup-1.1.1.exe` | **Installateur Standard Windows** (~110 Mo) | Installeur C# .NET 9 + WebView2 avec raccourcis Bureau et Menu Démarrer |
 
 ---
 
 ## 🔒 Empreinte Cryptographique (SHA-256)
 
 ```powershell
-Get-FileHash -Algorithm SHA256 "FlowLuna.exe"
 Get-FileHash -Algorithm SHA256 "FlowLuna-Setup-1.1.1.exe"
 ```
 
 | Fichier | Empreinte SHA-256 |
 |---|---|
-| `FlowLuna.exe` | `876176BFA5411E104ACD5927F7F96D315CF9E929E8582A798D1DF61D518B5C85` |
-| `FlowLuna-Setup-1.1.1.exe` | `60E07BCAF6CEC46B058D0B26EF2EAE0A14AEA5A818260E1ADA8C43C3802822EB` |
+| `FlowLuna-Setup-1.1.1.exe` | `43B136E389AB32733E69D5AEE3512AF11C04F0450D2E31001541C80920C2C8E8` |
 
 ---
 
