@@ -26,6 +26,79 @@ public partial class MainWindow : Window
     [DllImport("psapi.dll")]
     private static extern int EmptyWorkingSet(IntPtr hwProc);
 
+    [DllImport("user32.dll")]
+    private static extern bool SetForegroundWindow(IntPtr hWnd);
+
+    [DllImport("user32.dll")]
+    private static extern bool ShowWindow(IntPtr hWnd, int nCmdShow);
+
+    private const int SW_RESTORE = 9;
+
+    private readonly List<string> _pendingFiles = new();
+    private readonly object _pendingFilesLock = new();
+    private bool _isUiReady = false;
+
+    public void BringToForeground()
+    {
+        Dispatcher.Invoke(() =>
+        {
+            var hwnd = new WindowInteropHelper(this).Handle;
+            if (WindowState == WindowState.Minimized)
+            {
+                ShowWindow(hwnd, SW_RESTORE);
+                WindowState = WindowState.Normal;
+            }
+            SetForegroundWindow(hwnd);
+            Activate();
+            Focus();
+        });
+    }
+
+    public void HandleIncomingFiles(IEnumerable<string> filePaths)
+    {
+        var existing = filePaths.Where(p => !string.IsNullOrWhiteSpace(p) && (File.Exists(p) || Directory.Exists(p))).ToList();
+        if (existing.Count == 0) return;
+
+        Dispatcher.Invoke(() =>
+        {
+            if (WebViewControl?.CoreWebView2 != null && _isUiReady)
+            {
+                var json = JsonSerializer.Serialize(existing);
+                WebViewControl.CoreWebView2.ExecuteScriptAsync(
+                    $"window.dispatchEvent(new CustomEvent('flowluna-open-files', {{ detail: {json} }}));"
+                );
+            }
+            else
+            {
+                lock (_pendingFilesLock)
+                {
+                    _pendingFiles.AddRange(existing);
+                }
+            }
+        });
+    }
+
+    private void FlushPendingFiles()
+    {
+        lock (_pendingFilesLock)
+        {
+            if (_pendingFiles.Count > 0)
+            {
+                var json = JsonSerializer.Serialize(_pendingFiles);
+                _pendingFiles.Clear();
+                _ = Task.Delay(400).ContinueWith(_ =>
+                {
+                    Dispatcher.Invoke(() =>
+                    {
+                        WebViewControl?.CoreWebView2?.ExecuteScriptAsync(
+                            $"window.dispatchEvent(new CustomEvent('flowluna-open-files', {{ detail: {json} }}));"
+                        );
+                    });
+                });
+            }
+        }
+    }
+
     private const int WM_NCLBUTTONDOWN = 0xA1;
     private const int HTCAPTION = 0x2;
     private const int WM_APPCOMMAND = 0x0319;
@@ -68,6 +141,22 @@ public partial class MainWindow : Window
             // Hook Windows messages for hardware media keys & SMTC
             var source = HwndSource.FromHwnd(new WindowInteropHelper(this).Handle);
             source?.AddHook(WndProc);
+
+            // Hook IPC FilesReceived from secondary instances
+            SingleInstanceService.FilesReceived += files =>
+            {
+                Dispatcher.Invoke(() =>
+                {
+                    BringToForeground();
+                    HandleIncomingFiles(files);
+                });
+            };
+
+            // If initial files were provided on startup, queue them
+            if (SingleInstanceService.InitialFiles.Count > 0)
+            {
+                HandleIncomingFiles(SingleInstanceService.InitialFiles);
+            }
 
             // 1. Start embedded Kestrel minimal API server in-process
             await _httpServer.StartAsync(3000);
@@ -143,6 +232,20 @@ public partial class MainWindow : Window
                         try {
                             window.chrome.webview.postMessage({ action: 'set-backdrop', effect, theme });
                         } catch {}
+                    },
+                    openDefaultAppsSettings: () => {
+                        try {
+                            if (window.chrome?.webview?.hostObjects?.nativeHost) {
+                                window.chrome.webview.hostObjects.nativeHost.OpenDefaultAppsSettings();
+                            } else {
+                                window.chrome.webview.postMessage({ action: 'open-default-apps' });
+                            }
+                        } catch {}
+                    },
+                    onOpenFiles: (callback) => {
+                        const handler = (e) => callback(e.detail);
+                        window.addEventListener('flowluna-open-files', handler);
+                        return () => window.removeEventListener('flowluna-open-files', handler);
                     }
                 };
             })();
@@ -159,6 +262,8 @@ public partial class MainWindow : Window
                 Dispatcher.Invoke(() =>
                 {
                     LoadingOverlay.Visibility = Visibility.Collapsed;
+                    _isUiReady = true;
+                    FlushPendingFiles();
                 });
             };
 
@@ -328,6 +433,9 @@ public partial class MainWindow : Window
                     case "apply-update":
                         string? ip = doc.RootElement.TryGetProperty("installerPath", out var ipp) ? ipp.GetString() : null;
                         _nativeBridge?.ApplyUpdate(ip ?? "");
+                        break;
+                    case "open-default-apps":
+                        _nativeBridge?.OpenDefaultAppsSettings();
                         break;
                 }
             }

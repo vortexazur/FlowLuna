@@ -844,6 +844,9 @@ export default function App() {
       // Start playing the newly opened track immediately
       const newQueue = [...imported, ...queue.filter((t) => !imported.some((imp) => imp.id === t.id))];
       playTrackAt(0, newQueue);
+      if (imported[0]?.isVideo) {
+        setVideoMode('theater');
+      }
     }
   };
 
@@ -984,6 +987,32 @@ export default function App() {
       unsubscribe?.();
     };
   }, [handleTogglePlay, handleNext, handlePrev]);
+
+  // Listen for files opened directly from Windows (double-click or Open With)
+  useEffect(() => {
+    if (!window.electronAPI?.onOpenFiles) return;
+    const unsubscribe = window.electronAPI.onOpenFiles(async (filePaths) => {
+      if (!Array.isArray(filePaths) || filePaths.length === 0) return;
+      try {
+        const resp = await fetch('/api/library/add-files', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ filePaths }),
+        });
+        if (resp.ok) {
+          const data = await resp.json();
+          if (data.success && Array.isArray(data.tracks) && data.tracks.length > 0) {
+            handleImportFiles(data.tracks);
+          }
+        }
+      } catch (err) {
+        console.warn('Failed to open incoming files from Windows:', err);
+      }
+    });
+    return () => {
+      unsubscribe?.();
+    };
+  }, [handleImportFiles]);
 
   // Audio element listeners
   useEffect(() => {

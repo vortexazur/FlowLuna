@@ -1,4 +1,5 @@
 using System;
+using System.Diagnostics;
 using System.IO;
 using System.Runtime.InteropServices;
 using System.Text.Json;
@@ -123,5 +124,23 @@ public class NativeBridge
     public void ApplyUpdate(string installerPath)
     {
         BinaryManager.ApplyAppUpdate(installerPath);
+    }
+
+    public void OpenDefaultAppsSettings()
+    {
+        try
+        {
+            FileAssociationHelper.RegisterCapabilities();
+            Process.Start(new ProcessStartInfo("ms-settings:defaultapps") { UseShellExecute = true });
+        }
+        catch (Exception ex)
+        {
+            Debug.WriteLine($"[FlowLuna] OpenDefaultAppsSettings warning: {ex.Message}");
+        }
+    }
+
+    public void RegisterFileAssociations()
+    {
+        FileAssociationHelper.RegisterCapabilities();
     }
 }

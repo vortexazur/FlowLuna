@@ -22,6 +22,7 @@ import {
   Sliders,
   Download,
   ArrowUpCircle,
+  ExternalLink,
 } from 'lucide-react';
 import { PlayerSettings, AccentColor, APP_VERSION, AppUpdateInfo, AppUpdateProgress } from '../types';
 import { SUPPORTED_LANGUAGES, getT } from '../i18n';
@@ -1041,6 +1042,34 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                   onChange={(val) => updateSetting('discordRpcEnabled', val)}
                   accent="violet"
                 />
+              </div>
+
+              {/* Lecteur Multimédia par Défaut Windows */}
+              <div className="flex items-center justify-between bg-neutral-900/60 p-4 rounded-xl border border-neutral-800 hover:border-neutral-700/60 transition-colors">
+                <div className="pr-4">
+                  <div className="flex items-center gap-2">
+                    <span className="font-semibold text-neutral-200 block text-xs">Lecteur Multimédia par Défaut Windows</span>
+                    <span className="text-[10px] uppercase font-mono px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-300 font-semibold border border-emerald-500/30">
+                      WINDOWS 11 / 10
+                    </span>
+                  </div>
+                  <span className="text-neutral-400 text-[11px] block mt-1 leading-relaxed">
+                    Associer FlowLuna à vos musiques et vidéos (.mp3, .flac, .wav, .m4a, .mp4, .mkv, etc.) pour les ouvrir directement au double-clic dans l'explorateur.
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (window.electronAPI?.openDefaultAppsSettings) {
+                      window.electronAPI.openDefaultAppsSettings();
+                    }
+                  }}
+                  className="flex items-center gap-2 px-3 py-2 rounded-lg bg-neutral-800 hover:bg-neutral-700 text-neutral-200 hover:text-white border border-neutral-700/80 hover:border-neutral-600 text-xs font-medium transition-all shrink-0 cursor-pointer shadow-xs active:scale-95"
+                  title="Ouvrir les Paramètres d'applications par défaut de Windows"
+                >
+                  <ExternalLink className="w-3.5 h-3.5 text-emerald-400" />
+                  <span>Paramètres Windows</span>
+                </button>
               </div>
             </div>
           )}

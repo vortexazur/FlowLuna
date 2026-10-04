@@ -16,6 +16,13 @@ public partial class App : Application
     {
         base.OnStartup(e);
 
+        // Verify single instance — if another instance is already running, arguments have been forwarded to it
+        if (!SingleInstanceService.Initialize(e.Args))
+        {
+            Shutdown();
+            return;
+        }
+
         // Global exception handlers to prevent silent crash / black screen
         DispatcherUnhandledException += App_DispatcherUnhandledException;
         AppDomain.CurrentDomain.UnhandledException += CurrentDomain_UnhandledException;
@@ -26,6 +33,19 @@ public partial class App : Application
 
         // Proactively clean Windows AppCompat / DPI flags that cause 0x8007139F
         CleanAppCompatFlagsOnStartup();
+
+        // Register Windows capabilities and file associations in background
+        _ = Task.Run(FileAssociationHelper.RegisterCapabilities);
+
+        var mainWindow = new MainWindow();
+        MainWindow = mainWindow;
+        mainWindow.Show();
+    }
+
+    protected override void OnExit(ExitEventArgs e)
+    {
+        SingleInstanceService.Cleanup();
+        base.OnExit(e);
     }
 
     /// <summary>

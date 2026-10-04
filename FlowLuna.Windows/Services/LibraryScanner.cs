@@ -28,7 +28,8 @@ public record ScannedAudioTrack(
     [property: JsonPropertyName("sizeInBytes")] long SizeInBytes,
     [property: JsonPropertyName("filePath")] string FilePath,
     [property: JsonPropertyName("genre")] string? Genre = null,
-    [property: JsonPropertyName("year")] string? Year = null
+    [property: JsonPropertyName("year")] string? Year = null,
+    [property: JsonPropertyName("isVideo")] bool IsVideo = false
 );
 
 public static class LibraryScanner
@@ -514,6 +515,7 @@ public static class LibraryScanner
             var trackId = $"scanned-{Convert.ToBase64String(System.Text.Encoding.UTF8.GetBytes(filePath)).Replace('+', '-').Replace('/', '_').TrimEnd('=')}";
 
             var mtime = new DateTimeOffset(fileInfo.LastWriteTimeUtc).ToUnixTimeMilliseconds();
+            var isVideo = ext is "mp4" or "mkv" or "webm" or "avi" or "mov" or "wmv" or "flv";
 
             return new ScannedAudioTrack(
                 Id: trackId,
@@ -534,7 +536,8 @@ public static class LibraryScanner
                 SizeInBytes: fileInfo.Length,
                 FilePath: filePath,
                 Genre: genre,
-                Year: year
+                Year: year,
+                IsVideo: isVideo
             );
         }
         catch

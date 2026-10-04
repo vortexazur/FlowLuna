@@ -34,6 +34,8 @@ export interface ElectronAPIType {
   selectMusicFiles: () => Promise<string[]>;
   setBackdrop?: (effect: string, theme: string) => void;
   applyUpdate?: (installerPath?: string) => Promise<any> | void;
+  openDefaultAppsSettings?: () => Promise<void> | void;
+  onOpenFiles?: (callback: (filePaths: string[]) => void) => () => void;
 }
 
 declare global {
