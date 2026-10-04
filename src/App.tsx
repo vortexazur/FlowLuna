@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import {
   Track,
   Playlist,
@@ -20,6 +20,7 @@ import {
   getSetting,
   saveSetting,
   saveAudioBlob,
+  getAudioBlob,
 } from './services/audioDb';
 import { INITIAL_PLAYLISTS } from './data/defaultTracks';
 import { audioEngine, DEFAULT_EQ_FREQUENCIES, EQ_PRESETS } from './services/audioEngine';
@@ -126,7 +127,12 @@ export default function App() {
   // Video Mode: 'theater' (fullscreen/cinema), 'pip' (floating mini window), 'hidden' (audio-only)
   const [videoMode, setVideoMode] = useState<VideoDisplayMode>('theater');
   const audioRef = useRef<HTMLVideoElement | null>(null);
-  const currentPlayingTrack = queue[currentTrackIndex] || null;
+  const currentPlayingTrack = useMemo(() => {
+    const base = queue[currentTrackIndex] || null;
+    if (!base) return null;
+    const inTracks = tracks.find((t) => t.id === base.id);
+    return inTracks ? { ...base, ...inTracks, isFavorite: inTracks.isFavorite } : base;
+  }, [queue, currentTrackIndex, tracks]);
 
   // Initialize Data from IndexedDB
   const loadDatabase = useCallback(async () => {
@@ -146,6 +152,56 @@ export default function App() {
       }
 
       setTracks(loadedTracks);
+
+      // Non-blocking background repair for existing tracks with fallback duration (180s)
+      const placeholderTracks = loadedTracks.filter((t) => (!t.duration || t.duration === 180) && t.source === 'local');
+      if (placeholderTracks.length > 0) {
+        setTimeout(async () => {
+          const repaired: Track[] = [];
+          for (const track of placeholderTracks.slice(0, 30)) {
+            try {
+              const blob = await getAudioBlob(track.id);
+              if (!blob) continue;
+              const dur = await new Promise<number>((resolve) => {
+                const u = URL.createObjectURL(blob);
+                const a = new Audio();
+                a.preload = 'metadata';
+                let resolved = false;
+                const done = (val: number) => {
+                  if (resolved) return;
+                  resolved = true;
+                  clearTimeout(tId);
+                  URL.revokeObjectURL(u);
+                  resolve(val > 0 && !isNaN(val) && isFinite(val) ? val : 180);
+                };
+                const tId = setTimeout(() => done(a.duration || 180), 2500);
+                a.onloadedmetadata = () => done(a.duration);
+                a.ondurationchange = () => done(a.duration);
+                a.onerror = () => done(180);
+                a.src = u;
+                a.load();
+              });
+
+              if (dur > 0 && dur !== 180) {
+                const updatedTrack = { ...track, duration: Math.round(dur) };
+                await saveTrack(updatedTrack);
+                repaired.push(updatedTrack);
+              }
+            } catch {
+              // ignore
+            }
+          }
+          if (repaired.length > 0) {
+            setTracks((prev) => {
+              const map = new Map(prev.map((t) => [t.id, t]));
+              for (const r of repaired) {
+                map.set(r.id, r);
+              }
+              return Array.from(map.values());
+            });
+          }
+        }, 1200);
+      }
 
       let loadedPlaylists = await getAllPlaylists();
       if (loadedPlaylists.length === 0) {
@@ -248,14 +304,18 @@ export default function App() {
   // Launch automatic background library scanner (discovers local audio tracks without manual import)
   useEffect(() => {
     backgroundScanner.start();
-    const unsubscribe = backgroundScanner.subscribe((newTracks) => {
+    const unsubscribe = backgroundScanner.subscribe((newOrUpdatedTracks) => {
       setTracks((prev) => {
-        const existingIds = new Set(prev.map((t) => t.id));
-        const toAdd = newTracks.filter((t) => !existingIds.has(t.id));
-        if (toAdd.length > 0) {
-          console.info(`[App] Automatically indexed ${toAdd.length} local audio tracks.`);
+        const map = new Map(prev.map((t) => [t.id, t]));
+        let newCount = 0;
+        for (const t of newOrUpdatedTracks) {
+          if (!map.has(t.id)) newCount++;
+          map.set(t.id, { ...(map.get(t.id) || {}), ...t });
         }
-        return [...toAdd, ...prev];
+        if (newCount > 0) {
+          console.info(`[App] Automatically indexed ${newCount} local audio tracks.`);
+        }
+        return Array.from(map.values());
       });
     });
 
@@ -507,27 +567,40 @@ export default function App() {
 
   // Toggle Favorite
   const handleToggleFavorite = async (trackId: string) => {
-    const updatedTracks = tracks.map((t) => {
-      if (t.id === trackId) {
-        const nextFav = !t.isFavorite;
-        const updated = { ...t, isFavorite: nextFav };
-        saveTrack(updated);
-        return updated;
+    // Locate track in tracks or queue
+    const inTracks = tracks.find((t) => t.id === trackId);
+    const inQueue = queue.find((t) => t.id === trackId);
+    const base = inTracks || inQueue;
+    if (!base) return;
+
+    const nextFav = !base.isFavorite;
+    const updatedTrack: Track = { ...base, isFavorite: nextFav };
+
+    // Update tracks state
+    setTracks((prev) => {
+      const exists = prev.some((t) => t.id === trackId);
+      if (exists) {
+        return prev.map((t) => (t.id === trackId ? { ...t, isFavorite: nextFav } : t));
+      } else {
+        return [updatedTrack, ...prev];
       }
-      return t;
     });
-    setTracks(updatedTracks);
+
+    // Update queue state immediately so currently playing track reflects change
+    setQueue((prev) => prev.map((t) => (t.id === trackId ? { ...t, isFavorite: nextFav } : t)));
+
+    // Persist to IndexedDB
+    await saveTrack(updatedTrack).catch(console.error);
 
     // Update Favorite Playlist trackIds
     const favPlaylist = playlists.find((p) => p.id === 'playlist-favorites');
     if (favPlaylist) {
-      const isFav = updatedTracks.find((t) => t.id === trackId)?.isFavorite;
-      const nextTrackIds = isFav
+      const nextTrackIds = nextFav
         ? [...new Set([...favPlaylist.trackIds, trackId])]
         : favPlaylist.trackIds.filter((id) => id !== trackId);
 
       const updatedFavPl = { ...favPlaylist, trackIds: nextTrackIds, updatedAt: Date.now() };
-      await savePlaylist(updatedFavPl);
+      await savePlaylist(updatedFavPl).catch(console.error);
       setPlaylists((prev) => prev.map((p) => (p.id === 'playlist-favorites' ? updatedFavPl : p)));
     }
   };
@@ -832,6 +905,8 @@ export default function App() {
         setIsFullscreenOpen((prev) => !prev);
       } else if (e.key === 'e' || e.key === 'E') {
         setIsEqualizerOpen((prev) => !prev);
+      } else if (e.key === 'q' || e.key === 'Q') {
+        setIsQueueOpen((prev) => !prev);
       } else if (e.key === 'w' || e.key === 'W') {
         setIsMiniPlayer((prev) => !prev);
       }
@@ -899,7 +974,15 @@ export default function App() {
     const handleLoadedMetadata = () => {
       const d = audio.duration;
       if (d && !isNaN(d) && isFinite(d) && d > 0) {
-        setDuration(Math.round(d));
+        const rounded = Math.round(d);
+        setDuration(rounded);
+
+        if (currentPlayingTrack && currentPlayingTrack.duration !== rounded) {
+          const updated = { ...currentPlayingTrack, duration: rounded };
+          setQueue((prev) => prev.map((t) => (t.id === updated.id ? updated : t)));
+          setTracks((prev) => prev.map((t) => (t.id === updated.id ? updated : t)));
+          saveTrack(updated).catch(() => {});
+        }
       }
     };
 
@@ -909,11 +992,13 @@ export default function App() {
 
     audio.addEventListener('timeupdate', handleTimeUpdate);
     audio.addEventListener('loadedmetadata', handleLoadedMetadata);
+    audio.addEventListener('durationchange', handleLoadedMetadata);
     audio.addEventListener('ended', handleEnded);
 
     return () => {
       audio.removeEventListener('timeupdate', handleTimeUpdate);
       audio.removeEventListener('loadedmetadata', handleLoadedMetadata);
+      audio.removeEventListener('durationchange', handleLoadedMetadata);
       audio.removeEventListener('ended', handleEnded);
     };
   }, [handleNext]);
@@ -1344,7 +1429,7 @@ export default function App() {
 
       {/* Exclusive Floating Widget Mode: when active, the player becomes ONLY the floating widget */}
       {isMiniPlayer ? (
-        <div className="flex-1 flex items-center justify-center relative w-full h-full overflow-hidden select-none bg-neutral-950/95 backdrop-blur-xl">
+        <div className="w-full h-full relative overflow-hidden select-none bg-neutral-950">
           <MiniPlayer
             currentTrack={currentPlayingTrack}
             isPlaying={isPlaying}
@@ -1367,7 +1452,6 @@ export default function App() {
               setIsMiniPlayer(false);
               window.electronAPI?.setCompactMode?.(false);
             }}
-            onDetachPip={handleOpenDetachedPip}
             accent={playerSettings.accent}
             playlists={playlists}
             onAddToPlaylist={handleAddToPlaylist}
@@ -1435,10 +1519,11 @@ export default function App() {
             onCycleRepeat={() =>
               setRepeatMode((p) => (p === 'off' ? 'all' : p === 'all' ? 'one' : 'off'))
             }
-            onOpenQueue={() => setIsQueueOpen(true)}
+            onOpenQueue={() => setIsQueueOpen((prev) => !prev)}
             queueLength={queue.length}
-            onOpenEqualizer={() => setIsEqualizerOpen(true)}
+            onOpenEqualizer={() => setIsEqualizerOpen((prev) => !prev)}
             onToggleFullscreen={() => setIsFullscreenOpen(true)}
+            onToggleMiniPlayer={() => setIsMiniPlayer((p) => !p)}
             onOpenDetachedPip={handleOpenDetachedPip}
             isDetachedPipActive={isMiniPlayer}
             onToggleVideo={() => setVideoMode((prev) => (prev === 'theater' ? 'pip' : 'theater'))}

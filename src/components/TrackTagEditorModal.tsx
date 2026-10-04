@@ -8,8 +8,11 @@ import {
   Sparkles,
   Music,
   Check,
+  Search,
+  Loader2,
 } from 'lucide-react';
 import { Track, AccentColor } from '../types';
+import { fetchOnlineMetadata } from '../services/metadataService';
 
 interface TrackTagEditorModalProps {
   isOpen: boolean;
@@ -53,7 +56,34 @@ export const TrackTagEditorModal: React.FC<TrackTagEditorModalProps> = ({
   const [coverUrl, setCoverUrl] = useState('');
   const [isSaving, setIsSaving] = useState(false);
   const [savedSuccess, setSavedSuccess] = useState(false);
+  const [isFetchingOnline, setIsFetchingOnline] = useState(false);
+  const [fetchStatus, setFetchStatus] = useState<'success' | 'not_found' | 'error' | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const handleFetchOnlineMetadata = async () => {
+    if (!title.trim() && !artist.trim()) return;
+    setIsFetchingOnline(true);
+    setFetchStatus(null);
+    try {
+      const meta = await fetchOnlineMetadata(artist, title);
+      if (meta) {
+        if (meta.title) setTitle(meta.title);
+        if (meta.artist && (artist === 'Artiste Local' || !artist.trim())) setArtist(meta.artist);
+        if (meta.album) setAlbum(meta.album);
+        if (meta.year) setYear(meta.year);
+        if (meta.genre) setGenre(meta.genre);
+        if (meta.coverUrl) setCoverUrl(meta.coverUrl);
+        setFetchStatus('success');
+      } else {
+        setFetchStatus('not_found');
+      }
+    } catch {
+      setFetchStatus('error');
+    } finally {
+      setIsFetchingOnline(false);
+      setTimeout(() => setFetchStatus(null), 4000);
+    }
+  };
 
   useEffect(() => {
     if (track) {
@@ -208,6 +238,20 @@ export const TrackTagEditorModal: React.FC<TrackTagEditorModalProps> = ({
                   <Sparkles className="w-3.5 h-3.5" />
                   Générer
                 </button>
+                <button
+                  type="button"
+                  onClick={handleFetchOnlineMetadata}
+                  disabled={isFetchingOnline}
+                  className="px-2.5 py-1.5 rounded-lg text-xs font-medium bg-neutral-800 hover:bg-neutral-700 text-amber-300 flex items-center gap-1.5 transition-colors cursor-pointer disabled:opacity-50"
+                  title="Rechercher automatiquement la pochette officielle et les métadonnées sur iTunes"
+                >
+                  {isFetchingOnline ? (
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                  ) : (
+                    <Search className="w-3.5 h-3.5" />
+                  )}
+                  Recherche en ligne
+                </button>
                 {coverUrl && (
                   <button
                     type="button"
@@ -218,6 +262,22 @@ export const TrackTagEditorModal: React.FC<TrackTagEditorModalProps> = ({
                   </button>
                 )}
               </div>
+              {fetchStatus === 'success' && (
+                <div className="text-[11px] text-emerald-400 flex items-center gap-1.5">
+                  <Check className="w-3.5 h-3.5" />
+                  Pochette et métadonnées trouvées avec succès !
+                </div>
+              )}
+              {fetchStatus === 'not_found' && (
+                <div className="text-[11px] text-neutral-400">
+                  Aucune métadonnée trouvée en ligne pour ce titre.
+                </div>
+              )}
+              {fetchStatus === 'error' && (
+                <div className="text-[11px] text-red-400">
+                  Erreur de connexion lors de la recherche en ligne.
+                </div>
+              )}
               <input
                 type="url"
                 placeholder="Ou collez une URL d'image (https://...)"

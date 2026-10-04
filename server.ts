@@ -4,6 +4,7 @@ import fs from 'fs';
 import os from 'os';
 import http from 'http';
 import https from 'https';
+import crypto from 'crypto';
 import { execFile, spawn } from 'child_process';
 import { GoogleGenAI } from '@google/genai';
 import {
@@ -2535,6 +2536,8 @@ interface ScannedAudioTrack {
   addedAt: number;
   sizeInBytes: number;
   filePath: string;
+  genre?: string;
+  year?: string;
 }
 
 function getCustomScannedDirs(): string[] {
@@ -2607,24 +2610,150 @@ function scanDirectoryForAudio(dirPath: string, maxDepth: number = 4, currentDep
 
 async function probeAudioFile(filePath: string): Promise<any> {
   const ffprobePath = getFfprobePath();
-  return new Promise((resolve) => {
-    execFile(
-      ffprobePath,
-      ['-v', 'quiet', '-print_format', 'json', '-show_format', '-show_streams', filePath],
-      { timeout: 9000 },
-      (err, stdout) => {
-        if (err || !stdout) {
-          return resolve(null);
+  if (fs.existsSync(ffprobePath)) {
+    const res = await new Promise<any>((resolve) => {
+      execFile(
+        ffprobePath,
+        ['-v', 'quiet', '-print_format', 'json', '-show_format', '-show_streams', filePath],
+        { timeout: 9000 },
+        (err, stdout) => {
+          if (err || !stdout) return resolve(null);
+          try {
+            resolve(JSON.parse(stdout));
+          } catch {
+            resolve(null);
+          }
         }
-        try {
-          const parsed = JSON.parse(stdout);
-          resolve(parsed);
-        } catch {
+      );
+    });
+    if (res) return res;
+  }
+
+  // Fallback to ffmpeg -i
+  const ffmpegPath = getFfmpegPath();
+  if (fs.existsSync(ffmpegPath)) {
+    return new Promise((resolve) => {
+      execFile(ffmpegPath, ['-i', filePath], { timeout: 9000 }, (err, stdout, stderr) => {
+        const text = (stderr || '') + (stdout || '');
+        const durMatch = text.match(/Duration:\s*(\d+):(\d+):(\d+(?:\.\d+)?)/);
+        const brMatch = text.match(/bitrate:\s*(\d+)\s*kb\/s/);
+        const titleMatch = text.match(/^\s*title\s*:\s*(.+)$/im);
+        const artistMatch = text.match(/^\s*artist\s*:\s*(.+)$/im);
+        const albumMatch = text.match(/^\s*album\s*:\s*(.+)$/im);
+        const genreMatch = text.match(/^\s*genre\s*:\s*(.+)$/im);
+        const dateMatch = text.match(/^\s*(?:date|creation_time|year)\s*:\s*(.+)$/im);
+
+        let duration = 0;
+        if (durMatch) {
+          const h = parseInt(durMatch[1], 10);
+          const m = parseInt(durMatch[2], 10);
+          const s = parseFloat(durMatch[3]);
+          duration = Math.round(h * 3600 + m * 60 + s);
+        }
+
+        if (duration > 0 || titleMatch) {
+          const rawDate = dateMatch ? dateMatch[1].trim() : '';
+          const yMatch = rawDate.match(/\b(19\d\d|20\d\d)\b/);
+          resolve({
+            format: {
+              duration: duration ? duration.toString() : '0',
+              bit_rate: brMatch ? (parseInt(brMatch[1], 10) * 1000).toString() : '320000',
+              tags: {
+                title: titleMatch ? titleMatch[1].trim() : '',
+                artist: artistMatch ? artistMatch[1].trim() : '',
+                album: albumMatch ? albumMatch[1].trim() : '',
+                genre: genreMatch ? genreMatch[1].trim() : '',
+                year: yMatch ? yMatch[1] : '',
+              },
+            },
+          });
+        } else {
           resolve(null);
         }
+      });
+    });
+  }
+
+  return null;
+}
+
+export function getFlowLunaCoversDir(): string {
+  const dir = path.join(getFlowLunaDataDir(), 'covers');
+  if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+  return dir;
+}
+
+function getTrackHash(filePath: string): string {
+  return crypto.createHash('md5').update(filePath.toLowerCase()).digest('hex');
+}
+
+export async function searchOnlineMetadata(query?: string, artist?: string, title?: string): Promise<{
+  title?: string;
+  artist?: string;
+  album?: string;
+  genre?: string;
+  year?: string;
+  coverUrl?: string;
+} | null> {
+  try {
+    let searchTerm = query?.trim() || '';
+    if (!searchTerm) {
+      if (artist && artist !== 'Artiste Local' && title) {
+        searchTerm = `${artist} ${title}`;
+      } else if (title) {
+        searchTerm = title;
       }
-    );
-  });
+    }
+    if (!searchTerm) return null;
+
+    const cleanTerm = searchTerm
+      .replace(/\b(?:ft\.|feat\.|featuring|official|video|music video|clip|audio|lyrics|paroles|remix|hd|4k)\b/gi, '')
+      .trim();
+
+    const targetUrl = `https://itunes.apple.com/search?term=${encodeURIComponent(cleanTerm || searchTerm)}&entity=song&limit=1`;
+    const resp = await fetch(targetUrl, { signal: AbortSignal.timeout(4500) });
+    if (!resp.ok) return null;
+    const data = await resp.json();
+    if (!data.results || data.results.length === 0) return null;
+
+    const item = data.results[0];
+    const foundTitle = item.trackName || undefined;
+    const foundArtist = item.artistName || undefined;
+    const foundAlbum = item.collectionName || undefined;
+    const foundGenre = item.primaryGenreName || undefined;
+    let foundYear: string | undefined;
+    if (item.releaseDate && typeof item.releaseDate === 'string' && item.releaseDate.length >= 4) {
+      foundYear = item.releaseDate.substring(0, 4);
+    }
+    let coverUrl: string | undefined;
+    if (item.artworkUrl100 && typeof item.artworkUrl100 === 'string') {
+      coverUrl = item.artworkUrl100.replace('100x100bb', '600x600bb');
+    }
+
+    return {
+      title: foundTitle,
+      artist: foundArtist,
+      album: foundAlbum,
+      genre: foundGenre,
+      year: foundYear,
+      coverUrl,
+    };
+  } catch {
+    return null;
+  }
+}
+
+async function downloadCoverToFile(imageUrl: string, destPath: string): Promise<boolean> {
+  try {
+    const resp = await fetch(imageUrl, { signal: AbortSignal.timeout(5000) });
+    if (!resp.ok) return false;
+    const buffer = Buffer.from(await resp.arrayBuffer());
+    if (buffer.length > 200) {
+      fs.writeFileSync(destPath, buffer);
+      return true;
+    }
+  } catch {}
+  return false;
 }
 
 const DEFAULT_COVERS = [
@@ -2635,6 +2764,145 @@ const DEFAULT_COVERS = [
   'https://images.unsplash.com/photo-1501386761578-eac5c94b800a?w=600&auto=format&fit=crop&q=80',
   'https://images.unsplash.com/photo-1470225620780-dba8ba36b745?w=600&auto=format&fit=crop&q=80',
 ];
+
+async function resolveCoverAndMetadata(
+  filePath: string,
+  trackHash: string,
+  currentTitle: string,
+  currentArtist: string,
+  currentAlbum: string,
+  currentGenre?: string,
+  currentYear?: string
+): Promise<{
+  coverUrl: string;
+  album: string;
+  artist: string;
+  title: string;
+  genre?: string;
+  year?: string;
+}> {
+  const coversDir = getFlowLunaCoversDir();
+  const cachePath = path.join(coversDir, `${trackHash}.jpg`);
+
+  if (fs.existsSync(cachePath) && fs.statSync(cachePath).size > 200) {
+    return {
+      coverUrl: `/covers/${trackHash}.jpg`,
+      album: currentAlbum,
+      artist: currentArtist,
+      title: currentTitle,
+      genre: currentGenre,
+      year: currentYear,
+    };
+  }
+
+  // 1. Embedded artwork via ffmpeg
+  const ffmpegPath = getFfmpegPath();
+  if (fs.existsSync(ffmpegPath)) {
+    const extracted = await new Promise<boolean>((resolve) => {
+      execFile(
+        ffmpegPath,
+        ['-y', '-i', filePath, '-an', '-c:v', 'mjpeg', '-frames:v', '1', '-update', '1', '-q:v', '2', cachePath],
+        { timeout: 7000 },
+        () => {
+          if (fs.existsSync(cachePath) && fs.statSync(cachePath).size > 200) {
+            resolve(true);
+          } else {
+            if (fs.existsSync(cachePath)) {
+              try { fs.unlinkSync(cachePath); } catch {}
+            }
+            resolve(false);
+          }
+        }
+      );
+    });
+
+    if (extracted) {
+      return {
+        coverUrl: `/covers/${trackHash}.jpg`,
+        album: currentAlbum,
+        artist: currentArtist,
+        title: currentTitle,
+        genre: currentGenre,
+        year: currentYear,
+      };
+    }
+  }
+
+  // 2. Folder images
+  try {
+    const dir = path.dirname(filePath);
+    const candidates = [
+      'cover.jpg', 'cover.png', 'cover.jpeg', 'cover.webp',
+      'folder.jpg', 'folder.png', 'folder.jpeg', 'folder.webp',
+      'front.jpg', 'front.png', 'front.jpeg', 'front.webp',
+      'album.jpg', 'album.png', 'album.jpeg', 'album.webp',
+      'artwork.jpg', 'artwork.png',
+    ];
+    for (const cand of candidates) {
+      const candPath = path.join(dir, cand);
+      if (fs.existsSync(candPath) && fs.statSync(candPath).size > 200) {
+        fs.copyFileSync(candPath, cachePath);
+        return {
+          coverUrl: `/covers/${trackHash}.jpg`,
+          album: currentAlbum,
+          artist: currentArtist,
+          title: currentTitle,
+          genre: currentGenre,
+          year: currentYear,
+        };
+      }
+    }
+  } catch {}
+
+  // 3. Online metadata & cover via iTunes Search API
+  let resAlbum = currentAlbum;
+  let resArtist = currentArtist;
+  let resTitle = currentTitle;
+  let resGenre = currentGenre;
+  let resYear = currentYear;
+
+  try {
+    const online = await searchOnlineMetadata(undefined, currentArtist, currentTitle);
+    if (online) {
+      if ((resAlbum === 'Bibliothèque Locale' || !resAlbum) && online.album) resAlbum = online.album;
+      if (!resGenre && online.genre) resGenre = online.genre;
+      if (!resYear && online.year) resYear = online.year;
+      if (resArtist === 'Artiste Local' && online.artist) resArtist = online.artist;
+      if (online.coverUrl) {
+        const downloaded = await downloadCoverToFile(online.coverUrl, cachePath);
+        if (downloaded) {
+          return {
+            coverUrl: `/covers/${trackHash}.jpg`,
+            album: resAlbum,
+            artist: resArtist,
+            title: resTitle,
+            genre: resGenre,
+            year: resYear,
+          };
+        }
+        return {
+          coverUrl: online.coverUrl,
+          album: resAlbum,
+          artist: resArtist,
+          title: resTitle,
+          genre: resGenre,
+          year: resYear,
+        };
+      }
+    }
+  } catch {}
+
+  // 4. Default gradient fallback
+  const coverIndex = Math.abs(trackHash.split('').reduce((acc, c) => acc + c.charCodeAt(0), 0)) % DEFAULT_COVERS.length;
+  return {
+    coverUrl: DEFAULT_COVERS[coverIndex],
+    album: resAlbum,
+    artist: resArtist,
+    title: resTitle,
+    genre: resGenre,
+    year: resYear,
+  };
+}
 
 async function buildTrackMetadataFromFile(filePath: string, isPublic: boolean = false): Promise<ScannedAudioTrack | null> {
   if (!fs.existsSync(filePath)) return null;
@@ -2655,7 +2923,9 @@ async function buildTrackMetadataFromFile(filePath: string, isPublic: boolean = 
 
     let title = tags.title || tags.TITLE || '';
     let artist = tags.artist || tags.ARTIST || '';
-    const album = tags.album || tags.ALBUM || 'Bibliothèque Locale';
+    let album = tags.album || tags.ALBUM || 'Bibliothèque Locale';
+    let genre = tags.genre || tags.GENRE || undefined;
+    let year = tags.year || tags.date || tags.DATE || undefined;
 
     if (!title) {
       const rawBaseName = path.basename(fileName, path.extname(fileName));
@@ -2673,6 +2943,15 @@ async function buildTrackMetadataFromFile(filePath: string, isPublic: boolean = 
       artist = 'Artiste Local';
     }
 
+    const trackHash = getTrackHash(filePath);
+    const enriched = await resolveCoverAndMetadata(filePath, trackHash, title, artist, album, genre, year);
+
+    if (enriched.album) album = enriched.album;
+    if (enriched.artist) artist = enriched.artist;
+    if (enriched.title) title = enriched.title;
+    if (enriched.genre) genre = enriched.genre;
+    if (enriched.year) year = enriched.year;
+
     let playableUrl = '';
     if (isPublic) {
       const relFromPublic = path.relative(path.join(process.cwd(), 'public'), filePath);
@@ -2682,7 +2961,6 @@ async function buildTrackMetadataFromFile(filePath: string, isPublic: boolean = 
     }
 
     const trackId = `scanned-${Buffer.from(filePath).toString('base64url')}`;
-    const coverUrl = DEFAULT_COVERS[Math.abs(trackId.split('').reduce((acc, c) => acc + c.charCodeAt(0), 0)) % DEFAULT_COVERS.length];
 
     return {
       id: trackId,
@@ -2693,7 +2971,7 @@ async function buildTrackMetadataFromFile(filePath: string, isPublic: boolean = 
       format: ext,
       bitrate,
       url: playableUrl,
-      coverUrl,
+      coverUrl: enriched.coverUrl,
       source: isPublic ? 'default' : 'local',
       isFavorite: false,
       isCachedOffline: true,
@@ -2702,6 +2980,8 @@ async function buildTrackMetadataFromFile(filePath: string, isPublic: boolean = 
       addedAt: stats.mtimeMs,
       sizeInBytes: stats.size,
       filePath,
+      genre,
+      year,
     };
   } catch (err) {
     console.warn(`Error building track metadata for ${filePath}:`, err);
@@ -2885,12 +3165,85 @@ app.get('/api/library/stream', (req, res) => {
 // Media directories static routing
 app.use('/audio', express.static(getDownloadDir(false)));
 app.use('/videos', express.static(getDownloadDir(true)));
+app.use('/covers', express.static(getFlowLunaCoversDir()));
+
 if (fs.existsSync(path.join(process.cwd(), 'public', 'audio'))) {
   app.use('/audio', express.static(path.join(process.cwd(), 'public', 'audio')));
 }
 if (fs.existsSync(path.join(process.cwd(), 'public', 'videos'))) {
   app.use('/videos', express.static(path.join(process.cwd(), 'public', 'videos')));
 }
+
+// Dedicated cover artwork serving route
+app.get('/api/covers/:name', (req, res) => {
+  const safeName = path.basename(req.params.name);
+  const target = path.join(getFlowLunaCoversDir(), safeName);
+  if (fs.existsSync(target)) {
+    res.setHeader('Cache-Control', 'public, max-age=86400');
+    res.sendFile(target);
+  } else {
+    res.status(404).send('Cover not found');
+  }
+});
+
+// Online metadata & cover lookup endpoint
+app.get('/api/metadata/search', async (req, res) => {
+  try {
+    const query = (req.query.query as string) || '';
+    const artist = (req.query.artist as string) || '';
+    const title = (req.query.title as string) || '';
+    const meta = await searchOnlineMetadata(query, artist, title);
+    if (!meta) return res.json({ found: false });
+    return res.json({ found: true, metadata: meta });
+  } catch (err: any) {
+    return res.json({ found: false, error: err?.message });
+  }
+});
+
+// Lyrics lookup route (local .lrc or cache)
+app.get('/api/lyrics', (req, res) => {
+  const filePath = req.query.file as string;
+  if (!filePath) return res.json({ found: false });
+
+  // 1. Check local .lrc
+  if (fs.existsSync(filePath)) {
+    const ext = path.extname(filePath);
+    const lrcPath = filePath.slice(0, -ext.length) + '.lrc';
+    if (fs.existsSync(lrcPath)) {
+      try {
+        const content = fs.readFileSync(lrcPath, 'utf-8');
+        return res.json({ found: true, source: 'local_file', syncedLyrics: content });
+      } catch {}
+    }
+  }
+
+  // 2. Check cached lyrics
+  const hash = getTrackHash(filePath);
+  const cachedLrc = path.join(getFlowLunaDataDir(), 'lyrics', `${hash}.lrc`);
+  if (fs.existsSync(cachedLrc)) {
+    try {
+      const content = fs.readFileSync(cachedLrc, 'utf-8');
+      return res.json({ found: true, source: 'cache', syncedLyrics: content });
+    } catch {}
+  }
+
+  return res.json({ found: false });
+});
+
+// Lyrics caching route
+app.post('/api/lyrics/cache', express.json(), (req, res) => {
+  try {
+    const { filePath, lrc } = req.body;
+    if (filePath && lrc) {
+      const hash = getTrackHash(filePath);
+      const lyricsDir = path.join(getFlowLunaDataDir(), 'lyrics');
+      if (!fs.existsSync(lyricsDir)) fs.mkdirSync(lyricsDir, { recursive: true });
+      fs.writeFileSync(path.join(lyricsDir, `${hash}.lrc`), lrc, 'utf-8');
+      return res.json({ success: true });
+    }
+  } catch {}
+  return res.status(400).json({ error: 'Bad request' });
+});
 
 // Vite middleware & Static Serving
 export async function startServer(port: number = PORT): Promise<{ app: express.Express; server: http.Server }> {

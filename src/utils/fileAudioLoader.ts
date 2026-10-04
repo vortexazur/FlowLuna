@@ -1,5 +1,6 @@
 import { MediaFormat, Track } from '../types';
 import { saveAudioBlob, saveTrack } from '../services/audioDb';
+import { fetchOnlineMetadata } from '../services/metadataService';
 
 const ARTWORK_PALETTES = [
   'https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?w=600&auto=format&fit=crop&q=80',
@@ -147,24 +148,69 @@ export async function processLocalAudioFile(file: File): Promise<Track> {
     // Determine duration via temporary Audio element
     const tempUrl = URL.createObjectURL(file);
     duration = await new Promise<number>((resolve) => {
+      let resolved = false;
+      const finish = (d: number) => {
+        if (resolved) return;
+        resolved = true;
+        clearTimeout(timer);
+        URL.revokeObjectURL(tempUrl);
+        resolve(d > 0 && !isNaN(d) && isFinite(d) ? d : 180);
+      };
+
       const audio = new Audio();
+      audio.preload = 'metadata';
+      const timer = setTimeout(() => {
+        if (audio.duration && !isNaN(audio.duration) && isFinite(audio.duration) && audio.duration > 0) {
+          finish(audio.duration);
+        } else {
+          finish(180);
+        }
+      }, 3000);
+
+      audio.onloadedmetadata = () => {
+        if (audio.duration && !isNaN(audio.duration) && isFinite(audio.duration) && audio.duration > 0) {
+          finish(audio.duration);
+        }
+      };
+      audio.ondurationchange = () => {
+        if (audio.duration && !isNaN(audio.duration) && isFinite(audio.duration) && audio.duration > 0) {
+          finish(audio.duration);
+        }
+      };
+      audio.onerror = () => finish(180);
       audio.src = tempUrl;
-      audio.addEventListener('loadedmetadata', () => {
-        resolve(audio.duration || 180);
-        URL.revokeObjectURL(tempUrl);
-      });
-      audio.addEventListener('error', () => {
-        resolve(180);
-        URL.revokeObjectURL(tempUrl);
-      });
+      audio.load();
     });
+  }
+
+  let resolvedTitle = title;
+  let resolvedArtist = isVideo && artist === 'Artiste Local' ? 'Clip Vidéo' : artist;
+  let resolvedAlbum = isVideo ? 'Vidéos & Clips' : 'Fichiers PC Locaux';
+  let resolvedGenre: string | undefined;
+  let resolvedYear: string | undefined;
+
+  // Attempt metadata and cover lookup for audio files
+  if (!isVideo && resolvedTitle) {
+    try {
+      const online = await fetchOnlineMetadata(artist, title);
+      if (online) {
+        if (online.coverUrl) coverUrl = online.coverUrl;
+        if (online.album) resolvedAlbum = online.album;
+        if (online.artist && artist === 'Artiste Local') resolvedArtist = online.artist;
+        if (online.title) resolvedTitle = online.title;
+        if (online.genre) resolvedGenre = online.genre;
+        if (online.year) resolvedYear = online.year;
+      }
+    } catch {}
   }
 
   const track: Track = {
     id: trackId,
-    title,
-    artist: isVideo && artist === 'Artiste Local' ? 'Clip Vidéo' : artist,
-    album: isVideo ? 'Vidéos & Clips' : 'Fichiers PC Locaux',
+    title: resolvedTitle,
+    artist: resolvedArtist,
+    album: resolvedAlbum,
+    genre: resolvedGenre,
+    year: resolvedYear,
     duration: Math.round(duration),
     format,
     bitrate: format === 'flac' || format === 'wav' ? 1411 : isVideo ? 1080 : 320,

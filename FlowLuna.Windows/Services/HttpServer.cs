@@ -57,8 +57,10 @@ public class HttpServer
         // 1. Static media directories
         var appDataAudio = Path.Combine(BinaryManager.FlowLunaDataDir, "audio");
         var appDataVideos = Path.Combine(BinaryManager.FlowLunaDataDir, "videos");
+        var appDataCovers = Path.Combine(BinaryManager.FlowLunaDataDir, "covers");
         Directory.CreateDirectory(appDataAudio);
         Directory.CreateDirectory(appDataVideos);
+        Directory.CreateDirectory(appDataCovers);
 
         _app.UseStaticFiles(new StaticFileOptions
         {
@@ -70,6 +72,12 @@ public class HttpServer
         {
             FileProvider = new PhysicalFileProvider(appDataVideos),
             RequestPath = "/videos"
+        });
+
+        _app.UseStaticFiles(new StaticFileOptions
+        {
+            FileProvider = new PhysicalFileProvider(appDataCovers),
+            RequestPath = "/covers"
         });
 
         // 2. Library Endpoints
@@ -177,6 +185,93 @@ public class HttpServer
 
             var contentType = mimeMap.TryGetValue(ext, out var mime) ? mime : "audio/mpeg";
             return Results.File(reqFile, contentType: contentType, enableRangeProcessing: true);
+        });
+
+        // Dedicated cover artwork serving endpoint
+        _app.MapGet("/api/covers/{name}", (string name) =>
+        {
+            var safeName = Path.GetFileName(name);
+            var coverPath = Path.Combine(appDataCovers, safeName);
+            if (!File.Exists(coverPath)) return Results.NotFound();
+            return Results.File(coverPath, "image/jpeg");
+        });
+
+        // Online song metadata and artwork search
+        _app.MapGet("/api/metadata/search", async (HttpContext ctx) =>
+        {
+            var query = ctx.Request.Query["query"].ToString();
+            var artist = ctx.Request.Query["artist"].ToString();
+            var title = ctx.Request.Query["title"].ToString();
+            var meta = await MetadataFetcher.SearchOnlineMetadataAsync(query, artist, title);
+            if (meta == null)
+            {
+                return Results.Json(new { found = false });
+            }
+            return Results.Json(new { found = true, metadata = meta });
+        });
+
+        // Lyrics lookup (local .lrc file or disk cache)
+        _app.MapGet("/api/lyrics", async (HttpContext ctx) =>
+        {
+            var filePath = ctx.Request.Query["file"].ToString();
+
+            // 1. Check if .lrc exists adjacent to the audio file
+            if (!string.IsNullOrWhiteSpace(filePath) && File.Exists(filePath))
+            {
+                var lrcPath = Path.ChangeExtension(filePath, ".lrc");
+                if (File.Exists(lrcPath))
+                {
+                    try
+                    {
+                        var content = await File.ReadAllTextAsync(lrcPath);
+                        return Results.Json(new { found = true, source = "local_file", syncedLyrics = content });
+                    }
+                    catch { }
+                }
+            }
+
+            // 2. Check cached lyrics
+            if (!string.IsNullOrWhiteSpace(filePath))
+            {
+                var hash = LibraryScanner.GetTrackHash(filePath);
+                var cachedLrc = Path.Combine(BinaryManager.FlowLunaDataDir, "lyrics", $"{hash}.lrc");
+                if (File.Exists(cachedLrc))
+                {
+                    try
+                    {
+                        var content = await File.ReadAllTextAsync(cachedLrc);
+                        return Results.Json(new { found = true, source = "cache", syncedLyrics = content });
+                    }
+                    catch { }
+                }
+            }
+
+            return Results.Json(new { found = false });
+        });
+
+        // Lyrics cache endpoint
+        _app.MapPost("/api/lyrics/cache", async (HttpContext ctx) =>
+        {
+            try
+            {
+                using var reader = new StreamReader(ctx.Request.Body);
+                var body = await reader.ReadToEndAsync();
+                using var doc = JsonDocument.Parse(body);
+                var filePath = doc.RootElement.GetProperty("filePath").GetString();
+                var lrc = doc.RootElement.GetProperty("lrc").GetString();
+
+                if (!string.IsNullOrWhiteSpace(filePath) && !string.IsNullOrWhiteSpace(lrc))
+                {
+                    var hash = LibraryScanner.GetTrackHash(filePath);
+                    var lyricsDir = Path.Combine(BinaryManager.FlowLunaDataDir, "lyrics");
+                    Directory.CreateDirectory(lyricsDir);
+                    var cachedLrc = Path.Combine(lyricsDir, $"{hash}.lrc");
+                    await File.WriteAllTextAsync(cachedLrc, lrc);
+                    return Results.Json(new { success = true });
+                }
+            }
+            catch { }
+            return Results.BadRequest();
         });
 
         // 3. Downloader & Binaries Endpoints

@@ -134,7 +134,7 @@ export const CountryFlag: React.FC<CountryFlagProps> = ({ code, className = '', 
     default:
       return (
         <span className={`${baseStyle} bg-neutral-700 text-white text-[9px] font-mono flex items-center justify-center font-bold`}>
-          {code.toUpperCase()}
+          {String(code).toUpperCase()}
         </span>
       );
   }

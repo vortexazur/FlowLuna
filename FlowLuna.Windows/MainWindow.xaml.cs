@@ -257,6 +257,10 @@ public partial class MainWindow : Window
             int darkMode = 1;
             DwmSetWindowAttribute(hwnd, 20, ref darkMode, sizeof(int));
 
+            // DWMWA_WINDOW_CORNER_PREFERENCE = 33 (2 = DWMWCP_ROUND)
+            int cornerPref = 2;
+            DwmSetWindowAttribute(hwnd, 33, ref cornerPref, sizeof(int));
+
             // DWMWA_SYSTEMBACKDROP_TYPE = 38 (3 = Acrylic, 2 = Mica)
             int backdrop = 3;
             DwmSetWindowAttribute(hwnd, 38, ref backdrop, sizeof(int));

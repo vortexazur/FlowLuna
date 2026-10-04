@@ -1,4 +1,4 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import {
   X,
   Play,
@@ -12,12 +12,19 @@ import {
   Shuffle,
   Repeat,
   Repeat1,
-  Maximize2,
-  Minimize2,
   Music,
+  Search,
+  Sparkles,
+  Loader2,
+  Check,
+  RotateCcw,
+  SlidersHorizontal,
+  Upload,
 } from 'lucide-react';
 import { Track, AccentColor, PlayerSettings } from '../types';
 import { AudioVisualizer } from './AudioVisualizer';
+import { fetchLyricsForTrack, parseLrc, LyricLine } from '../services/lyricsService';
+import { saveTrack } from '../services/audioDb';
 
 interface LyricsAndFullscreenProps {
   isOpen: boolean;
@@ -54,13 +61,22 @@ const ACCENT_TEXT: Record<AccentColor, string> = {
   cyan: 'text-cyan-400',
 };
 
+const ACCENT_ACTIVE_TEXT: Record<AccentColor, string> = {
+  emerald: 'text-emerald-300 drop-shadow-[0_2px_16px_rgba(16,185,129,0.6)]',
+  violet: 'text-violet-300 drop-shadow-[0_2px_16px_rgba(139,92,246,0.6)]',
+  blue: 'text-blue-300 drop-shadow-[0_2px_16px_rgba(59,130,246,0.6)]',
+  amber: 'text-amber-300 drop-shadow-[0_2px_16px_rgba(245,158,11,0.6)]',
+  rose: 'text-rose-300 drop-shadow-[0_2px_16px_rgba(244,63,94,0.6)]',
+  cyan: 'text-cyan-300 drop-shadow-[0_2px_16px_rgba(6,182,212,0.6)]',
+};
+
 const ACCENT_BG: Record<AccentColor, string> = {
-  emerald: 'bg-emerald-500 text-neutral-950',
-  violet: 'bg-violet-500 text-white',
-  blue: 'bg-blue-500 text-white',
-  amber: 'bg-amber-500 text-neutral-950',
-  rose: 'bg-rose-500 text-white',
-  cyan: 'bg-cyan-500 text-neutral-950',
+  emerald: 'bg-emerald-500 hover:bg-emerald-400 text-neutral-950',
+  violet: 'bg-violet-500 hover:bg-violet-400 text-white',
+  blue: 'bg-blue-500 hover:bg-blue-400 text-white',
+  amber: 'bg-amber-500 hover:bg-amber-400 text-neutral-950',
+  rose: 'bg-rose-500 hover:bg-rose-400 text-white',
+  cyan: 'bg-cyan-500 hover:bg-cyan-400 text-neutral-950',
 };
 
 const ACCENT_RANGE: Record<AccentColor, string> = {
@@ -70,6 +86,21 @@ const ACCENT_RANGE: Record<AccentColor, string> = {
   amber: 'accent-amber-500',
   rose: 'accent-rose-500',
   cyan: 'accent-cyan-500',
+};
+
+const ACCENT_GLOW: Record<AccentColor, string> = {
+  emerald: 'shadow-[0_0_35px_rgba(16,185,129,0.35)]',
+  violet: 'shadow-[0_0_35px_rgba(139,92,246,0.35)]',
+  blue: 'shadow-[0_0_35px_rgba(59,130,246,0.35)]',
+  amber: 'shadow-[0_0_35px_rgba(245,158,11,0.35)]',
+  rose: 'shadow-[0_0_35px_rgba(244,63,94,0.35)]',
+  cyan: 'shadow-[0_0_35px_rgba(6,182,212,0.35)]',
+};
+
+const FONT_SIZES = {
+  sm: { active: 'text-xl md:text-2xl', inactive: 'text-base md:text-lg' },
+  md: { active: 'text-2xl md:text-3.5xl lg:text-4xl', inactive: 'text-lg md:text-2xl' },
+  lg: { active: 'text-3xl md:text-4.5xl lg:text-5xl', inactive: 'text-xl md:text-3xl' },
 };
 
 export const LyricsAndFullscreen: React.FC<LyricsAndFullscreenProps> = ({
@@ -97,93 +128,460 @@ export const LyricsAndFullscreen: React.FC<LyricsAndFullscreenProps> = ({
   accent,
   settings,
 }) => {
-  const lyricsContainerRef = useRef<HTMLDivElement | null>(null);
+  const [lyricsLines, setLyricsLines] = useState<LyricLine[]>([]);
+  const [isSynced, setIsSynced] = useState(false);
+  const [isInstrumental, setIsInstrumental] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
+  const [lyricsSource, setLyricsSource] = useState<string>('');
+  const [isUserScrolling, setIsUserScrolling] = useState(false);
+  const [isSearchOpen, setIsSearchOpen] = useState(false);
+  const [customSearchTerm, setCustomSearchTerm] = useState('');
+  const [fontSize, setFontSize] = useState<'sm' | 'md' | 'lg'>('md');
 
+  const lyricsContainerRef = useRef<HTMLDivElement | null>(null);
+  const lineRefs = useRef<(HTMLParagraphElement | null)[]>([]);
+  const scrollTimeoutRef = useRef<any>(null);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+
+  // Auto-fetch or parse lyrics whenever the current track changes or view opens
   useEffect(() => {
+    if (!isOpen || !currentTrack) return;
+
+    let isCancelled = false;
+
+    // Check if the track already has saved lyrics in its object
+    if (currentTrack.lyrics && currentTrack.lyrics.length > 0) {
+      const combined = currentTrack.lyrics.join('\n');
+      const parsed = parseLrc(combined);
+      if (parsed.length > 0) {
+        setLyricsLines(parsed);
+        setIsSynced(true);
+        setIsInstrumental(false);
+        setLyricsSource('local');
+        return;
+      } else {
+        // Plain text lyrics
+        setLyricsLines(
+          currentTrack.lyrics.map((t, idx) => ({ time: idx * 5, text: t }))
+        );
+        setIsSynced(false);
+        setIsInstrumental(false);
+        setLyricsSource('local');
+        return;
+      }
+    }
+
+    // Otherwise fetch online from LRCLIB / local server
+    setIsLoading(true);
+    setLyricsLines([]);
+    setIsSynced(false);
+    setIsInstrumental(false);
+    setLyricsSource('');
+
+    fetchLyricsForTrack(
+      currentTrack.title,
+      currentTrack.artist,
+      currentTrack.duration || duration,
+      (currentTrack as any).filePath
+    )
+      .then((res) => {
+        if (isCancelled) return;
+        if (res && res.lines.length > 0) {
+          setLyricsLines(res.lines);
+          setIsSynced(res.isSynced);
+          setIsInstrumental(res.isInstrumental);
+          setLyricsSource(res.source);
+
+          // Persist back to track in IndexedDB for instant offline access next time
+          if (res.rawLrc) {
+            const updated = {
+              ...currentTrack,
+              lyrics: res.rawLrc.split(/\r?\n/).filter(Boolean),
+            };
+            saveTrack(updated).catch(() => {});
+          }
+        } else {
+          setLyricsLines([]);
+          setIsSynced(false);
+        }
+      })
+      .catch(() => {
+        if (!isCancelled) {
+          setLyricsLines([]);
+        }
+      })
+      .finally(() => {
+        if (!isCancelled) {
+          setIsLoading(false);
+        }
+      });
+
+    return () => {
+      isCancelled = true;
+    };
+  }, [isOpen, currentTrack?.id]);
+
+  // Keyboard navigation & Shortcuts
+  useEffect(() => {
+    if (!isOpen) return;
+
     const handleKeyDown = (e: KeyboardEvent) => {
+      // Don't intercept when typing in custom search input
+      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) {
+        if (e.key === 'Escape') {
+          setIsSearchOpen(false);
+        }
+        return;
+      }
+
       if (e.key === 'Escape') {
         onClose();
+      } else if (e.code === 'Space') {
+        e.preventDefault();
+        onTogglePlay();
+      } else if (e.key === 'ArrowLeft') {
+        e.preventDefault();
+        onSeek(Math.max(0, currentTime - 5));
+      } else if (e.key === 'ArrowRight') {
+        e.preventDefault();
+        onSeek(Math.min(duration, currentTime + 5));
+      } else if (e.key === 'ArrowUp') {
+        e.preventDefault();
+        onVolumeChange(Math.min(1, volume + 0.05));
+      } else if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        onVolumeChange(Math.max(0, volume - 0.05));
       }
     };
-    if (isOpen) {
-      window.addEventListener('keydown', handleKeyDown);
-    }
+
+    window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [isOpen, onClose]);
+  }, [isOpen, onClose, onTogglePlay, onSeek, currentTime, duration, onVolumeChange, volume]);
+
+  // Compute active lyric index based on audio currentTime
+  const activeLyricIndex = useMemo(() => {
+    if (!lyricsLines || lyricsLines.length === 0) return -1;
+    if (!isSynced) {
+      // For unsynced text, estimate smoothly by track duration
+      const ratio = duration > 0 ? currentTime / duration : 0;
+      return Math.min(lyricsLines.length - 1, Math.floor(ratio * lyricsLines.length));
+    }
+
+    // For synced LRC, find the latest timestamp <= currentTime + 0.15s (graceful anticipation)
+    let active = -1;
+    for (let i = 0; i < lyricsLines.length; i++) {
+      if (lyricsLines[i].time <= currentTime + 0.15) {
+        active = i;
+      } else {
+        break;
+      }
+    }
+    return active;
+  }, [lyricsLines, currentTime, isSynced, duration]);
+
+  // Auto-scroll lyrics smoothly to keep active line in view
+  useEffect(() => {
+    if (activeLyricIndex < 0 || isUserScrolling) return;
+
+    const container = lyricsContainerRef.current;
+    const activeEl = lineRefs.current[activeLyricIndex];
+
+    if (container && activeEl) {
+      const containerHeight = container.clientHeight;
+      const activeTop = activeEl.offsetTop;
+      const activeHeight = activeEl.clientHeight;
+      // Position active line slightly above center (38% from top) for ideal reading flow
+      const targetScroll = activeTop - containerHeight * 0.38 + activeHeight / 2;
+
+      container.scrollTo({
+        top: Math.max(0, targetScroll),
+        behavior: 'smooth',
+      });
+    }
+  }, [activeLyricIndex, isUserScrolling]);
+
+  // User manual scroll detection: pause auto-scroll temporarily
+  const handleScroll = () => {
+    setIsUserScrolling(true);
+    if (scrollTimeoutRef.current) clearTimeout(scrollTimeoutRef.current);
+    scrollTimeoutRef.current = setTimeout(() => {
+      setIsUserScrolling(false);
+    }, 4500);
+  };
+
+  const handleManualSearch = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!customSearchTerm.trim() || !currentTrack) return;
+
+    setIsLoading(true);
+    try {
+      const res = await fetch(
+        `https://lrclib.net/api/search?q=${encodeURIComponent(customSearchTerm.trim())}`
+      );
+      if (res.ok) {
+        const items = await res.json();
+        if (Array.isArray(items) && items.length > 0) {
+          const match = items.find((i) => i.syncedLyrics) || items[0];
+          if (match.instrumental) {
+            setLyricsLines([{ time: 0, text: '♪ Morceau instrumental ♪' }]);
+            setIsSynced(false);
+            setIsInstrumental(true);
+          } else if (match.syncedLyrics) {
+            const parsed = parseLrc(match.syncedLyrics);
+            setLyricsLines(parsed);
+            setIsSynced(true);
+            setIsInstrumental(false);
+            // Save to track
+            const updated = {
+              ...currentTrack,
+              lyrics: match.syncedLyrics.split(/\r?\n/).filter(Boolean),
+            };
+            saveTrack(updated).catch(() => {});
+          } else if (match.plainLyrics) {
+            const plainLines = match.plainLyrics
+              .split(/\r?\n/)
+              .map((t: string) => t.trim())
+              .filter(Boolean)
+              .map((text: string, idx: number) => ({ time: idx * 5, text }));
+            setLyricsLines(plainLines);
+            setIsSynced(false);
+            setIsInstrumental(false);
+          }
+          setIsSearchOpen(false);
+        }
+      }
+    } catch {}
+    setIsLoading(false);
+  };
+
+  // Import custom local .lrc file
+  const handleImportLrcFile = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !currentTrack) return;
+
+    const reader = new FileReader();
+    reader.onload = () => {
+      const text = reader.result as string;
+      if (text) {
+        const parsed = parseLrc(text);
+        if (parsed.length > 0) {
+          setLyricsLines(parsed);
+          setIsSynced(true);
+          setIsInstrumental(false);
+          setLyricsSource('local_file');
+          const updated = {
+            ...currentTrack,
+            lyrics: text.split(/\r?\n/).filter(Boolean),
+          };
+          saveTrack(updated).catch(() => {});
+        }
+      }
+    };
+    reader.readAsText(file);
+  };
 
   if (!isOpen || !currentTrack) return null;
 
   const formatTime = (secs: number) => {
+    if (isNaN(secs) || secs < 0) return '0:00';
     const m = Math.floor(secs / 60);
     const s = Math.floor(secs % 60);
     return `${m}:${s.toString().padStart(2, '0')}`;
   };
 
-  const lyrics = currentTrack.lyrics || [
-    '[00:00.00] ♪ Écoute haute fidélité sans latence ♪',
-    '[00:15.00] Profitez de votre musique préférée avec un rendu audio cristallin',
-    '[00:30.00] Optimisation mémoire et égalisation matérielle 10 bandes',
-    '[00:50.00] Synchronisé automatiquement sur vos appareils',
-  ];
-
-  // Estimate active lyric index
-  const progressRatio = duration > 0 ? currentTime / duration : 0;
-  const activeLyricIndex = Math.min(
-    lyrics.length - 1,
-    Math.max(0, Math.floor(progressRatio * lyrics.length))
-  );
+  const coverImage =
+    currentTrack.coverUrl ||
+    'https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?w=600&auto=format&fit=crop&q=80';
 
   return (
     <div
       id="fullscreen-lyrics-modal"
-      className="fixed inset-0 z-50 bg-neutral-950/95 backdrop-blur-xl flex flex-col text-neutral-100 p-6 md:p-10 select-none overflow-hidden"
+      className="fixed inset-0 z-50 flex flex-col text-neutral-100 select-none overflow-hidden bg-neutral-950 animate-in fade-in duration-300"
     >
-      {/* Top Bar */}
-      <div className="flex items-center justify-between z-10">
-        <div className="flex items-center gap-3">
-          <span className="text-xs font-mono uppercase tracking-widest px-2.5 py-1 rounded-full bg-neutral-800 text-neutral-400 border border-neutral-700">
-            Mode Plein Écran & Paroles
-          </span>
-          <span className="text-xs font-mono text-neutral-400">
-            {currentTrack.format.toUpperCase()} • {currentTrack.bitrate || 320} kbps
-          </span>
-        </div>
-
-        <button
-          type="button"
-          id="fullscreen-close-btn"
-          onClick={onClose}
-          className="p-2 rounded-full bg-neutral-900 hover:bg-neutral-800 text-neutral-400 hover:text-white transition-colors"
-          title="Fermer (Échap)"
-        >
-          <X className="w-6 h-6" />
-        </button>
+      {/* 1. Dynamic Ambient Aura Background (Apple Music & Spotify Fullscreen style) */}
+      <div className="absolute inset-0 overflow-hidden pointer-events-none select-none z-0">
+        <img
+          src={coverImage}
+          alt=""
+          className="absolute inset-0 w-full h-full object-cover scale-150 blur-[110px] opacity-40 brightness-75 transition-all duration-1000 transform-gpu"
+        />
+        {/* Layered vignette gradient */}
+        <div className="absolute inset-0 bg-gradient-to-t from-neutral-950 via-neutral-950/70 to-neutral-950/85" />
+        <div className="absolute inset-0 bg-neutral-950/50 backdrop-blur-2xl" />
       </div>
 
-      {/* Center Layout: Left Album Art & Visualizer, Right Lyrics */}
-      <div className="flex-1 grid grid-cols-1 md:grid-cols-2 gap-8 items-center my-6 overflow-hidden">
-        {/* Left Side: Artwork & Visualizer */}
-        <div className="flex flex-col items-center justify-center gap-6 h-full">
-          <div className="relative w-64 h-64 md:w-80 md:h-80 rounded-2xl overflow-hidden shadow-2xl border border-neutral-800/80 group">
+      {/* 2. Top Header Bar */}
+      <header className="relative z-10 flex items-center justify-between px-6 py-4 md:px-10 border-b border-white/5">
+        <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-white/10 backdrop-blur-md border border-white/10 text-xs font-semibold">
+            <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+            <span>Plein Écran & Paroles</span>
+          </div>
+
+          <span className="hidden sm:inline-flex text-xs font-mono text-neutral-400 bg-white/5 px-2.5 py-1 rounded-md border border-white/5">
+            {currentTrack.format?.toUpperCase() || 'AUDIO'} • {currentTrack.bitrate || 320} kbps
+          </span>
+
+          {isSynced && (
+            <span className="inline-flex items-center gap-1.5 text-xs font-medium text-emerald-400 bg-emerald-950/40 border border-emerald-500/20 px-2.5 py-1 rounded-full">
+              <Check className="w-3.5 h-3.5" />
+              Synchronisées
+            </span>
+          )}
+          {isInstrumental && (
+            <span className="inline-flex items-center gap-1.5 text-xs font-medium text-cyan-400 bg-cyan-950/40 border border-cyan-500/20 px-2.5 py-1 rounded-full">
+              <Music className="w-3.5 h-3.5" />
+              Instrumental
+            </span>
+          )}
+        </div>
+
+        {/* Header Actions: Font Sizing, Search Lyrics, Close */}
+        <div className="flex items-center gap-2">
+          {/* Font Size Toggle */}
+          <div className="hidden sm:flex items-center bg-white/5 rounded-lg border border-white/10 p-0.5 text-xs font-semibold">
+            <button
+              type="button"
+              onClick={() => setFontSize('sm')}
+              className={`px-2 py-1 rounded-md transition-colors ${
+                fontSize === 'sm' ? 'bg-white/20 text-white' : 'text-neutral-400 hover:text-white'
+              }`}
+              title="Petite police"
+            >
+              A-
+            </button>
+            <button
+              type="button"
+              onClick={() => setFontSize('md')}
+              className={`px-2 py-1 rounded-md transition-colors ${
+                fontSize === 'md' ? 'bg-white/20 text-white' : 'text-neutral-400 hover:text-white'
+              }`}
+              title="Police normale"
+            >
+              A
+            </button>
+            <button
+              type="button"
+              onClick={() => setFontSize('lg')}
+              className={`px-2 py-1 rounded-md transition-colors ${
+                fontSize === 'lg' ? 'bg-white/20 text-white' : 'text-neutral-400 hover:text-white'
+              }`}
+              title="Grande police"
+            >
+              A+
+            </button>
+          </div>
+
+          {/* Search Lyrics Button */}
+          <button
+            type="button"
+            onClick={() => {
+              setCustomSearchTerm(`${currentTrack.artist || ''} ${currentTrack.title || ''}`.trim());
+              setIsSearchOpen((prev) => !prev);
+            }}
+            className="p-2 rounded-full bg-white/5 hover:bg-white/15 text-neutral-300 hover:text-white transition-colors border border-white/10"
+            title="Rechercher d'autres paroles"
+          >
+            <Search className="w-4 h-4" />
+          </button>
+
+          {/* Import local .LRC */}
+          <input
+            type="file"
+            ref={fileInputRef}
+            accept=".lrc,.txt"
+            className="hidden"
+            onChange={handleImportLrcFile}
+          />
+          <button
+            type="button"
+            onClick={() => fileInputRef.current?.click()}
+            className="hidden md:flex p-2 rounded-full bg-white/5 hover:bg-white/15 text-neutral-300 hover:text-white transition-colors border border-white/10"
+            title="Importer un fichier .lrc local"
+          >
+            <Upload className="w-4 h-4" />
+          </button>
+
+          {/* Close button */}
+          <button
+            type="button"
+            id="fullscreen-close-btn"
+            onClick={onClose}
+            className="p-2 rounded-full bg-white/10 hover:bg-white/20 text-neutral-300 hover:text-white transition-colors border border-white/10 cursor-pointer ml-1"
+            title="Fermer (Échap)"
+          >
+            <X className="w-5 h-5" />
+          </button>
+        </div>
+      </header>
+
+      {/* Manual Search Dropdown Bar */}
+      {isSearchOpen && (
+        <form
+          onSubmit={handleManualSearch}
+          className="relative z-20 mx-6 md:mx-10 mt-3 p-3 rounded-2xl bg-neutral-900/90 backdrop-blur-2xl border border-white/15 shadow-2xl flex items-center gap-3 animate-in slide-in-from-top-2 duration-200"
+        >
+          <Search className="w-4 h-4 text-neutral-400 flex-shrink-0" />
+          <input
+            type="text"
+            placeholder="Titre du morceau ou artiste pour trouver les paroles synchronisées..."
+            value={customSearchTerm}
+            onChange={(e) => setCustomSearchTerm(e.target.value)}
+            className="flex-1 bg-transparent text-sm text-white placeholder-neutral-500 focus:outline-none"
+            autoFocus
+          />
+          <button
+            type="submit"
+            disabled={isLoading || !customSearchTerm.trim()}
+            className={`px-4 py-1.5 rounded-xl text-xs font-bold transition-all disabled:opacity-50 ${ACCENT_BG[accent]}`}
+          >
+            {isLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Rechercher'}
+          </button>
+          <button
+            type="button"
+            onClick={() => setIsSearchOpen(false)}
+            className="p-1.5 rounded-lg text-neutral-400 hover:text-white hover:bg-white/10"
+          >
+            <X className="w-4 h-4" />
+          </button>
+        </form>
+      )}
+
+      {/* 3. Main Stage: Left Track Info + Visualizer | Right Flowing Lyrics */}
+      <main className="relative z-10 flex-1 grid grid-cols-1 md:grid-cols-12 gap-8 lg:gap-12 px-6 md:px-12 py-6 items-center overflow-hidden">
+        {/* Left Section: Artwork, Track Info & Visualizer */}
+        <section className="md:col-span-5 flex flex-col items-center md:items-start justify-center gap-6 max-w-md mx-auto md:mx-0 w-full">
+          {/* Album Cover Art */}
+          <div className="relative group w-56 h-56 sm:w-64 sm:h-64 md:w-80 md:h-80 lg:w-96 lg:h-96 rounded-3xl overflow-hidden shadow-[0_25px_60px_-15px_rgba(0,0,0,0.9)] border border-white/10 transition-transform duration-500 group-hover:scale-[1.02]">
             <img
-              src={
-                currentTrack.coverUrl ||
-                'https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?w=600&auto=format&fit=crop&q=80'
-              }
+              src={coverImage}
               alt={currentTrack.title}
               className="w-full h-full object-cover"
               referrerPolicy="no-referrer"
             />
-            {/* Subtle glow overlay */}
-            <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent opacity-60" />
-            <div className="absolute bottom-4 left-4 right-4">
-              <h2 className="text-xl font-bold truncate text-white drop-shadow-md">{currentTrack.title}</h2>
-              <p className="text-sm text-neutral-300 truncate drop-shadow-sm">{currentTrack.artist}</p>
-            </div>
+            {isPlaying && (
+              <div className="absolute inset-0 ring-1 ring-inset ring-white/20 rounded-3xl pointer-events-none" />
+            )}
           </div>
 
-          {/* Integrated Real-time Canvas Visualizer */}
-          <div className="w-64 md:w-80 h-16 rounded-xl bg-neutral-900/60 border border-neutral-800/80 p-2 overflow-hidden">
+          {/* Track Titles & Metadata */}
+          <div className="w-full flex flex-col gap-1.5 text-center md:text-left">
+            <h1 className="text-2xl sm:text-3xl lg:text-4xl font-extrabold text-white tracking-tight leading-tight line-clamp-2 drop-shadow-md">
+              {currentTrack.title}
+            </h1>
+            <p className="text-base sm:text-lg font-semibold text-neutral-300 line-clamp-1">
+              {currentTrack.artist}
+            </p>
+            {currentTrack.album && currentTrack.album !== 'Bibliothèque Locale' && (
+              <p className="text-xs sm:text-sm text-neutral-400 line-clamp-1">
+                {currentTrack.album}
+                {currentTrack.year ? ` • ${currentTrack.year}` : ''}
+              </p>
+            )}
+          </div>
+
+          {/* Real-time Integrated Visualizer */}
+          <div className="w-full h-16 rounded-2xl bg-white/5 backdrop-blur-md border border-white/10 p-2 overflow-hidden shadow-inner">
             <AudioVisualizer
               isPlaying={isPlaying}
               style={settings.visualizerStyle}
@@ -191,147 +589,246 @@ export const LyricsAndFullscreen: React.FC<LyricsAndFullscreenProps> = ({
               className="w-full h-full"
             />
           </div>
-        </div>
+        </section>
 
-        {/* Right Side: Lyrics Panel */}
-        <div
-          ref={lyricsContainerRef}
-          className="flex flex-col gap-4 overflow-y-auto max-h-[60vh] md:max-h-[70vh] px-4 py-8 rounded-2xl bg-neutral-900/30 border border-neutral-800/50"
-        >
-          <span className="text-xs uppercase tracking-wider text-neutral-500 font-semibold mb-2">
-            Paroles Synchronisées
-          </span>
-          {lyrics.map((line, idx) => {
-            const isCurrent = idx === activeLyricIndex;
-            return (
-              <p
-                key={idx}
-                className={`text-lg md:text-2xl font-bold transition-all duration-300 cursor-pointer ${
-                  isCurrent
-                    ? `${ACCENT_TEXT[accent]} scale-102 translate-x-1 drop-shadow-lg`
-                    : 'text-neutral-500 hover:text-neutral-300 opacity-60'
-                }`}
-                onClick={() => {
-                  const targetSec = (idx / lyrics.length) * duration;
-                  onSeek(targetSec);
-                }}
-              >
-                {line.replace(/\[\d{2}:\d{2}\.\d{2}\]/g, '').trim()}
-              </p>
-            );
-          })}
-        </div>
-      </div>
-
-      {/* Bottom Controls */}
-      <div className="w-full max-w-4xl mx-auto flex flex-col gap-3 z-10 bg-neutral-900/80 p-4 rounded-2xl border border-neutral-800/80">
-        {/* Seek Bar */}
-        <div className="flex items-center gap-3 w-full text-xs font-mono text-neutral-400">
-          <span>{formatTime(currentTime)}</span>
-          <input
-            type="range"
-            min={0}
-            max={duration || 100}
-            step={0.5}
-            value={currentTime}
-            onChange={(e) => onSeek(parseFloat(e.target.value))}
-            className={`w-full h-1.5 bg-neutral-800 rounded-lg cursor-pointer ${ACCENT_RANGE[accent]}`}
-          />
-          <span>{formatTime(duration)}</span>
-        </div>
-
-        {/* Action buttons */}
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <button
-              type="button"
-              onClick={onToggleFavorite}
-              className={`p-2 rounded-full hover:bg-neutral-800 transition-colors ${
-                isFavorite ? 'text-rose-500 fill-current' : 'text-neutral-400 hover:text-white'
-              }`}
-            >
-              <Heart className={`w-5 h-5 ${isFavorite ? 'fill-rose-500' : ''}`} />
-            </button>
-            <button
-              type="button"
-              onClick={onToggleShuffle}
-              className={`p-2 rounded-full hover:bg-neutral-800 transition-colors ${
-                shuffle ? ACCENT_TEXT[accent] : 'text-neutral-400 hover:text-white'
-              }`}
-            >
-              <Shuffle className="w-5 h-5" />
-            </button>
-          </div>
-
-          <div className="flex items-center gap-4">
-            <button
-              type="button"
-              onClick={onPrev}
-              className="p-2 text-neutral-300 hover:text-white hover:bg-neutral-800 rounded-full transition-colors"
-            >
-              <SkipBack className="w-6 h-6" />
-            </button>
-
-            <button
-              type="button"
-              onClick={onTogglePlay}
-              className={`p-4 rounded-full shadow-xl transition-transform hover:scale-105 active:scale-95 ${ACCENT_BG[accent]}`}
-            >
-              {isPlaying ? <Pause className="w-6 h-6 fill-current" /> : <Play className="w-6 h-6 fill-current ml-0.5" />}
-            </button>
-
-            {onStop && (
-              <button
-                type="button"
-                onClick={onStop}
-                className="p-3 text-neutral-300 hover:text-red-400 hover:bg-neutral-800 rounded-full transition-colors active:scale-95"
-                title="Arrêter totalement la musique (Stop)"
-              >
-                <Square className="w-5 h-5 fill-current" />
-              </button>
+        {/* Right Section: Apple Music Style Immersive Lyrics Stream */}
+        <section className="md:col-span-7 h-full flex flex-col justify-center relative overflow-hidden">
+          {/* Masked scroll container */}
+          <div
+            ref={lyricsContainerRef}
+            onScroll={handleScroll}
+            className="flex-1 overflow-y-auto px-4 md:px-8 py-20 flex flex-col gap-6 md:gap-8 scroll-smooth select-text"
+            style={{
+              maskImage:
+                'linear-gradient(to bottom, transparent 0%, black 15%, black 85%, transparent 100%)',
+              WebkitMaskImage:
+                'linear-gradient(to bottom, transparent 0%, black 15%, black 85%, transparent 100%)',
+            }}
+          >
+            {/* Loading state */}
+            {isLoading && (
+              <div className="flex flex-col items-center justify-center my-auto gap-4 text-neutral-400 py-16">
+                <Loader2 className={`w-8 h-8 animate-spin ${ACCENT_TEXT[accent]}`} />
+                <p className="text-sm font-medium">Recherche des paroles officielles en cours...</p>
+              </div>
             )}
 
-            <button
-              type="button"
-              onClick={onNext}
-              className="p-2 text-neutral-300 hover:text-white hover:bg-neutral-800 rounded-full transition-colors"
-            >
-              <SkipForward className="w-6 h-6" />
-            </button>
+            {/* Empty state when no lyrics found */}
+            {!isLoading && lyricsLines.length === 0 && (
+              <div className="flex flex-col items-center justify-center my-auto gap-4 text-center py-16 px-6 rounded-3xl bg-white/5 border border-white/10 backdrop-blur-md max-w-md mx-auto">
+                <div className="p-4 rounded-2xl bg-white/10 text-neutral-300">
+                  <Music className="w-8 h-8 opacity-60" />
+                </div>
+                <div>
+                  <h3 className="text-lg font-bold text-white mb-1">Paroles indisponibles</h3>
+                  <p className="text-xs text-neutral-400 mb-4">
+                    Aucune parole trouvée automatiquement pour ce morceau.
+                  </p>
+                </div>
+                <div className="flex flex-wrap items-center justify-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setCustomSearchTerm(`${currentTrack.artist || ''} ${currentTrack.title || ''}`.trim());
+                      setIsSearchOpen(true);
+                    }}
+                    className={`px-4 py-2 rounded-xl text-xs font-bold transition-all shadow-lg ${ACCENT_BG[accent]}`}
+                  >
+                    Recherche manuelle
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => fileInputRef.current?.click()}
+                    className="px-4 py-2 rounded-xl text-xs font-bold bg-white/10 hover:bg-white/20 text-neutral-200 transition-colors border border-white/10"
+                  >
+                    Importer .LRC
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* Rendered Lyrics Lines */}
+            {!isLoading &&
+              lyricsLines.map((line, idx) => {
+                const isActive = idx === activeLyricIndex;
+                const distance = Math.abs(idx - activeLyricIndex);
+
+                // Compute opacity fading based on distance from current playing line
+                let opacityClass = 'opacity-30 hover:opacity-80';
+                if (isActive) opacityClass = 'opacity-100';
+                else if (distance === 1) opacityClass = 'opacity-60 hover:opacity-90';
+                else if (distance === 2) opacityClass = 'opacity-40 hover:opacity-80';
+
+                return (
+                  <p
+                    key={idx}
+                    ref={(el) => {
+                      lineRefs.current[idx] = el;
+                    }}
+                    onClick={() => {
+                      if (isSynced) {
+                        onSeek(line.time);
+                        setIsUserScrolling(false);
+                      } else {
+                        const targetSec = (idx / lyricsLines.length) * duration;
+                        onSeek(targetSec);
+                      }
+                    }}
+                    className={`cursor-pointer transition-all duration-300 font-extrabold tracking-tight leading-relaxed select-none ${
+                      isActive
+                        ? `${FONT_SIZES[fontSize].active} ${ACCENT_ACTIVE_TEXT[accent]} scale-[1.03] origin-left drop-shadow-md`
+                        : `${FONT_SIZES[fontSize].inactive} text-white/50 hover:text-white ${opacityClass}`
+                    }`}
+                  >
+                    {line.text}
+                  </p>
+                );
+              })}
           </div>
 
-          <div className="flex items-center gap-3">
+          {/* Floating Re-center Pill Button (appears when user manually scrolls away) */}
+          {isUserScrolling && isSynced && activeLyricIndex >= 0 && (
             <button
               type="button"
-              onClick={onCycleRepeat}
-              className={`p-2 rounded-full hover:bg-neutral-800 transition-colors ${
-                repeatMode !== 'off' ? ACCENT_TEXT[accent] : 'text-neutral-400 hover:text-white'
-              }`}
+              onClick={() => {
+                setIsUserScrolling(false);
+              }}
+              className="absolute bottom-4 left-1/2 -translate-x-1/2 z-20 px-4 py-2 rounded-full bg-neutral-900/90 hover:bg-neutral-800 text-white text-xs font-bold backdrop-blur-xl border border-white/20 shadow-2xl flex items-center gap-2 transition-all hover:scale-105 active:scale-95 animate-in fade-in duration-200 cursor-pointer"
             >
-              {repeatMode === 'one' ? <Repeat1 className="w-5 h-5" /> : <Repeat className="w-5 h-5" />}
+              <RotateCcw className="w-3.5 h-3.5 text-cyan-400" />
+              Re-centrer sur la musique
             </button>
+          )}
+        </section>
+      </main>
 
-            <div className="hidden sm:flex items-center gap-2">
-              <button
-                type="button"
-                onClick={onToggleMute}
-                className="text-neutral-400 hover:text-white transition-colors"
-              >
-                {isMuted || volume === 0 ? <VolumeX className="w-5 h-5" /> : <Volume2 className="w-5 h-5" />}
-              </button>
+      {/* 4. Bottom Floating Glass Player Bar */}
+      <footer className="relative z-10 p-4 md:p-6 flex justify-center">
+        <div className="w-full max-w-4xl flex flex-col gap-3 bg-neutral-900/70 backdrop-blur-2xl p-4 sm:p-5 rounded-3xl border border-white/10 shadow-[0_20px_50px_rgba(0,0,0,0.8)]">
+          {/* Progress Seek Bar */}
+          <div className="flex items-center gap-3 w-full text-xs font-mono text-neutral-400">
+            <span className="w-10 text-right">{formatTime(currentTime)}</span>
+            <div className="relative flex-1 flex items-center">
               <input
                 type="range"
                 min={0}
-                max={1}
-                step={0.01}
-                value={isMuted ? 0 : volume}
-                onChange={(e) => onVolumeChange(parseFloat(e.target.value))}
-                className={`w-20 h-1 bg-neutral-800 rounded-lg cursor-pointer ${ACCENT_RANGE[accent]}`}
+                max={duration || 100}
+                step={0.2}
+                value={currentTime}
+                onChange={(e) => onSeek(parseFloat(e.target.value))}
+                className={`w-full h-1.5 bg-white/10 hover:bg-white/20 rounded-lg cursor-pointer ${ACCENT_RANGE[accent]}`}
               />
+            </div>
+            <span className="w-10">{formatTime(duration)}</span>
+          </div>
+
+          {/* Player Action Buttons */}
+          <div className="flex items-center justify-between">
+            {/* Left Controls: Favorite & Shuffle */}
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={onToggleFavorite}
+                className={`p-2.5 rounded-full hover:bg-white/10 transition-colors ${
+                  isFavorite ? 'text-rose-500 fill-current' : 'text-neutral-400 hover:text-white'
+                }`}
+                title={isFavorite ? 'Retirer des favoris' : 'Ajouter aux favoris'}
+              >
+                <Heart className={`w-5 h-5 ${isFavorite ? 'fill-rose-500' : ''}`} />
+              </button>
+              <button
+                type="button"
+                onClick={onToggleShuffle}
+                className={`p-2.5 rounded-full hover:bg-white/10 transition-colors ${
+                  shuffle ? ACCENT_TEXT[accent] : 'text-neutral-400 hover:text-white'
+                }`}
+                title={shuffle ? 'Aléatoire activé' : 'Aléatoire désactivé'}
+              >
+                <Shuffle className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Center Controls: Prev, Play/Pause, Stop, Next */}
+            <div className="flex items-center gap-3 sm:gap-4">
+              <button
+                type="button"
+                onClick={onPrev}
+                className="p-2.5 text-neutral-300 hover:text-white hover:bg-white/10 rounded-full transition-colors active:scale-95 cursor-pointer"
+                title="Piste précédente"
+              >
+                <SkipBack className="w-6 h-6" />
+              </button>
+
+              <button
+                type="button"
+                onClick={onTogglePlay}
+                className={`p-4 rounded-full transition-transform hover:scale-105 active:scale-95 cursor-pointer shadow-xl ${ACCENT_BG[accent]} ${ACCENT_GLOW[accent]}`}
+                title={isPlaying ? 'Pause (Espace)' : 'Lecture (Espace)'}
+              >
+                {isPlaying ? (
+                  <Pause className="w-6 h-6 fill-current" />
+                ) : (
+                  <Play className="w-6 h-6 fill-current ml-0.5" />
+                )}
+              </button>
+
+              {onStop && (
+                <button
+                  type="button"
+                  onClick={onStop}
+                  className="p-2.5 text-neutral-400 hover:text-red-400 hover:bg-white/10 rounded-full transition-colors active:scale-95 cursor-pointer"
+                  title="Arrêter la lecture"
+                >
+                  <Square className="w-5 h-5 fill-current" />
+                </button>
+              )}
+
+              <button
+                type="button"
+                onClick={onNext}
+                className="p-2.5 text-neutral-300 hover:text-white hover:bg-white/10 rounded-full transition-colors active:scale-95 cursor-pointer"
+                title="Piste suivante"
+              >
+                <SkipForward className="w-6 h-6" />
+              </button>
+            </div>
+
+            {/* Right Controls: Repeat & Volume */}
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={onCycleRepeat}
+                className={`p-2.5 rounded-full hover:bg-white/10 transition-colors ${
+                  repeatMode !== 'off' ? ACCENT_TEXT[accent] : 'text-neutral-400 hover:text-white'
+                }`}
+                title={`Répétition : ${repeatMode}`}
+              >
+                {repeatMode === 'one' ? <Repeat1 className="w-5 h-5" /> : <Repeat className="w-5 h-5" />}
+              </button>
+
+              <div className="hidden sm:flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={onToggleMute}
+                  className="p-1.5 text-neutral-400 hover:text-white transition-colors"
+                  title={isMuted ? 'Activer le son' : 'Couper le son'}
+                >
+                  {isMuted || volume === 0 ? <VolumeX className="w-5 h-5" /> : <Volume2 className="w-5 h-5" />}
+                </button>
+                <input
+                  type="range"
+                  min={0}
+                  max={1}
+                  step={0.01}
+                  value={isMuted ? 0 : volume}
+                  onChange={(e) => onVolumeChange(parseFloat(e.target.value))}
+                  className={`w-20 md:w-24 h-1.5 bg-white/10 rounded-lg cursor-pointer ${ACCENT_RANGE[accent]}`}
+                />
+              </div>
             </div>
           </div>
         </div>
-      </div>
+      </footer>
     </div>
   );
 };

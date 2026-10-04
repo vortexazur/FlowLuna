@@ -97,40 +97,79 @@ class BackgroundLibraryScanner {
         existing.map((t) => `${t.title.toLowerCase().trim()}:::${t.artist.toLowerCase().trim()}`)
       );
 
-      // Find brand new tracks not yet in the library
+      // Find brand new tracks or existing tracks that need duration correction
       const newlyDiscovered: Track[] = [];
+      const updatedExisting: Track[] = [];
 
       for (const scanned of scannedTracks) {
         const signature = `${scanned.title.toLowerCase().trim()}:::${scanned.artist.toLowerCase().trim()}`;
-        const alreadyExists =
-          existingIds.has(scanned.id) ||
-          (scanned.url && existingUrls.has(scanned.url)) ||
-          existingTitleArtist.has(signature);
+        const existingTrack = existing.find(
+          (t) =>
+            t.id === scanned.id ||
+            (scanned.url && t.url === scanned.url) ||
+            `${t.title.toLowerCase().trim()}:::${t.artist.toLowerCase().trim()}` === signature
+        );
 
-        if (!alreadyExists) {
+        if (!existingTrack) {
           newlyDiscovered.push(scanned);
+        } else {
+          let hasUpdated = false;
+
+          // If the existing track had an inaccurate/fallback duration (180 or 0) and scanned has a real duration
+          if ((!existingTrack.duration || existingTrack.duration === 180) && scanned.duration && scanned.duration > 0 && scanned.duration !== 180) {
+            existingTrack.duration = scanned.duration;
+            if (scanned.bitrate) existingTrack.bitrate = scanned.bitrate;
+            hasUpdated = true;
+          }
+
+          // If the existing track had a fallback Unsplash cover or no cover, and scanned track has a real cover
+          const isGenericCover = !existingTrack.coverUrl || existingTrack.coverUrl.includes('images.unsplash.com');
+          const isNewRealCover = scanned.coverUrl && !scanned.coverUrl.includes('images.unsplash.com');
+          if (isGenericCover && isNewRealCover) {
+            existingTrack.coverUrl = scanned.coverUrl;
+            hasUpdated = true;
+          }
+
+          // If the existing track had default/missing album/genre/year and scanned has real metadata
+          if ((!existingTrack.album || existingTrack.album === 'Bibliothèque Locale' || existingTrack.album === 'Fichiers PC Locaux') && scanned.album && scanned.album !== 'Bibliothèque Locale') {
+            existingTrack.album = scanned.album;
+            hasUpdated = true;
+          }
+          if (!existingTrack.genre && scanned.genre) {
+            existingTrack.genre = scanned.genre;
+            hasUpdated = true;
+          }
+          if (!existingTrack.year && scanned.year) {
+            existingTrack.year = scanned.year;
+            hasUpdated = true;
+          }
+
+          if (hasUpdated) {
+            updatedExisting.push(existingTrack);
+          }
         }
       }
 
-      if (newlyDiscovered.length > 0) {
+      const allToPersist = [...newlyDiscovered, ...updatedExisting];
+      if (allToPersist.length > 0) {
         // Save automatically into IndexedDB
-        await saveTracks(newlyDiscovered);
+        await saveTracks(allToPersist);
 
         // Notify subscribers (App.tsx updates React state immediately)
         this.listeners.forEach((callback) => {
           try {
-            callback(newlyDiscovered);
+            callback(allToPersist);
           } catch (e) {
             console.error('Error in background scanner listener:', e);
           }
         });
 
         if (!isSilent) {
-          console.info(`[BackgroundScanner] Auto-indexed ${newlyDiscovered.length} new local tracks.`);
+          console.info(`[BackgroundScanner] Updated ${allToPersist.length} tracks (${newlyDiscovered.length} new, ${updatedExisting.length} duration fixed).`);
         }
       }
 
-      return newlyDiscovered;
+      return allToPersist;
     } catch (err) {
       console.warn('[BackgroundScanner] Local library scan check:', err);
       return [];

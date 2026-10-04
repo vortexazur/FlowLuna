@@ -176,8 +176,13 @@ export const PlaylistView: React.FC<PlaylistViewProps> = ({
   };
 
   const formatDuration = (secs: number) => {
-    const m = Math.floor(secs / 60);
+    if (!secs || isNaN(secs) || secs <= 0) return '0:00';
+    const h = Math.floor(secs / 3600);
+    const m = Math.floor((secs % 3600) / 60);
     const s = Math.floor(secs % 60);
+    if (h > 0) {
+      return `${h}:${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
+    }
     return `${m}:${s.toString().padStart(2, '0')}`;
   };
 
@@ -438,19 +443,19 @@ export const PlaylistView: React.FC<PlaylistViewProps> = ({
           </p>
         </div>
       ) : (
-        <div className="overflow-x-auto">
-          <table className="w-full text-left text-xs border-collapse">
+        <div className="w-full overflow-hidden rounded-xl border border-neutral-800/80 bg-neutral-950/20">
+          <table className="w-full table-fixed text-left text-xs border-collapse">
             <thead>
               <tr className="border-b border-neutral-800 text-neutral-400 uppercase tracking-wider font-semibold">
                 <th className="py-3 px-3 w-10 text-center">#</th>
                 <th className="py-3 px-3">Titre & Artiste</th>
-                <th className="py-3 px-3 hidden sm:table-cell">Album</th>
-                <th className="py-3 px-3 hidden md:table-cell">Format</th>
-                <th className="py-3 px-3 w-16 text-center">Favori</th>
-                <th className="py-3 px-3 w-20 text-right">
+                <th className="py-3 px-3 hidden sm:table-cell w-36 lg:w-48">Album</th>
+                <th className="py-3 px-3 hidden md:table-cell w-16 sm:w-20">Format</th>
+                <th className="py-3 px-2 w-14 text-center">Favori</th>
+                <th className="py-3 px-2 w-20 text-center">
                   <Clock className="w-3.5 h-3.5 inline" />
                 </th>
-                {!playlist.isSmart && onRemoveTrackFromPlaylist && <th className="py-3 px-2 w-10"></th>}
+                <th className="py-3 px-3 w-24 text-center pr-4">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-neutral-800/40">
@@ -545,7 +550,7 @@ export const PlaylistView: React.FC<PlaylistViewProps> = ({
                   </td>
 
                   <td
-                    className="py-3 px-3 text-center"
+                    className="py-2.5 px-2 text-center"
                     onClick={(e) => {
                       e.stopPropagation();
                       onToggleFavorite(track.id);
@@ -561,13 +566,13 @@ export const PlaylistView: React.FC<PlaylistViewProps> = ({
                     </button>
                   </td>
 
-                  <td className="py-3 px-3 text-right font-mono text-neutral-400">
+                  <td className="py-2.5 px-2 text-center font-mono text-neutral-400">
                     {formatDuration(track.duration)}
                   </td>
 
-                  <td className="py-3 px-3 text-right">
+                  <td className="py-2.5 px-3 text-center pr-4">
                     {/* Bouton d'action unique avec menu déroulant dynamique */}
-                    <div className="flex items-center justify-end">
+                    <div className="flex items-center justify-center">
                       <button
                         type="button"
                         onClick={(e) => handleToggleTrackMenu(e, track)}

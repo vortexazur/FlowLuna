@@ -18,6 +18,7 @@ import {
   FileText,
   PictureInPicture2,
   Sliders,
+  SlidersHorizontal,
   Scissors,
   Film,
 } from 'lucide-react';
@@ -49,7 +50,7 @@ interface PlayerBarProps {
   queueLength?: number;
   onOpenEqualizer?: () => void;
   onToggleFullscreen: () => void;
-  onToggleMiniPlayer: () => void;
+  onToggleMiniPlayer?: () => void;
   onOpenDetachedPip?: () => void;
   isDetachedPipActive?: boolean;
   onToggleVideo?: () => void;
@@ -213,13 +214,23 @@ export const PlayerBar: React.FC<PlayerBarProps> = ({
               <button
                 type="button"
                 id="player-favorite-btn"
-                onClick={onToggleFavorite}
-                className={`p-1.5 rounded-full hover:scale-110 transition-transform ${
-                  isFavorite ? 'text-rose-500 fill-current' : 'text-neutral-500 hover:text-white'
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onToggleFavorite();
+                }}
+                className={`p-2 rounded-full transition-all duration-200 active:scale-90 hover:scale-110 ${
+                  isFavorite
+                    ? 'text-rose-500 hover:text-rose-400 bg-rose-500/15'
+                    : 'text-neutral-400 hover:text-white hover:bg-neutral-800/60'
                 }`}
-                title={isFavorite ? 'Retirer des favoris' : 'Ajouter aux favoris'}
+                title={isFavorite ? 'Retirer des favoris (L)' : 'Ajouter aux favoris (L)'}
+                aria-label={isFavorite ? 'Retirer des favoris' : 'Ajouter aux favoris'}
               >
-                <Heart className={`w-4 h-4 ${isFavorite ? 'fill-rose-500' : ''}`} />
+                <Heart
+                  className={`w-4 h-4 transition-all duration-200 ${
+                    isFavorite ? 'fill-rose-500 text-rose-500 scale-110 drop-shadow-[0_0_8px_rgba(244,63,94,0.7)]' : ''
+                  }`}
+                />
               </button>
 
               {onOpenTrimmer && (
@@ -352,8 +363,8 @@ export const PlayerBar: React.FC<PlayerBarProps> = ({
         </div>
       </div>
 
-      {/* Right: Controls, Queue, Mini-Players & Volume */}
-      <div className="flex items-center justify-end gap-2.5 w-1/4 min-w-[180px]">
+      {/* Right: Controls, Queue, Equalizer, Mini-Players & Volume */}
+      <div className="flex items-center justify-end gap-1.5 md:gap-2 w-1/4 min-w-[200px]">
         {/* Lecteur Vidéo */}
         {currentTrack?.isVideo && onToggleVideo && (
           <button
@@ -371,13 +382,44 @@ export const PlayerBar: React.FC<PlayerBarProps> = ({
           </button>
         )}
 
-        {/* Lyrics & Fullscreen */}
+        {/* File d'attente (Queue) */}
+        {onOpenQueue && (
+          <button
+            type="button"
+            id="player-queue-btn"
+            onClick={onOpenQueue}
+            className="relative p-2 rounded-lg text-neutral-400 hover:text-white hover:bg-neutral-800 transition-colors"
+            title={`File d'attente (${queueLength ?? 0} titres) (Q)`}
+          >
+            <ListMusic className="w-4 h-4" />
+            {queueLength !== undefined && queueLength > 0 && (
+              <span className="absolute -top-1 -right-1 px-1.5 py-0.2 min-w-[16px] text-[9px] font-bold rounded-full bg-emerald-500 text-neutral-950 text-center leading-tight">
+                {queueLength > 99 ? '99+' : queueLength}
+              </span>
+            )}
+          </button>
+        )}
+
+        {/* Égaliseur audio (Equalizer) */}
+        {onOpenEqualizer && (
+          <button
+            type="button"
+            id="player-equalizer-btn"
+            onClick={onOpenEqualizer}
+            className="p-2 rounded-lg text-neutral-400 hover:text-white hover:bg-neutral-800 transition-colors"
+            title="Égaliseur audio & Bass Boost (10 bandes) (E)"
+          >
+            <SlidersHorizontal className="w-4 h-4" />
+          </button>
+        )}
+
+        {/* Paroles & Plein écran */}
         <button
           type="button"
           id="player-lyrics-btn"
           onClick={onToggleFullscreen}
           className="p-2 rounded-lg text-neutral-400 hover:text-white hover:bg-neutral-800 transition-colors"
-          title="Paroles & Plein écran (F)"
+          title="Paroles synchronisées & Plein écran (F)"
         >
           <FileText className="w-4 h-4" />
         </button>
@@ -399,9 +441,8 @@ export const PlayerBar: React.FC<PlayerBarProps> = ({
           </button>
         )}
 
-
         {/* Volume Controls & Normalization */}
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-1.5 ml-1">
           {settings && onUpdateSettings && (
             <button
               type="button"
@@ -423,7 +464,7 @@ export const PlayerBar: React.FC<PlayerBarProps> = ({
                   : 'Harmonisation du volume désactivée (cliquer pour harmoniser le son de toutes les musiques)'
               }
             >
-              <Sliders className="w-3.5 h-3.5" />
+              <Activity className="w-3.5 h-3.5" />
             </button>
           )}
 
@@ -431,8 +472,8 @@ export const PlayerBar: React.FC<PlayerBarProps> = ({
             type="button"
             id="player-mute-btn"
             onClick={onToggleMute}
-            className="text-neutral-400 hover:text-white transition-colors"
-            title="Muet (M)"
+            className="p-1 text-neutral-400 hover:text-white transition-colors"
+            title="Muet / Activer le son (M)"
           >
             {isMuted || volume === 0 ? <VolumeX className="w-4 h-4" /> : <Volume2 className="w-4 h-4" />}
           </button>

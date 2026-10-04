@@ -178,7 +178,7 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
   const [selectedTrackIds, setSelectedTrackIds] = useState<Set<string>>(new Set());
   const [isSelectionMode, setIsSelectionMode] = useState(false);
   const [isBulkDeleteModalOpen, setIsBulkDeleteModalOpen] = useState(false);
-  const [notification, setNotification] = useState<{ message: string; type: 'success' | 'info' } | null>(null);
+  const [notification, setNotification] = useState<{ message: string; type: 'success' | 'info' | 'error' } | null>(null);
 
   // Only music tracks should be visible in LibraryView (Bibliothèque de titres)
   const musicTracks = useMemo(() => tracks.filter((t) => !t.isVideo), [tracks]);
@@ -259,8 +259,13 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
   });
 
   const formatDuration = (secs: number) => {
-    const m = Math.floor(secs / 60);
+    if (!secs || isNaN(secs) || secs <= 0) return '0:00';
+    const h = Math.floor(secs / 3600);
+    const m = Math.floor((secs % 3600) / 60);
     const s = Math.floor(secs % 60);
+    if (h > 0) {
+      return `${h}:${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
+    }
     return `${m}:${s.toString().padStart(2, '0')}`;
   };
 
@@ -878,11 +883,11 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
                 <th className="py-3 px-2 sm:px-3">{t.colTitleArtist}</th>
                 <th className="py-3 px-2 sm:px-3 hidden md:table-cell w-36 lg:w-48">{t.colAlbum}</th>
                 <th className="py-3 px-2 sm:px-3 hidden sm:table-cell w-16 sm:w-20">{t.colFormat}</th>
-                <th className="py-3 px-1 sm:px-2 w-12 text-center">{t.colFavorite}</th>
-                <th className="py-3 px-1 sm:px-2 w-16 text-right">
+                <th className="py-3 px-2 w-14 text-center">{t.colFavorite}</th>
+                <th className="py-3 px-2 w-20 text-center">
                   <Clock className="w-3.5 h-3.5 inline" />
                 </th>
-                <th className="py-3 px-2 sm:px-3 w-14 text-right">{t.colActions}</th>
+                <th className="py-3 px-3 w-24 text-center pr-4">{t.colActions}</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-neutral-800/40">
@@ -978,7 +983,7 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
                     </td>
 
                     <td
-                      className="py-2.5 px-1 sm:px-2 text-center"
+                      className="py-2.5 px-2 text-center"
                       onClick={(e) => {
                         e.stopPropagation();
                         onToggleFavorite(track.id);
@@ -995,13 +1000,13 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
                       </button>
                     </td>
 
-                    <td className="py-2.5 px-1 sm:px-2 text-right font-mono text-neutral-400">
+                    <td className="py-2.5 px-2 text-center font-mono text-neutral-400">
                       {formatDuration(track.duration)}
                     </td>
 
-                    <td className="py-2.5 px-2 sm:px-3 text-right">
+                    <td className="py-2.5 px-3 text-center pr-4">
                       {/* Bouton d'action unique avec menu déroulant dynamique */}
-                      <div className="flex items-center justify-end">
+                      <div className="flex items-center justify-center">
                         <button
                           type="button"
                           onClick={(e) => handleToggleTrackMenu(e, track)}
