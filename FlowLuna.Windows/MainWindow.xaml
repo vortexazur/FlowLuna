@@ -20,6 +20,42 @@
     </WindowChrome.WindowChrome>
 
     <Grid Background="#0a0a0a">
-        <wv2:WebView2 x:Name="WebViewControl" />
+        <wv2:WebView2 x:Name="WebViewControl" Visibility="Collapsed" />
+
+        <!-- Native loading overlay — hides black screen during WebView2 init -->
+        <Grid x:Name="LoadingOverlay" Background="#0a0a0a"
+              HorizontalAlignment="Stretch" VerticalAlignment="Stretch">
+            <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center">
+                <!-- Animated ring spinner -->
+                <Border Width="48" Height="48" CornerRadius="24"
+                        BorderThickness="4" BorderBrush="#7c3aed"
+                        RenderTransformOrigin="0.5,0.5">
+                    <Border.RenderTransform>
+                        <RotateTransform x:Name="SpinnerRotation" />
+                    </Border.RenderTransform>
+                    <Border.Triggers>
+                        <EventTrigger RoutedEvent="Loaded">
+                            <BeginStoryboard>
+                                <Storyboard RepeatBehavior="Forever">
+                                    <DoubleAnimation Storyboard.TargetName="SpinnerRotation"
+                                                     Storyboard.TargetProperty="Angle"
+                                                     From="0" To="360" Duration="0:0:1" />
+                                </Storyboard>
+                            </BeginStoryboard>
+                        </EventTrigger>
+                    </Border.Triggers>
+                    <!-- Inner cutout to create ring effect -->
+                    <Border CornerRadius="20" Background="#0a0a0a"
+                            Margin="4" />
+                </Border>
+                <TextBlock Text="FlowLuna" FontSize="22" FontWeight="Bold"
+                           Foreground="#e5e5e5" HorizontalAlignment="Center"
+                           Margin="0,18,0,6"
+                           FontFamily="Segoe UI, Plus Jakarta Sans" />
+                <TextBlock Text="Chargement en cours…" FontSize="13"
+                           Foreground="#737373" HorizontalAlignment="Center"
+                           FontFamily="Segoe UI, Plus Jakarta Sans" />
+            </StackPanel>
+        </Grid>
     </Grid>
 </Window>

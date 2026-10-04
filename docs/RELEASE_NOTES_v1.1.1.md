@@ -53,6 +53,17 @@ La version **1.1.1** de FlowLuna apporte des raffinements ergonomiques majeurs, 
 
 ---
 
+### 7. 🛡️ Correctif Démarrage Critique & Écran Noir (Résilience WebView2)
+- **Résolution Définitive de l'Écran Noir :** Éradication de l'erreur `COMException 0x8007139F` survenant lors de verrous résiduels ou d'altération du dossier de profil WebView2.
+- **Stratégie d'Auto-Réparation Tripartite :** 
+  1. Tentative d'initialisation standard.
+  2. Nettoyage proactif et suppression automatisée du cache corrompu en cas d'exception avec nouvelle tentative.
+  3. Bascule instantanée vers un environnement temporaire isolé (`FlowLuna_WV2_*`) garantissant un lancement infaillible.
+- **Écran de Chargement Fluide Natif :** Ajout d'un overlay d'initialisation avec animation fluide masquant le temps de chargement WebView2 pour éviter tout flash sombre ou écran noir.
+- **Sécurisation du Port Kestrel :** Reconstruction propre du serveur local en cas de conflit sur le port 3000 vers 3001.
+
+---
+
 ## 📦 Fichier Disponible au Téléchargement
 
 | Fichier | Type | Description | Poids |
@@ -70,8 +81,9 @@ Get-FileHash -Algorithm SHA256 "FlowLuna-Setup-1.1.1.exe"
 
 | Fichier | Empreinte SHA-256 |
 |---|---|
-| `FlowLuna-Setup-1.1.1.exe` | `DCAC2641808DE4CCA5C005DC03CDD552C47A97E18C2BF7BF2386FBD723D4F6BC` |
+| `FlowLuna-Setup-1.1.1.exe` | `AA14468FA779239081C4A01CFB33C7D692D2B56ECAAC82601DD554F71EBB30DA` |
 
 ---
 
 *FlowLuna — Conçu avec passion pour une expérience musicale pure et sans compromis.*
+

@@ -56,16 +56,126 @@ public partial class MainWindow : Window
 
     private async void MainWindow_Loaded(object sender, RoutedEventArgs e)
     {
-        ApplyWindows11Backdrop();
+        try
+        {
+            ApplyWindows11Backdrop();
 
-        // Hook Windows messages for hardware media keys & SMTC
-        var source = HwndSource.FromHwnd(new WindowInteropHelper(this).Handle);
-        source?.AddHook(WndProc);
+            // Hook Windows messages for hardware media keys & SMTC
+            var source = HwndSource.FromHwnd(new WindowInteropHelper(this).Handle);
+            source?.AddHook(WndProc);
 
-        // 1. Start embedded Kestrel minimal API server in-process
-        await _httpServer.StartAsync(3000);
+            // 1. Start embedded Kestrel minimal API server in-process
+            await _httpServer.StartAsync(3000);
 
-        // 2. Initialize WebView2 with low-RAM optimization options & dedicated UserDataFolder
+            // 2. Initialize WebView2 with retry on corrupted cache
+            await InitializeWebView2WithRetryAsync();
+
+            WebViewControl.CoreWebView2.Settings.IsStatusBarEnabled = false;
+            WebViewControl.CoreWebView2.Settings.AreDevToolsEnabled = true;
+
+            // 3. Register NativeBridge COM host object
+            _nativeBridge = new NativeBridge(this);
+            WebViewControl.CoreWebView2.AddHostObjectToScript("nativeHost", _nativeBridge);
+
+            // 4. Inject polyfill script so window.electronAPI is automatically available
+            const string polyfillScript = @"
+            (function() {
+                window.electronAPI = {
+                    isElectron: true,
+                    platform: 'win32',
+                    minimize: () => window.chrome.webview.postMessage({ action: 'minimize' }),
+                    maximize: () => window.chrome.webview.postMessage({ action: 'maximize' }),
+                    close: () => window.chrome.webview.postMessage({ action: 'close' }),
+                    setCompactMode: (enabled, w, h) => {
+                        try {
+                            if (window.chrome?.webview?.hostObjects?.nativeHost) {
+                                window.chrome.webview.hostObjects.nativeHost.SetCompactMode(enabled, w || 360, h || 240);
+                            } else {
+                                window.chrome.webview.postMessage({ action: 'set-compact-mode', enabled: !!enabled, width: w || 360, height: h || 240 });
+                            }
+                        } catch {}
+                    },
+                    isMaximized: async () => await window.chrome.webview.hostObjects.nativeHost.IsMaximized(),
+                    selectMusicFolder: async () => await window.chrome.webview.hostObjects.nativeHost.SelectMusicFolder(),
+                    selectMusicFiles: async () => JSON.parse(await window.chrome.webview.hostObjects.nativeHost.SelectMusicFilesJson()),
+                    getBinariesStatus: async () => {
+                        const res = await fetch('/api/downloader/binaries-status');
+                        return res.json();
+                    },
+                    updateYtdlp: async () => {
+                        const res = await fetch('/api/downloader/update-ytdlp', { method: 'POST' });
+                        return res.json();
+                    },
+                    getLibVlcStatus: async () => {
+                        const res = await fetch('/api/engine/libvlc-status');
+                        return res.json();
+                    },
+                    updateLibVlc: async () => {
+                        const res = await fetch('/api/engine/update-libvlc', { method: 'POST' });
+                        return res.json();
+                    },
+                    updateTrayTrack: (info) => window.chrome.webview.postMessage({ action: 'update-tray-track', info }),
+                    onMaximizedChange: (callback) => {
+                        const handler = (e) => callback(e.detail);
+                        window.addEventListener('window-maximized-changed', handler);
+                        return () => window.removeEventListener('window-maximized-changed', handler);
+                    },
+                    onMediaControl: (callback) => {
+                        const handler = (e) => callback(e.detail);
+                        window.addEventListener('media-control', handler);
+                        return () => window.removeEventListener('media-control', handler);
+                    }
+                };
+            })();
+            ";
+
+            await WebViewControl.CoreWebView2.AddScriptToExecuteOnDocumentCreatedAsync(polyfillScript);
+
+            // 5. Handle web messages
+            WebViewControl.CoreWebView2.WebMessageReceived += CoreWebView2_WebMessageReceived;
+
+            // 6. Hook NavigationCompleted to reveal UI only when the SPA is ready
+            WebViewControl.CoreWebView2.NavigationCompleted += (_, navArgs) =>
+            {
+                Dispatcher.Invoke(() =>
+                {
+                    WebViewControl.Visibility = Visibility.Visible;
+                    LoadingOverlay.Visibility = Visibility.Collapsed;
+                });
+            };
+
+            // 7. Navigate to in-process server
+            WebViewControl.CoreWebView2.Navigate(_httpServer.BaseUrl);
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"[FlowLuna] Critical startup error: {ex}");
+            try
+            {
+                var logPath = Path.Combine(BinaryManager.FlowLunaDataDir, "crash.log");
+                File.AppendAllText(logPath,
+                    $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss}] MainWindow_Loaded fatal: {ex}\n\n");
+            }
+            catch { }
+
+            MessageBox.Show(
+                $"FlowLuna n'a pas pu démarrer correctement.\n\n" +
+                $"Erreur : {ex.Message}\n\n" +
+                $"Essayez de relancer l'application. Si le problème persiste,\n" +
+                $"supprimez le dossier :\n{Path.Combine(BinaryManager.FlowLunaDataDir, "webview2_data")}",
+                "FlowLuna — Erreur de démarrage",
+                MessageBoxButton.OK,
+                MessageBoxImage.Warning);
+        }
+    }
+
+    /// <summary>
+    /// Initialize WebView2 with automatic retry on corrupted cache (COMException 0x8007139F).
+    /// Strategy: 1) Try normal folder → 2) Clean + retry → 3) Fallback to temp GUID folder.
+    /// Inspired by Screenbox's resilient initialization pattern.
+    /// </summary>
+    private async Task InitializeWebView2WithRetryAsync(bool isRetry = false)
+    {
         var userDataFolder = Path.Combine(BinaryManager.FlowLunaDataDir, "webview2_data");
         Directory.CreateDirectory(userDataFolder);
 
@@ -78,75 +188,62 @@ public partial class MainWindow : Window
             "--js-flags=\"--max-old-space-size=128\""
         );
 
-        var env = await CoreWebView2Environment.CreateAsync(userDataFolder: userDataFolder, options: envOptions);
-        await WebViewControl.EnsureCoreWebView2Async(env);
+        try
+        {
+            var env = await CoreWebView2Environment.CreateAsync(
+                browserExecutableFolder: null,
+                userDataFolder: userDataFolder,
+                options: envOptions);
+            await WebViewControl.EnsureCoreWebView2Async(env);
+        }
+        catch (System.Runtime.InteropServices.COMException comEx)
+            when (comEx.HResult == unchecked((int)0x8007139F)
+              || comEx.HResult == unchecked((int)0x80070005)
+              || comEx.HResult == unchecked((int)0x80004005))
+        {
+            System.Diagnostics.Debug.WriteLine(
+                $"[FlowLuna] WebView2 init failed (HR=0x{comEx.HResult:X8}), attempting recovery...");
 
-        WebViewControl.CoreWebView2.Settings.IsStatusBarEnabled = false;
-        WebViewControl.CoreWebView2.Settings.AreDevToolsEnabled = true;
-
-        // 3. Register NativeBridge COM host object
-        _nativeBridge = new NativeBridge(this);
-        WebViewControl.CoreWebView2.AddHostObjectToScript("nativeHost", _nativeBridge);
-
-        // 4. Inject polyfill script so window.electronAPI is automatically available
-        const string polyfillScript = @"
-        (function() {
-            window.electronAPI = {
-                isElectron: true,
-                platform: 'win32',
-                minimize: () => window.chrome.webview.postMessage({ action: 'minimize' }),
-                maximize: () => window.chrome.webview.postMessage({ action: 'maximize' }),
-                close: () => window.chrome.webview.postMessage({ action: 'close' }),
-                setCompactMode: (enabled, w, h) => {
-                    try {
-                        if (window.chrome?.webview?.hostObjects?.nativeHost) {
-                            window.chrome.webview.hostObjects.nativeHost.SetCompactMode(enabled, w || 360, h || 240);
-                        } else {
-                            window.chrome.webview.postMessage({ action: 'set-compact-mode', enabled: !!enabled, width: w || 360, height: h || 240 });
-                        }
-                    } catch {}
-                },
-                isMaximized: async () => await window.chrome.webview.hostObjects.nativeHost.IsMaximized(),
-                selectMusicFolder: async () => await window.chrome.webview.hostObjects.nativeHost.SelectMusicFolder(),
-                selectMusicFiles: async () => JSON.parse(await window.chrome.webview.hostObjects.nativeHost.SelectMusicFilesJson()),
-                getBinariesStatus: async () => {
-                    const res = await fetch('/api/downloader/binaries-status');
-                    return res.json();
-                },
-                updateYtdlp: async () => {
-                    const res = await fetch('/api/downloader/update-ytdlp', { method: 'POST' });
-                    return res.json();
-                },
-                getLibVlcStatus: async () => {
-                    const res = await fetch('/api/engine/libvlc-status');
-                    return res.json();
-                },
-                updateLibVlc: async () => {
-                    const res = await fetch('/api/engine/update-libvlc', { method: 'POST' });
-                    return res.json();
-                },
-                updateTrayTrack: (info) => window.chrome.webview.postMessage({ action: 'update-tray-track', info }),
-                onMaximizedChange: (callback) => {
-                    const handler = (e) => callback(e.detail);
-                    window.addEventListener('window-maximized-changed', handler);
-                    return () => window.removeEventListener('window-maximized-changed', handler);
-                },
-                onMediaControl: (callback) => {
-                    const handler = (e) => callback(e.detail);
-                    window.addEventListener('media-control', handler);
-                    return () => window.removeEventListener('media-control', handler);
+            if (!isRetry)
+            {
+                // First attempt: try to delete the corrupted folder and retry
+                try
+                {
+                    if (Directory.Exists(userDataFolder))
+                    {
+                        Directory.Delete(userDataFolder, recursive: true);
+                        System.Diagnostics.Debug.WriteLine("[FlowLuna] Deleted corrupted webview2_data folder.");
+                    }
                 }
-            };
-        })();
-        ";
+                catch (Exception cleanEx)
+                {
+                    System.Diagnostics.Debug.WriteLine(
+                        $"[FlowLuna] Could not clean webview2_data: {cleanEx.Message}");
+                }
 
-        await WebViewControl.CoreWebView2.AddScriptToExecuteOnDocumentCreatedAsync(polyfillScript);
+                // Small delay to let OS release file handles
+                await Task.Delay(500);
+                await InitializeWebView2WithRetryAsync(isRetry: true);
+            }
+            else
+            {
+                // Second attempt failed — ultimate fallback: use a unique temp folder
+                // This guarantees no lock conflicts. Folder is cleaned up on next normal startup.
+                var fallbackFolder = Path.Combine(
+                    Path.GetTempPath(),
+                    $"FlowLuna_WV2_{Guid.NewGuid().ToString("N")[..8]}");
 
-        // 5. Handle web messages
-        WebViewControl.CoreWebView2.WebMessageReceived += CoreWebView2_WebMessageReceived;
+                System.Diagnostics.Debug.WriteLine(
+                    $"[FlowLuna] Using temp fallback WebView2 folder: {fallbackFolder}");
 
-        // 6. Navigate to in-process server
-        WebViewControl.CoreWebView2.Navigate(_httpServer.BaseUrl);
+                Directory.CreateDirectory(fallbackFolder);
+                var fallbackEnv = await CoreWebView2Environment.CreateAsync(
+                    browserExecutableFolder: null,
+                    userDataFolder: fallbackFolder,
+                    options: envOptions);
+                await WebViewControl.EnsureCoreWebView2Async(fallbackEnv);
+            }
+        }
     }
 
     private void ApplyWindows11Backdrop()

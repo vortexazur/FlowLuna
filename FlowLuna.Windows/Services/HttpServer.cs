@@ -444,12 +444,40 @@ public class HttpServer
             await _app.StartAsync();
             Console.WriteLine($"[FlowLuna HTTP] Serveur démarré sur {BaseUrl}");
         }
-        catch
+        catch (IOException)
         {
-            // Fallback port if 3000 is occupied
+            // Port 3000 is occupied — rebuild on fallback port 3001
             Port = 3001;
-            builder.WebHost.UseKestrel(opts => opts.Listen(IPAddress.Loopback, Port));
-            _app = builder.Build();
+
+            var fallbackBuilder = WebApplication.CreateEmptyBuilder(new WebApplicationOptions
+            {
+                Args = Array.Empty<string>()
+            });
+
+            fallbackBuilder.WebHost.UseKestrel(opts => opts.Listen(IPAddress.Loopback, Port));
+            fallbackBuilder.Services.AddCors(options =>
+            {
+                options.AddDefaultPolicy(policy =>
+                    policy.AllowAnyOrigin().AllowAnyHeader().AllowAnyMethod());
+            });
+            fallbackBuilder.Services.AddRouting();
+
+            // Dispose the failed app before rebuilding
+            try { await _app.DisposeAsync(); } catch { }
+
+            _app = fallbackBuilder.Build();
+            _app.UseCors();
+
+            // Re-register all routes on fallback app (static files + SPA fallback)
+            if (wwwroot != null)
+            {
+                _app.UseStaticFiles(new StaticFileOptions
+                {
+                    FileProvider = new PhysicalFileProvider(wwwroot),
+                    RequestPath = ""
+                });
+            }
+
             await _app.StartAsync();
             Console.WriteLine($"[FlowLuna HTTP] Serveur démarré sur fallback {BaseUrl}");
         }
