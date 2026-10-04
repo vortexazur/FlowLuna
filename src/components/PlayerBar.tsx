@@ -382,36 +382,7 @@ export const PlayerBar: React.FC<PlayerBarProps> = ({
           </button>
         )}
 
-        {/* File d'attente (Queue) */}
-        {onOpenQueue && (
-          <button
-            type="button"
-            id="player-queue-btn"
-            onClick={onOpenQueue}
-            className="relative p-2 rounded-lg text-neutral-400 hover:text-white hover:bg-neutral-800 transition-colors"
-            title={`File d'attente (${queueLength ?? 0} titres) (Q)`}
-          >
-            <ListMusic className="w-4 h-4" />
-            {queueLength !== undefined && queueLength > 0 && (
-              <span className="absolute -top-1 -right-1 px-1.5 py-0.2 min-w-[16px] text-[9px] font-bold rounded-full bg-emerald-500 text-neutral-950 text-center leading-tight">
-                {queueLength > 99 ? '99+' : queueLength}
-              </span>
-            )}
-          </button>
-        )}
 
-        {/* Égaliseur audio (Equalizer) */}
-        {onOpenEqualizer && (
-          <button
-            type="button"
-            id="player-equalizer-btn"
-            onClick={onOpenEqualizer}
-            className="p-2 rounded-lg text-neutral-400 hover:text-white hover:bg-neutral-800 transition-colors"
-            title="Égaliseur audio & Bass Boost (10 bandes) (E)"
-          >
-            <SlidersHorizontal className="w-4 h-4" />
-          </button>
-        )}
 
         {/* Paroles & Plein écran */}
         <button

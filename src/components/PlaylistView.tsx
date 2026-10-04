@@ -21,10 +21,12 @@ import {
   ChevronDown,
   ListPlus,
   Tag,
+  FolderPlus,
 } from 'lucide-react';
 import { Playlist, Track, AccentColor } from '../types';
 import { exportPlaylistToM3U } from '../services/backupService';
 import { ExportTracksModal } from './ExportTracksModal';
+import { AddToPlaylistModal } from './AddToPlaylistModal';
 import { PlaylistIcon } from './PlaylistIcon';
 import { EditPlaylistModal } from './EditPlaylistModal';
 
@@ -45,6 +47,9 @@ interface PlaylistViewProps {
   onOpenTrimmer?: (track: Track) => void;
   onAddToQueue?: (track: Track) => void;
   onEditTrackTags?: (track: Track) => void;
+  playlists?: Playlist[];
+  onAddToPlaylist?: (playlistId: string, trackId: string) => void;
+  onCreatePlaylist?: (title: string) => Promise<string | void> | void;
 }
 
 const ACCENT_BTN: Record<AccentColor, string> = {
@@ -91,11 +96,15 @@ export const PlaylistView: React.FC<PlaylistViewProps> = ({
   onOpenTrimmer,
   onAddToQueue,
   onEditTrackTags,
+  playlists = [],
+  onAddToPlaylist,
+  onCreatePlaylist,
 }) => {
   const [isEditingTitle, setIsEditingTitle] = useState(false);
   const [titleInput, setTitleInput] = useState(playlist.title);
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+  const [addToPlaylistTrack, setAddToPlaylistTrack] = useState<Track | null>(null);
   const [menuAnchor, setMenuAnchor] = useState<{
     track: Track;
     top?: number;
@@ -622,6 +631,22 @@ export const PlaylistView: React.FC<PlaylistViewProps> = ({
             </button>
           )}
 
+          {/* Ajouter à une playlist */}
+          {onAddToPlaylist && (
+            <button
+              type="button"
+              onClick={() => {
+                const t = menuAnchor.track;
+                setMenuAnchor(null);
+                setAddToPlaylistTrack(t);
+              }}
+              className="w-full text-left px-3 py-2 rounded-lg text-xs hover:bg-neutral-800 text-neutral-200 flex items-center gap-2.5 transition-colors cursor-pointer"
+            >
+              <FolderPlus className="w-4 h-4 text-purple-400" />
+              <span>Ajouter à une playlist</span>
+            </button>
+          )}
+
           {onOpenTrimmer && (
             <button
               type="button"
@@ -757,6 +782,19 @@ export const PlaylistView: React.FC<PlaylistViewProps> = ({
             onUpdatePlaylist(updated);
             setIsEditModalOpen(false);
           }}
+          accent={accent}
+        />
+      )}
+
+      {/* Add To Playlist Modal */}
+      {onAddToPlaylist && (
+        <AddToPlaylistModal
+          isOpen={!!addToPlaylistTrack}
+          onClose={() => setAddToPlaylistTrack(null)}
+          track={addToPlaylistTrack}
+          playlists={playlists}
+          onAddToPlaylist={onAddToPlaylist}
+          onCreatePlaylist={onCreatePlaylist}
           accent={accent}
         />
       )}

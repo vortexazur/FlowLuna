@@ -1165,6 +1165,9 @@ export default function App() {
             onOpenTrimmer={handleOpenTrimmer}
             onAddToQueue={handleAddToQueue}
             onEditTrackTags={(track) => setTagEditorTrack(track)}
+            playlists={playlists.filter((p) => p.id !== 'playlist-offline' && p.id !== 'playlist-youtube')}
+            onAddToPlaylist={handleAddToPlaylist}
+            onCreatePlaylist={handleSaveNewPlaylist}
           />
         );
       }
@@ -1251,7 +1254,7 @@ export default function App() {
     return (
       <LibraryView
         tracks={musicTracks}
-        playlists={playlists.filter((p) => !p.isSmart)}
+        playlists={playlists.filter((p) => p.id !== 'playlist-offline' && p.id !== 'playlist-youtube')}
         onPlayTrack={(track, list) => {
           const q = list || musicTracks;
           const idx = q.findIndex((t) => t.id === track.id);
@@ -1260,6 +1263,7 @@ export default function App() {
         onPlayAll={handlePlayAllInPlaylist}
         onToggleFavorite={handleToggleFavorite}
         onAddToPlaylist={handleAddToPlaylist}
+        onCreatePlaylist={handleSaveNewPlaylist}
         onAddToQueue={handleAddToQueue}
         onDeleteTrack={handleDeleteTrack}
         onDeleteTracks={handleDeleteTracks}

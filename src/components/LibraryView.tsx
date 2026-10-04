@@ -40,6 +40,7 @@ import { Track, Playlist, AccentColor, AudioFormat, PlayerSettings } from '../ty
 import { saveAudioToPC } from '../utils/fileSaver';
 import { getAudioBlob } from '../services/audioDb';
 import { ExportTracksModal } from './ExportTracksModal';
+import { AddToPlaylistModal } from './AddToPlaylistModal';
 import { PlaylistIcon } from './PlaylistIcon';
 import { OpenFileDropdown } from './OpenFileDropdown';
 import { backgroundScanner } from '../services/backgroundScanner';
@@ -52,6 +53,7 @@ interface LibraryViewProps {
   onPlayAll?: (tracks: Track[], shuffle: boolean) => void;
   onToggleFavorite: (trackId: string) => void;
   onAddToPlaylist: (playlistId: string, trackId: string) => void;
+  onCreatePlaylist?: (title: string) => Promise<string | void> | void;
   onAddToQueue: (track: Track) => void;
   onDeleteTrack?: (trackId: string) => void;
   onDeleteTracks?: (trackIds: string[]) => void;
@@ -102,6 +104,7 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
   onPlayAll,
   onToggleFavorite,
   onAddToPlaylist,
+  onCreatePlaylist,
   onAddToQueue,
   onDeleteTrack,
   onDeleteTracks,
@@ -122,6 +125,7 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedFormat, setSelectedFormat] = useState<string>('all');
   const [sortBy, setSortBy] = useState<'title' | 'artist' | 'added' | 'duration' | 'plays'>('title');
+  const [addToPlaylistTrack, setAddToPlaylistTrack] = useState<Track | null>(null);
   const [menuAnchor, setMenuAnchor] = useState<{
     track: Track;
     top?: number;
@@ -1218,6 +1222,20 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
             <span>Ajouter à la file d'attente</span>
           </button>
 
+          {/* Ajouter à une playlist */}
+          <button
+            type="button"
+            onClick={() => {
+              const t = menuAnchor.track;
+              setMenuAnchor(null);
+              setAddToPlaylistTrack(t);
+            }}
+            className="w-full text-left px-3 py-2 rounded-lg text-xs hover:bg-neutral-800 text-neutral-200 flex items-center gap-2.5 transition-colors cursor-pointer"
+          >
+            <FolderPlus className="w-4 h-4 text-purple-400" />
+            <span>Ajouter à une playlist</span>
+          </button>
+
           {/* Studio & Découpe */}
           {onOpenTrimmer && (
             <button
@@ -1278,32 +1296,6 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
             <Download className="w-4 h-4 text-neutral-400" />
             <span>Téléchargement direct (.wav)</span>
           </button>
-
-          {/* Playlists */}
-          {playlists.length > 0 && (
-            <>
-              <div className="h-px bg-neutral-800 my-0.5" />
-              <div className="px-3 py-1 text-[10px] font-semibold text-neutral-500 uppercase tracking-wider">
-                Ajouter à une playlist
-              </div>
-              <div className="max-h-36 overflow-y-auto flex flex-col gap-0.5">
-                {playlists.map((pl) => (
-                  <button
-                    key={pl.id}
-                    type="button"
-                    onClick={() => {
-                      onAddToPlaylist(pl.id, menuAnchor.track.id);
-                      setMenuAnchor(null);
-                    }}
-                    className="w-full text-left px-3 py-1.5 rounded-lg text-xs hover:bg-neutral-800 text-neutral-300 flex items-center gap-2 transition-colors cursor-pointer"
-                  >
-                    <PlaylistIcon playlist={pl} size="xs" />
-                    <span className="truncate flex-1">{pl.title}</span>
-                  </button>
-                ))}
-              </div>
-            </>
-          )}
 
           {/* Suppression */}
           <div className="h-px bg-neutral-800 my-0.5" />
@@ -1471,6 +1463,17 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
         tracks={tracksToExport}
         accent={accent}
         defaultZipName={exportZipName}
+      />
+
+      {/* Add To Playlist Modal */}
+      <AddToPlaylistModal
+        isOpen={!!addToPlaylistTrack}
+        onClose={() => setAddToPlaylistTrack(null)}
+        track={addToPlaylistTrack}
+        playlists={playlists}
+        onAddToPlaylist={onAddToPlaylist}
+        onCreatePlaylist={onCreatePlaylist}
+        accent={accent}
       />
     </div>
   );
