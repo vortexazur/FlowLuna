@@ -271,6 +271,13 @@ export const MiniPlayer: React.FC<MiniPlayerProps> = ({
         isGhostMode ? 'opacity-70 hover:opacity-100' : 'opacity-100'
       } ${!isStandalone && isDragging ? 'cursor-grabbing shadow-emerald-500/20 ring-1 ring-emerald-500/40' : !isStandalone ? 'cursor-grab' : ''}`}
     >
+      {/* Toast Feedback */}
+      {feedbackMessage && (
+        <div className="absolute top-2 left-1/2 -translate-x-1/2 z-50 px-3 py-1 bg-emerald-950/90 border border-emerald-500/40 text-emerald-300 text-[11px] font-semibold rounded-full shadow-lg backdrop-blur-md animate-in fade-in duration-150 pointer-events-none">
+          {feedbackMessage}
+        </div>
+      )}
+
       {/* Top Header with Drag Handle, Spectrum & Quick Actions */}
       <div className="flex items-center justify-between gap-2 border-b border-neutral-800/80 pb-2">
         <div
@@ -404,24 +411,24 @@ export const MiniPlayer: React.FC<MiniPlayerProps> = ({
 
               {isPlaylistMenuOpen && (
                 <div
-                  className="absolute right-0 bottom-8 z-50 w-52 bg-neutral-900 border border-neutral-700 rounded-xl shadow-2xl p-1.5 flex flex-col gap-1 text-left animate-in fade-in"
+                  className="absolute right-0 top-full mt-1.5 z-50 w-52 bg-neutral-900/95 backdrop-blur-xl border border-neutral-700/80 rounded-xl shadow-2xl p-1.5 flex flex-col gap-1 text-left animate-in fade-in slide-in-from-top-1 duration-150"
                   onClick={(e) => e.stopPropagation()}
                 >
                   <div className="px-2.5 py-1 text-[10px] font-mono font-bold uppercase tracking-wider text-neutral-400 border-b border-neutral-800">
                     Ajouter à une playlist
                   </div>
                   {customPlaylists.length === 0 ? (
-                    <div className="px-3 py-2 text-xs text-neutral-500 text-center">
-                      Aucune playlist
+                    <div className="px-3 py-2 text-xs text-neutral-400 text-center">
+                      Aucune playlist disponible
                     </div>
                   ) : (
-                    <div className="max-h-32 overflow-y-auto flex flex-col gap-0.5">
+                    <div className="max-h-28 overflow-y-auto flex flex-col gap-0.5 pr-0.5">
                       {customPlaylists.map((pl) => (
                         <button
                           key={pl.id}
                           type="button"
                           onClick={() => handleAddTrack(pl.id, pl.title)}
-                          className="w-full text-left px-2 py-1 rounded text-xs hover:bg-neutral-800 text-neutral-200 flex items-center justify-between gap-1 transition-colors cursor-pointer"
+                          className="w-full text-left px-2 py-1.5 rounded-lg text-xs hover:bg-neutral-800 text-neutral-200 flex items-center justify-between gap-1 transition-colors cursor-pointer"
                         >
                           <span className="truncate">{pl.title}</span>
                           {pl.trackIds.includes(currentTrack.id) && (

@@ -917,39 +917,19 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                 />
               </div>
 
-              {/* Lecteur Compact & Mode Discret */}
-              <div className="flex flex-col gap-3.5 bg-neutral-900/60 p-4 rounded-xl border border-neutral-800 hover:border-neutral-700/60 transition-colors">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <span className="font-semibold text-neutral-200 block text-xs">{t.compactDock}</span>
-                    <span className="text-neutral-400 text-[11px] leading-relaxed">
-                      {t.compactDockDesc}
-                    </span>
-                  </div>
-                  <select
-                    value={settings.compactPlayerDock || 'bottom'}
-                    onChange={(e) => updateSetting('compactPlayerDock', e.target.value as any)}
-                    className="bg-neutral-950 border border-neutral-700 rounded-xl px-3 py-1.5 text-xs text-neutral-200 cursor-pointer focus:outline-none focus:border-emerald-500"
-                  >
-                    <option value="bottom">{t.dockBottom}</option>
-                    <option value="top">{t.dockTop}</option>
-                    <option value="floating">{t.dockFloating}</option>
-                  </select>
+              {/* Mode Discret (Ghost) */}
+              <div className="flex items-center justify-between bg-neutral-900/60 p-4 rounded-xl border border-neutral-800 hover:border-neutral-700/60 transition-colors">
+                <div>
+                  <span className="text-xs font-semibold text-neutral-300 block">{t.ghostMode}</span>
+                  <span className="text-neutral-500 text-[11px] leading-relaxed">
+                    {t.ghostModeDesc}
+                  </span>
                 </div>
-
-                <div className="flex items-center justify-between pt-3 border-t border-neutral-800/80">
-                  <div>
-                    <span className="text-xs font-semibold text-neutral-300 block">{t.ghostMode}</span>
-                    <span className="text-neutral-500 text-[11px]">
-                      {t.ghostModeDesc}
-                    </span>
-                  </div>
-                  <ToggleSwitch
-                    checked={!!settings.compactPlayerGhost}
-                    onChange={(val) => updateSetting('compactPlayerGhost', val)}
-                    accent={accent}
-                  />
-                </div>
+                <ToggleSwitch
+                  checked={!!settings.compactPlayerGhost}
+                  onChange={(val) => updateSetting('compactPlayerGhost', val)}
+                  accent={accent}
+                />
               </div>
             </div>
           )}
