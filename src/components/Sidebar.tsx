@@ -38,6 +38,7 @@ interface SidebarProps {
   onToggleFullscreen?: () => void;
   onTogglePinPlaylist?: (playlistId: string, isPinned: boolean) => void;
   onBulkUpdatePins?: (pinnedMap: Record<string, boolean>) => void;
+  onOpenManageSidebar?: () => void;
   onOpenCommandPalette?: () => void;
   onOpenQueue?: () => void;
   queueLength?: number;
@@ -81,6 +82,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
   onToggleFullscreen,
   onTogglePinPlaylist,
   onBulkUpdatePins,
+  onOpenManageSidebar,
   onOpenCommandPalette,
   onOpenQueue,
   queueLength,
@@ -88,6 +90,14 @@ export const Sidebar: React.FC<SidebarProps> = ({
 }) => {
   const [isManageSidebarOpen, setIsManageSidebarOpen] = React.useState(false);
   const t = getT(settings?.language);
+
+  const handleOpenManageSidebar = () => {
+    if (onOpenManageSidebar) {
+      onOpenManageSidebar();
+    } else {
+      setIsManageSidebarOpen(true);
+    }
+  };
 
   // System Favorites playlist
   const favPlaylist = playlists.find((p) => p.id === 'playlist-favorites');
@@ -101,13 +111,14 @@ export const Sidebar: React.FC<SidebarProps> = ({
   const customPlaylists = playlists.filter(
     (p) => !p.isSmart && p.id !== 'playlist-favorites' && p.id !== 'playlist-offline'
   );
-  // Visible / Pinned playlists only
-  const visiblePlaylists = customPlaylists.filter((p) => p.isPinned !== false);
-  const hiddenCount = customPlaylists.length - visiblePlaylists.length;
+  // Visible / Pinned playlists only: strictly limited to max 3 custom playlists + Favoris
+  const visiblePlaylists = customPlaylists
+    .filter((p) => p.isPinned !== false)
+    .slice(0, 3);
 
   const navItemClass = (viewId: string) => {
     const isActive = currentView === viewId;
-    return `w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-xs font-medium transition-colors text-left ${
+    return `w-full flex items-center gap-2.5 px-2.5 py-1.5 rounded-lg text-xs font-medium transition-colors text-left ${
       isActive
         ? ACCENT_ACTIVE[accent]
         : 'text-neutral-400 hover:text-neutral-100 hover:bg-neutral-800/40'
@@ -119,11 +130,11 @@ export const Sidebar: React.FC<SidebarProps> = ({
       id="app-sidebar"
       className="w-64 h-full bg-neutral-950/80 glass-sidebar border-r border-neutral-800/80 flex flex-col justify-between select-none flex-shrink-0 z-10"
     >
-      <div className="flex flex-col gap-6 p-4 overflow-y-auto">
+      <div className="flex flex-col gap-2.5 p-2.5 overflow-y-auto scrollbar-none">
         {/* App Title & Status */}
-        <div className="flex flex-col gap-1.5 px-2">
-          <div className="flex items-center gap-3 group cursor-default">
-            <div className="relative w-9 h-9 rounded-xl overflow-hidden shadow-lg border border-teal-500/40 group-hover:scale-105 transition-transform duration-300 flex-shrink-0 bg-neutral-900 ring-1 ring-cyan-400/20">
+        <div className="flex flex-col gap-1 px-1.5 pt-0.5">
+          <div className="flex items-center gap-2.5 group cursor-default">
+            <div className="relative w-8 h-8 rounded-xl overflow-hidden shadow-lg border border-teal-500/40 group-hover:scale-105 transition-transform duration-300 flex-shrink-0 bg-neutral-900 ring-1 ring-cyan-400/20">
               <img
                 src={flowLunaLogo}
                 alt="FlowLuna Logo"
@@ -142,7 +153,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
             type="button"
             id="sidebar-command-palette-btn"
             onClick={onOpenCommandPalette}
-            className="w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs bg-neutral-900/90 hover:bg-neutral-800/90 border border-neutral-800 text-neutral-300 hover:text-white hover:border-neutral-700 transition-colors shadow-xs cursor-pointer"
+            className="w-full flex items-center justify-between px-2.5 py-1.5 rounded-xl text-xs bg-neutral-900/90 hover:bg-neutral-800/90 border border-neutral-800 text-neutral-300 hover:text-white hover:border-neutral-700 transition-colors shadow-xs cursor-pointer"
           >
             <div className="flex items-center gap-2">
               <Search className="w-3.5 h-3.5 text-neutral-400" />
@@ -221,13 +232,13 @@ export const Sidebar: React.FC<SidebarProps> = ({
               type="button"
               id="nav-queue-btn"
               onClick={onOpenQueue}
-              className={`w-full flex items-center justify-between px-3 py-2.5 rounded-lg text-xs font-medium transition-colors text-left ${
+              className={`w-full flex items-center justify-between px-2.5 py-1.5 rounded-lg text-xs font-medium transition-colors text-left ${
                 isQueueOpen
                   ? ACCENT_ACTIVE[accent]
                   : 'text-neutral-400 hover:text-neutral-100 hover:bg-neutral-800/40'
               }`}
             >
-              <div className="flex items-center gap-3">
+              <div className="flex items-center gap-2.5">
                 <ListMusic className="w-4 h-4 text-emerald-400" />
                 <span>{t.queue}</span>
               </div>
@@ -248,9 +259,9 @@ export const Sidebar: React.FC<SidebarProps> = ({
               <button
                 type="button"
                 id="manage-sidebar-playlists-btn"
-                onClick={() => setIsManageSidebarOpen(true)}
+                onClick={handleOpenManageSidebar}
                 className="p-1 rounded text-neutral-400 hover:text-white hover:bg-neutral-800 transition-colors"
-                title="Choisir les playlists affichées dans le menu latéral"
+                title="Gérer les playlists affichées dans le menu latéral"
               >
                 <SlidersHorizontal className="w-3.5 h-3.5" />
               </button>
@@ -266,7 +277,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
             </div>
           </div>
 
-          <div className="flex flex-col gap-0.5 max-h-60 overflow-y-auto">
+          <div className="flex flex-col gap-0.5">
             {/* Playlist Favoris */}
             <button
               type="button"
@@ -296,7 +307,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 <span>Aucune playlist personnalisée épinglée</span>
                 <button
                   type="button"
-                  onClick={() => setIsManageSidebarOpen(true)}
+                  onClick={handleOpenManageSidebar}
                   className="text-[10px] text-sky-400 hover:underline font-medium"
                 >
                   Choisir les playlists visibles
@@ -331,29 +342,12 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 );
               })
             )}
-
-            {/* If there are unpinned/hidden playlists, show quick indicator */}
-            {hiddenCount > 0 && (
-              <button
-                type="button"
-                onClick={() => onNavigate('playlists')}
-                className="w-full text-left px-2.5 py-1 text-[11px] text-neutral-500 hover:text-neutral-300 transition-colors flex items-center justify-between group mt-0.5"
-                title="Voir toutes vos playlists"
-              >
-                <span className="truncate group-hover:underline">
-                  + {hiddenCount} autre{hiddenCount > 1 ? 's' : ''} masquée{hiddenCount > 1 ? 's' : ''}
-                </span>
-                <span className="text-[9px] px-1.5 py-0.5 rounded bg-neutral-900 group-hover:bg-neutral-800 text-neutral-400 border border-neutral-800">
-                  Toutes
-                </span>
-              </button>
-            )}
           </div>
         </div>
       </div>
 
       {/* Bottom Actions & Hardware Tools */}
-      <div className="p-4 border-t border-neutral-800/80 flex flex-col gap-2.5 bg-neutral-950/80">
+      <div className="p-3 border-t border-neutral-800/80 flex flex-col gap-2 bg-neutral-950/80">
         {/* Screenbox Fluent "Ouvrir un fichier" / "Ouvrir un dossier" */}
         <OpenFileDropdown
           onOpenFiles={onImportFiles}
@@ -364,12 +358,12 @@ export const Sidebar: React.FC<SidebarProps> = ({
         />
 
         {/* Quick Tools Row: Equalizer & Settings */}
-        <div className="grid grid-cols-2 gap-2 pt-1">
+        <div className="grid grid-cols-2 gap-2 pt-0.5">
           <button
             type="button"
             id="sidebar-equalizer-btn"
             onClick={onOpenEqualizer}
-            className="flex items-center justify-center gap-1.5 px-2 py-2 rounded-xl text-xs font-semibold bg-neutral-900/90 hover:bg-neutral-800 text-neutral-300 hover:text-white border border-neutral-800/80 transition-all shadow-xs whitespace-nowrap cursor-pointer"
+            className="flex items-center justify-center gap-1.5 px-2 py-1.5 rounded-xl text-xs font-semibold bg-neutral-900/90 hover:bg-neutral-800 text-neutral-300 hover:text-white border border-neutral-800/80 transition-all shadow-xs whitespace-nowrap cursor-pointer"
           >
             <Sliders className="w-3.5 h-3.5 text-purple-400 shrink-0" />
             <span className="truncate">{t.equalizer}</span>
@@ -379,7 +373,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
             type="button"
             id="sidebar-settings-btn"
             onClick={onOpenSettings}
-            className="flex items-center justify-center gap-1.5 px-2 py-2 rounded-xl text-xs font-semibold bg-neutral-900/90 hover:bg-neutral-800 text-neutral-300 hover:text-white border border-neutral-800/80 transition-all shadow-xs whitespace-nowrap cursor-pointer"
+            className="flex items-center justify-center gap-1.5 px-2 py-1.5 rounded-xl text-xs font-semibold bg-neutral-900/90 hover:bg-neutral-800 text-neutral-300 hover:text-white border border-neutral-800/80 transition-all shadow-xs whitespace-nowrap cursor-pointer"
           >
             <Settings className="w-3.5 h-3.5 text-sky-400 shrink-0" />
             <span className="truncate">{t.openSettings}</span>
@@ -403,6 +397,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
               onBulkUpdatePins(map);
             }
           }}
+          onCreatePlaylist={onCreatePlaylist}
+          onNavigate={onNavigate}
           accent={accent}
         />
       )}

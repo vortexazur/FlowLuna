@@ -285,36 +285,23 @@ export const EqualizerModal: React.FC<EqualizerModalProps> = ({
           </div>
         </div>
 
-        {/* Normalisation EBU R128 sur toute la longueur (Full-width row) */}
+        {/* Normalisation EBU R128 sur toute la longueur (Full-width layout) */}
         {playerSettings && onUpdatePlayerSettings && (
-          <div className="bg-neutral-950/40 p-3.5 rounded-lg border border-neutral-800/50 flex flex-col md:flex-row md:items-center justify-between gap-3">
-            <div className="flex-1 min-w-0">
-              <div className="flex items-center gap-2 mb-1">
-                <span className="text-xs font-semibold text-neutral-200">Normalisation Sonore EBU R128</span>
-                <span
-                  className={`text-[10px] font-mono px-2 py-0.5 rounded font-semibold ${
-                    playerSettings.volumeNormalization
-                      ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
-                      : 'bg-neutral-800 text-neutral-400'
-                  }`}
-                >
-                  {playerSettings.volumeNormalization
-                    ? playerSettings.normalizationTarget === 'replaygain'
-                      ? 'ReplayGain (-18 LUFS)'
-                      : playerSettings.normalizationTarget === 'broadcast'
-                      ? 'Broadcast / Cinéma (-23 LUFS)'
-                      : 'Streaming Web (-14 LUFS)'
-                    : 'Désactivé'}
-                </span>
-              </div>
-              <p className="text-[11px] text-neutral-400 leading-tight">
+          <div className="bg-neutral-950/40 p-3.5 rounded-lg border border-neutral-800/50 flex flex-col gap-3">
+            {/* Titre & Description sur toute la longueur */}
+            <div className="w-full">
+              <h4 className="text-xs font-semibold text-neutral-200 mb-1">
+                Normalisation Sonore EBU R128
+              </h4>
+              <p className="text-[11px] text-neutral-400 leading-relaxed">
                 Harmonisation dynamique intelligente selon la norme ITU-R BS.1770 / EBU R128 pour éliminer les écarts de volume.
               </p>
             </div>
 
-            <div className="flex items-center gap-2 flex-wrap sm:flex-nowrap">
+            {/* Contrôles sur toute la longueur sous le paragraphe */}
+            <div className="w-full flex items-center gap-2.5 flex-wrap sm:flex-nowrap">
               {playerSettings.volumeNormalization && (
-                <div className="flex items-center gap-1.5 p-1 rounded-lg bg-neutral-900 border border-neutral-800">
+                <div className="grid grid-cols-3 gap-1.5 p-1 rounded-xl bg-neutral-900 border border-neutral-800 flex-1 min-w-0">
                   <button
                     type="button"
                     onClick={() => {
@@ -322,7 +309,7 @@ export const EqualizerModal: React.FC<EqualizerModalProps> = ({
                       onUpdatePlayerSettings(updated);
                       audioEngine.setVolumeNormalization(true, 'streaming');
                     }}
-                    className={`text-[11px] px-2.5 py-1 rounded transition-colors font-medium cursor-pointer ${
+                    className={`text-xs px-2.5 py-1.5 rounded-lg transition-colors font-medium cursor-pointer text-center truncate ${
                       (playerSettings.normalizationTarget ?? 'streaming') === 'streaming'
                         ? 'bg-emerald-500/30 text-emerald-300 border border-emerald-500/40 font-bold'
                         : 'bg-transparent text-neutral-400 hover:text-neutral-200'
@@ -338,7 +325,7 @@ export const EqualizerModal: React.FC<EqualizerModalProps> = ({
                       onUpdatePlayerSettings(updated);
                       audioEngine.setVolumeNormalization(true, 'replaygain');
                     }}
-                    className={`text-[11px] px-2.5 py-1 rounded transition-colors font-medium cursor-pointer ${
+                    className={`text-xs px-2.5 py-1.5 rounded-lg transition-colors font-medium cursor-pointer text-center truncate ${
                       playerSettings.normalizationTarget === 'replaygain'
                         ? 'bg-emerald-500/30 text-emerald-300 border border-emerald-500/40 font-bold'
                         : 'bg-transparent text-neutral-400 hover:text-neutral-200'
@@ -354,7 +341,7 @@ export const EqualizerModal: React.FC<EqualizerModalProps> = ({
                       onUpdatePlayerSettings(updated);
                       audioEngine.setVolumeNormalization(true, 'broadcast');
                     }}
-                    className={`text-[11px] px-2.5 py-1 rounded transition-colors font-medium cursor-pointer ${
+                    className={`text-xs px-2.5 py-1.5 rounded-lg transition-colors font-medium cursor-pointer text-center truncate ${
                       playerSettings.normalizationTarget === 'broadcast'
                         ? 'bg-emerald-500/30 text-emerald-300 border border-emerald-500/40 font-bold'
                         : 'bg-transparent text-neutral-400 hover:text-neutral-200'
@@ -377,7 +364,9 @@ export const EqualizerModal: React.FC<EqualizerModalProps> = ({
                   onUpdatePlayerSettings(updated);
                   audioEngine.setVolumeNormalization(updated.volumeNormalization, updated.normalizationTarget ?? 'streaming');
                 }}
-                className={`py-1.5 px-3 rounded-md text-xs font-semibold transition-colors text-center cursor-pointer whitespace-nowrap ${
+                className={`py-2 px-4 rounded-xl text-xs font-semibold transition-all text-center cursor-pointer whitespace-nowrap active:scale-95 ${
+                  !playerSettings.volumeNormalization ? 'w-full py-2.5' : 'flex-shrink-0'
+                } ${
                   playerSettings.volumeNormalization
                     ? `${ACCENT_BG[accent]} shadow-xs`
                     : 'bg-neutral-800 text-neutral-300 hover:bg-neutral-700'

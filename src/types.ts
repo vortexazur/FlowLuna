@@ -1,4 +1,4 @@
-export const APP_VERSION = '1.1.1';
+export const APP_VERSION = '1.1.3';
 
 export type MediaFormat =
   | 'mp3'

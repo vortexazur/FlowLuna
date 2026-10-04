@@ -34,6 +34,7 @@ interface AllPlaylistsViewProps {
   onUpdatePlaylist?: (playlist: Playlist) => void;
   onTogglePinPlaylist?: (playlistId: string, isPinned: boolean) => void;
   onBulkUpdatePins?: (pinnedMap: Record<string, boolean>) => void;
+  onOpenManageSidebar?: () => void;
   accent: AccentColor;
 }
 
@@ -73,12 +74,21 @@ export const AllPlaylistsView: React.FC<AllPlaylistsViewProps> = ({
   onUpdatePlaylist,
   onTogglePinPlaylist,
   onBulkUpdatePins,
+  onOpenManageSidebar,
   accent,
 }) => {
   const [searchQuery, setSearchQuery] = useState('');
   const [playlistToDelete, setPlaylistToDelete] = useState<Playlist | null>(null);
   const [playlistToEdit, setPlaylistToEdit] = useState<Playlist | null>(null);
   const [isManageSidebarOpen, setIsManageSidebarOpen] = useState(false);
+
+  const handleOpenManageSidebar = () => {
+    if (onOpenManageSidebar) {
+      onOpenManageSidebar();
+    } else {
+      setIsManageSidebarOpen(true);
+    }
+  };
 
   // Move Favoris into main playlists and exclude obsolete offline playlist
   const customPlaylists = playlists.filter(
@@ -243,7 +253,7 @@ export const AllPlaylistsView: React.FC<AllPlaylistsViewProps> = ({
           <button
             type="button"
             id="manage-sidebar-btn"
-            onClick={() => setIsManageSidebarOpen(true)}
+            onClick={handleOpenManageSidebar}
             className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold bg-neutral-900 hover:bg-neutral-800 text-neutral-200 border border-neutral-800 transition-colors"
             title="Gérer les playlists visibles dans la barre latérale"
           >
@@ -546,6 +556,8 @@ export const AllPlaylistsView: React.FC<AllPlaylistsViewProps> = ({
               onBulkUpdatePins(map);
             }
           }}
+          onCreatePlaylist={onCreatePlaylist}
+          onNavigate={(tab, id) => onNavigate(tab, id)}
           accent={accent}
         />
       )}

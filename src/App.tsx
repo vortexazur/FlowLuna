@@ -37,6 +37,7 @@ import { MiniPlayer } from './components/MiniPlayer';
 import { DetachedMiniPlayerPortal } from './components/DetachedMiniPlayer';
 import { openAlwaysOnTopWindow } from './services/pictureInPictureService';
 import { CreatePlaylistModal } from './components/CreatePlaylistModal';
+import { ManageSidebarPlaylistsModal } from './components/ManageSidebarPlaylistsModal';
 import { AllPlaylistsView } from './components/AllPlaylistsView';
 import { AudioTrimmerModal } from './components/AudioTrimmerModal';
 import { TrackTagEditorModal } from './components/TrackTagEditorModal';
@@ -113,6 +114,7 @@ export default function App() {
   const [detachedPipWindow, setDetachedPipWindow] = useState<Window | null>(null);
   const [pipNotification, setPipNotification] = useState<string | null>(null);
   const [isCreatePlaylistModalOpen, setIsCreatePlaylistModalOpen] = useState<boolean>(false);
+  const [isManageSidebarOpen, setIsManageSidebarOpen] = useState<boolean>(false);
   const [trimmerTrack, setTrimmerTrack] = useState<Track | null>(null);
   const [tagEditorTrack, setTagEditorTrack] = useState<Track | null>(null);
   const [isDeduplicatorOpen, setIsDeduplicatorOpen] = useState<boolean>(false);
@@ -1200,6 +1202,7 @@ export default function App() {
           onUpdatePlaylist={handleUpdatePlaylist}
           onTogglePinPlaylist={handleTogglePinPlaylist}
           onBulkUpdatePins={handleBulkUpdatePins}
+          onOpenManageSidebar={() => setIsManageSidebarOpen(true)}
           accent={playerSettings.accent}
         />
       );
@@ -1487,6 +1490,7 @@ export default function App() {
               onToggleFullscreen={() => setIsFullscreenOpen(true)}
               onTogglePinPlaylist={handleTogglePinPlaylist}
               onBulkUpdatePins={handleBulkUpdatePins}
+              onOpenManageSidebar={() => setIsManageSidebarOpen(true)}
               onOpenCommandPalette={() => setIsCommandPaletteOpen(true)}
               onOpenQueue={() => setIsQueueOpen((p) => !p)}
               queueLength={queue.length}
@@ -1645,6 +1649,18 @@ export default function App() {
         isOpen={isCreatePlaylistModalOpen}
         onClose={() => setIsCreatePlaylistModalOpen(false)}
         onCreate={handleSaveNewPlaylist}
+        accent={playerSettings.accent}
+      />
+
+      {/* Manage Sidebar Playlists Modal */}
+      <ManageSidebarPlaylistsModal
+        isOpen={isManageSidebarOpen}
+        onClose={() => setIsManageSidebarOpen(false)}
+        playlists={playlists}
+        onTogglePin={handleTogglePinPlaylist}
+        onBulkUpdatePins={handleBulkUpdatePins}
+        onCreatePlaylist={() => setIsCreatePlaylistModalOpen(true)}
+        onNavigate={handleNavigate}
         accent={playerSettings.accent}
       />
 

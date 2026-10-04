@@ -4,7 +4,7 @@
 
 ![FlowLuna Banner](public/logo.jpg)
 
-[![Version](https://img.shields.io/badge/version-1.1.2-emerald.svg?style=for-the-badge)](https://github.com/vortexazur/FlowLuna/releases)
+[![Version](https://img.shields.io/badge/version-1.1.3-emerald.svg?style=for-the-badge)](https://github.com/vortexazur/FlowLuna/releases)
 [![Platform](https://img.shields.io/badge/platform-Windows%2010%20%7C%2011%20x64-blue.svg?style=for-the-badge&logo=windows)](https://github.com/vortexazur/FlowLuna)
 [![.NET 9](https://img.shields.io/badge/.NET-9.0-512BD4.svg?style=for-the-badge&logo=dotnet)](https://dotnet.microsoft.com/)
 [![WebView2](https://img.shields.io/badge/WebView2-Evergreen-0078D7.svg?style=for-the-badge&logo=microsoftedge)](https://developer.microsoft.com/microsoft-edge/webview2/)
@@ -87,7 +87,7 @@ FlowLuna utilise le moteur multimédia **LibVLCSharp** ([VideoLAN](https://githu
 ## 📦 Installation
 
 1. Rendez-vous dans la section [Releases](https://github.com/vortexazur/FlowLuna/releases).
-2. Téléchargez l'installateur officiel **`FlowLuna-Setup-1.1.2.exe`** (~110 Mo).
+2. Téléchargez l'installateur officiel **`FlowLuna-Setup-1.1.3.exe`** (~115 Mo).
 3. Lancez l'exécutable : l'application installe automatiquement le binaire natif C# .NET 9 + WebView2, configure les dépendances audio LibVLCSharp et crée les raccourcis sur le Bureau et le Menu Démarrer.
 
 ---

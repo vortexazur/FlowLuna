@@ -20,6 +20,15 @@
   background: rgba(100, 116, 139, 0.45);
 }
 
+/* Hide scrollbar utility */
+.scrollbar-none::-webkit-scrollbar {
+  display: none;
+}
+.scrollbar-none {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
 /* =========================================================================
    LIGHT THEME DESIGN SYSTEM (data-theme="light" & .light)
    High-contrast, modern clean aesthetic with seamless menu/modal integration

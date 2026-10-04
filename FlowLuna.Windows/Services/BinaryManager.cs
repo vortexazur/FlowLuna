@@ -211,7 +211,7 @@ public static class BinaryManager
         try
         {
             using var req = new HttpRequestMessage(HttpMethod.Get, "https://api.github.com/repos/videolan/libvlcsharp/releases/latest");
-            req.Headers.UserAgent.ParseAdd("FlowLuna-Desktop/1.1.1");
+            req.Headers.UserAgent.ParseAdd("FlowLuna-Desktop/1.1.3");
 
             using var res = await HttpClient.SendAsync(req);
             if (res.IsSuccessStatusCode)
