@@ -295,7 +295,10 @@ export default function App() {
   useEffect(() => {
     const root = document.documentElement;
     const currentTheme = playerSettings.theme || 'dark';
-    const effect = playerSettings.backdropEffect || 'glass';
+    const effect =
+      playerSettings.backdropEffect === 'acrylic' || playerSettings.backdropEffect === 'mica'
+        ? 'acrylic'
+        : (playerSettings.backdropEffect || 'glass');
     root.setAttribute('data-theme', currentTheme);
     root.setAttribute('data-effect', effect);
     if (currentTheme === 'light') {
@@ -1350,24 +1353,25 @@ export default function App() {
 
   const cachedTracksCount = tracks.filter((t) => t.isCachedOffline).length;
 
-  const backdropEffect: BackdropEffect = playerSettings.backdropEffect || 'glass';
+  const isAcrylic = playerSettings.backdropEffect === 'acrylic' || playerSettings.backdropEffect === 'mica';
+  const backdropEffect: BackdropEffect = isAcrylic ? 'acrylic' : (playerSettings.backdropEffect || 'glass');
   const glassIntensity = playerSettings.glassIntensity ?? 70;
   const glassFactor = glassIntensity / 100;
   const isDark = playerSettings.theme !== 'light';
 
-  // Dynamic CSS variables for Pure Glass vs Mica & Acrylic Fluent effect
+  // Dynamic CSS variables for Pure Glass vs Desktop Acrylic Fluent effect
   const glassStyle = useMemo(() => {
-    if (backdropEffect === 'mica') {
+    if (isAcrylic) {
       return {
         '--glass-intensity': '100%',
         '--glass-factor': '1',
         '--glass-blur': '28px',
         '--glass-border': isDark ? 'rgba(255, 255, 255, 0.08)' : 'rgba(0, 0, 0, 0.08)',
-        '--glass-sidebar-bg': isDark ? 'rgba(16, 16, 24, 0.45)' : 'rgba(255, 255, 255, 0.50)',
-        '--glass-main-bg': isDark ? 'rgba(10, 10, 16, 0.25)' : 'rgba(245, 247, 250, 0.30)',
-        '--glass-player-bg': isDark ? 'rgba(18, 18, 28, 0.50)' : 'rgba(255, 255, 255, 0.60)',
-        '--glass-card-bg': isDark ? 'rgba(26, 26, 38, 0.35)' : 'rgba(255, 255, 255, 0.55)',
-        '--glass-modal-bg': isDark ? 'rgba(18, 18, 28, 0.70)' : 'rgba(255, 255, 255, 0.75)',
+        '--glass-sidebar-bg': isDark ? 'rgba(16, 16, 24, 0.40)' : 'rgba(255, 255, 255, 0.45)',
+        '--glass-main-bg': isDark ? 'rgba(10, 10, 16, 0.20)' : 'rgba(245, 247, 250, 0.25)',
+        '--glass-player-bg': isDark ? 'rgba(18, 18, 28, 0.45)' : 'rgba(255, 255, 255, 0.55)',
+        '--glass-card-bg': isDark ? 'rgba(26, 26, 38, 0.30)' : 'rgba(255, 255, 255, 0.50)',
+        '--glass-modal-bg': isDark ? 'rgba(18, 18, 28, 0.60)' : 'rgba(255, 255, 255, 0.70)',
       } as React.CSSProperties;
     }
 
@@ -1394,7 +1398,7 @@ export default function App() {
         ? `rgba(14, 14, 22, ${Math.max(0.45, 0.95 - glassFactor * 0.5)})`
         : `rgba(255, 255, 255, ${Math.max(0.72, 0.96 - glassFactor * 0.24)})`,
     } as React.CSSProperties;
-  }, [backdropEffect, glassIntensity, glassFactor, isDark]);
+  }, [isAcrylic, glassIntensity, glassFactor, isDark]);
 
   // Check if fullscreen video or UI is active to prevent any foreground toast popup
   const isFullscreenActive = useMemo(() => {
@@ -1411,15 +1415,15 @@ export default function App() {
       style={glassStyle}
       className={`w-screen h-screen flex flex-col overflow-hidden transition-colors duration-200 relative ${
         playerSettings.theme === 'light'
-          ? (backdropEffect === 'mica' ? 'light text-slate-900' : 'light bg-slate-100/90 text-slate-900')
-          : (backdropEffect === 'mica' ? 'dark text-neutral-100' : 'dark bg-neutral-950 text-neutral-100')
+          ? (isAcrylic ? 'light text-slate-900' : 'light bg-slate-100/90 text-slate-900')
+          : (isAcrylic ? 'dark text-neutral-100' : 'dark bg-neutral-950 text-neutral-100')
       }`}
     >
-      {/* Pure Glass Ambient Glow & Refraction Layer (muted in Mica mode) */}
+      {/* Pure Glass Ambient Glow & Refraction Layer (muted in Acrylic mode) */}
       <div
         className="absolute inset-0 pointer-events-none overflow-hidden transition-opacity duration-700 z-0"
         style={{
-          opacity: backdropEffect === 'mica' ? 0 : Math.max(0.25, glassFactor),
+          opacity: isAcrylic ? 0 : Math.max(0.25, glassFactor),
         }}
       >
         <div

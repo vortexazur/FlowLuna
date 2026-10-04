@@ -594,10 +594,10 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
 
                   <button
                     type="button"
-                    id="effect-mica-btn"
-                    onClick={() => updateSetting('backdropEffect', 'mica')}
+                    id="effect-acrylic-btn"
+                    onClick={() => updateSetting('backdropEffect', 'acrylic')}
                     className={`p-3.5 rounded-xl border flex items-center justify-between transition-all cursor-pointer ${
-                      settings.backdropEffect === 'mica'
+                      settings.backdropEffect === 'acrylic' || settings.backdropEffect === 'mica'
                         ? 'border-neutral-500 bg-neutral-800/90 text-white font-bold shadow-md ring-1 ring-neutral-400/30'
                         : 'border-neutral-800 bg-neutral-900/60 text-neutral-400 hover:text-white hover:border-neutral-700'
                     }`}
@@ -608,14 +608,14 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                       </div>
                       <div className="text-left">
                         <span className="text-xs font-semibold block text-white">
-                          {t.visualEffectMica || 'Mica & Acrylic (Windows 11)'}
+                          {t.visualEffectAcrylic || t.visualEffectMica || 'Acrylic (Windows 11)'}
                         </span>
                         <span className="text-[10px] text-neutral-400">
-                          {t.visualEffectMicaDesc || 'Design Fluent épuré, surfaces acryliques satinées'}
+                          {t.visualEffectAcrylicDesc || t.visualEffectMicaDesc || 'Transparence dépolie fluide de bureau (Desktop Acrylic)'}
                         </span>
                       </div>
                     </div>
-                    {settings.backdropEffect === 'mica' && (
+                    {(settings.backdropEffect === 'acrylic' || settings.backdropEffect === 'mica') && (
                       <Check className="w-4 h-4 text-emerald-400" />
                     )}
                   </button>
@@ -707,13 +707,13 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                   </div>
                 </div>
               ) : (
-                /* Si Mica & Acrylic actif : Description & Aperçu Fluent */
+                /* Si Acrylic actif : Description & Aperçu Fluent */
                 <div className="flex flex-col gap-3.5 bg-neutral-900/60 p-4.5 rounded-xl border border-neutral-800">
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-2">
                       <Sparkles className="w-4 h-4 text-indigo-400" />
                       <span className="text-xs font-bold text-neutral-200 uppercase tracking-wider">
-                        Matériau Mica & Acrylic Fluent
+                        Matériau Desktop Acrylic Fluent
                       </span>
                     </div>
                     <span className="text-xs font-mono font-bold px-2.5 py-0.5 rounded-full bg-indigo-950/80 text-indigo-400 border border-indigo-500/30">
@@ -722,29 +722,29 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                   </div>
 
                   <p className="text-xs text-neutral-400 leading-relaxed">
-                    Le mode <strong className="text-white">Mica & Acrylic</strong> adopte l'esthétique officielle de Windows 11 Fluent Design. Il élimine les reflets vifs au profit de textures acryliques satinées à forte absorption, pour un environnement d'écoute sobre, apaisant et élégant.
+                    Le mode <strong className="text-white">Desktop Acrylic</strong> applique la transparence dépolie officielle de Windows 11. Grâce au flou d'arrière-plan DWM translucide, les fenêtres d'arrière-plan et le bureau apparaissent en transparence sous FlowLuna avec un flou matériel élégant.
                   </p>
 
                   <div
                     className="mt-1 p-3.5 rounded-xl border border-white/15 relative overflow-hidden flex items-center justify-between transition-all"
                     style={{
-                      backdropFilter: 'blur(36px) saturate(130%)',
-                      WebkitBackdropFilter: 'blur(36px) saturate(130%)',
+                      backdropFilter: 'blur(36px) saturate(140%)',
+                      WebkitBackdropFilter: 'blur(36px) saturate(140%)',
                       backgroundColor:
                         settings.theme === 'light'
-                          ? 'rgba(255, 255, 255, 0.92)'
-                          : 'rgba(26, 26, 34, 0.9)',
+                          ? 'rgba(255, 255, 255, 0.45)'
+                          : 'rgba(18, 18, 28, 0.45)',
                       boxShadow: '0 8px 30px rgba(0, 0, 0, 0.25)',
                     }}
                   >
                     <div className="flex items-center gap-2.5 z-10">
                       <span className="w-2.5 h-2.5 rounded-full bg-indigo-400 shadow-[0_0_8px_#818cf8]" />
                       <span className="text-xs font-semibold text-neutral-200">
-                        {settings.theme === 'dark' ? 'Surface Acrylique Sombre Fluent' : 'Surface Acrylique Claire Satinée'}
+                        {settings.theme === 'dark' ? 'Surface Acrylique Translucide Sombre' : 'Surface Acrylique Translucide Claire'}
                       </span>
                     </div>
                     <span className="text-[10px] font-mono text-indigo-300 font-semibold px-2 py-0.5 rounded bg-indigo-950/60 border border-indigo-500/20 z-10">
-                      DWM Mica / Acrylic
+                      DWM Desktop Acrylic
                     </span>
                   </div>
                 </div>

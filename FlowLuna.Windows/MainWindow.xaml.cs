@@ -386,8 +386,8 @@ public partial class MainWindow : Window
             DwmSetWindowAttribute(hwnd, 33, ref cornerPref, sizeof(int));
 
             // DWMWA_SYSTEMBACKDROP_TYPE = 38 (2 = Mica, 3 = Acrylic, 4 = MicaAlt)
-            // When effect is "mica", backdrop 3 (Acrylic) gives genuine blur-through transparency to background windows & desktop!
-            int backdrop = (effect == "mica") ? 3 : 2;
+            // Desktop Acrylic (backdrop 3) gives genuine blur-through translucency to background windows & desktop!
+            int backdrop = (effect == "acrylic" || effect == "mica") ? 3 : 2;
             DwmSetWindowAttribute(hwnd, 38, ref backdrop, sizeof(int));
 
             Background = System.Windows.Media.Brushes.Transparent;
