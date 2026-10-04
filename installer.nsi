@@ -3,7 +3,7 @@
 
 Unicode true
 !define PRODUCT_NAME "FlowLuna"
-!define PRODUCT_VERSION "1.1.5"
+!define PRODUCT_VERSION "1.1.6"
 !define PRODUCT_PUBLISHER "vortexazur"
 !define PRODUCT_WEB_SITE "https://github.com/vortexazur/FlowLuna"
 !define PRODUCT_DIR_REGKEY "Software\Microsoft\Windows\CurrentVersion\App Paths\FlowLuna.exe"
