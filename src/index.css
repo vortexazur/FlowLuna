@@ -1108,7 +1108,8 @@ html.light #settings-modal-content .bg-neutral-950\/60 {
   border-color: rgba(226, 232, 240, 0.8) !important;
 }
 
-#videos-view {
+#videos-view,
+#downloader-view {
   background: transparent !important;
 }
 

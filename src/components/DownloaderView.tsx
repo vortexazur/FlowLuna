@@ -441,35 +441,35 @@ export const DownloaderView: React.FC<DownloaderViewProps> = ({
   };
 
   return (
-    <div className="flex-1 h-full overflow-y-auto p-6 md:p-8 flex flex-col gap-6 select-none bg-neutral-950">
+    <div id="downloader-view" className="flex-1 h-full overflow-y-auto p-6 md:p-8 flex flex-col gap-6 select-none glass-main">
       {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-neutral-800/80 pb-6">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-white/10 pb-6">
         <div className="flex items-center gap-3.5">
-          <div className="p-3 rounded-2xl bg-red-950/80 border border-red-500/30 text-red-400 shadow-sm">
+          <div className="p-3 rounded-2xl bg-red-500/15 border border-red-500/30 text-red-400 shadow-sm backdrop-blur-md">
             <Download className="w-6 h-6" />
           </div>
           <div>
-            <h1 className="text-2xl font-black text-white tracking-tight flex items-center gap-2.5">
+            <h1 className="text-2xl font-black text-neutral-900 dark:text-white tracking-tight flex items-center gap-2.5">
               <span>Téléchargeur Média</span>
-              <span className="text-xs font-mono font-semibold px-2 py-0.5 rounded-full bg-red-950 border border-red-500/30 text-red-400">
+              <span className="text-xs font-mono font-semibold px-2 py-0.5 rounded-full bg-red-500/15 border border-red-500/30 text-red-400">
                 yt-dlp & FFmpeg
               </span>
             </h1>
-            <p className="text-xs text-neutral-400 mt-0.5">
+            <p className="text-xs text-neutral-500 dark:text-neutral-400 mt-0.5">
               Téléchargez et convertissez vos musiques et vidéos en haute fidélité
             </p>
           </div>
         </div>
 
         {/* Tab Switcher */}
-        <div className="flex items-center gap-1.5 bg-neutral-900/90 p-1 rounded-xl border border-neutral-800 self-start sm:self-auto">
+        <div className="flex items-center gap-1.5 bg-white/5 dark:bg-white/5 p-1 rounded-xl border border-white/10 backdrop-blur-md self-start sm:self-auto">
           <button
             type="button"
             onClick={() => setActiveTab('single')}
             className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
               activeTab === 'single'
-                ? 'bg-neutral-800 text-white shadow-xs'
-                : 'text-neutral-400 hover:text-white'
+                ? 'bg-white/15 dark:bg-white/20 text-neutral-900 dark:text-white shadow-xs font-bold'
+                : 'text-neutral-500 dark:text-neutral-400 hover:text-neutral-900 dark:hover:text-white'
             }`}
           >
             Lien Unique
@@ -479,8 +479,8 @@ export const DownloaderView: React.FC<DownloaderViewProps> = ({
             onClick={() => setActiveTab('batch')}
             className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
               activeTab === 'batch'
-                ? 'bg-neutral-800 text-white shadow-xs'
-                : 'text-neutral-400 hover:text-white'
+                ? 'bg-white/15 dark:bg-white/20 text-neutral-900 dark:text-white shadow-xs font-bold'
+                : 'text-neutral-500 dark:text-neutral-400 hover:text-neutral-900 dark:hover:text-white'
             }`}
           >
             Par Lots
@@ -490,8 +490,8 @@ export const DownloaderView: React.FC<DownloaderViewProps> = ({
             onClick={() => setActiveTab('history')}
             className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer flex items-center gap-1.5 ${
               activeTab === 'history'
-                ? 'bg-neutral-800 text-white shadow-xs'
-                : 'text-neutral-400 hover:text-white'
+                ? 'bg-white/15 dark:bg-white/20 text-neutral-900 dark:text-white shadow-xs font-bold'
+                : 'text-neutral-500 dark:text-neutral-400 hover:text-neutral-900 dark:hover:text-white'
             }`}
           >
             <Clock className="w-3.5 h-3.5 text-red-400" />
@@ -504,10 +504,10 @@ export const DownloaderView: React.FC<DownloaderViewProps> = ({
       {activeTab === 'single' && (
         <div className="space-y-6">
           {/* Main Input Bar */}
-          <div className="p-4 rounded-2xl bg-neutral-900/90 border border-neutral-800 shadow-xl space-y-3">
-            <label className="text-xs font-bold text-neutral-300 flex items-center gap-2">
+          <div className="p-4 rounded-2xl glass-card border border-white/10 shadow-xl space-y-3 backdrop-blur-xl">
+            <label className="text-xs font-bold text-neutral-800 dark:text-neutral-200 flex items-center gap-2">
               <span>Collez l'URL de votre vidéo ou musique</span>
-              <span className="text-[10px] text-neutral-400 font-normal">
+              <span className="text-[10px] text-neutral-500 dark:text-neutral-400 font-normal">
                 (YouTube, TikTok, SoundCloud, Instagram, X/Twitter, Vimeo...)
               </span>
             </label>
@@ -526,7 +526,7 @@ export const DownloaderView: React.FC<DownloaderViewProps> = ({
                     }
                   }}
                   placeholder="https://www.youtube.com/watch?v=... ou tiktok, soundcloud, x.com"
-                  className="w-full pl-4 pr-24 py-3 rounded-xl bg-neutral-950/90 border border-neutral-800 text-xs text-white placeholder-neutral-500 focus:outline-none focus:ring-1 focus:ring-red-500/50 transition-all font-mono"
+                  className="w-full pl-4 pr-24 py-3 rounded-xl bg-black/30 dark:bg-black/40 border border-white/10 text-xs text-neutral-900 dark:text-white placeholder-neutral-500 focus:outline-none focus:ring-1 focus:ring-red-500/50 transition-all font-mono backdrop-blur-md"
                 />
 
                 <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-1.5">
@@ -538,7 +538,7 @@ export const DownloaderView: React.FC<DownloaderViewProps> = ({
                         setInspectedMedia(null);
                         setInspectError(null);
                       }}
-                      className="px-2 py-1 text-[10px] text-neutral-400 hover:text-white bg-neutral-800 rounded-md cursor-pointer"
+                      className="px-2 py-1 text-[10px] text-neutral-500 dark:text-neutral-300 hover:text-neutral-900 dark:hover:text-white bg-white/10 hover:bg-white/20 rounded-md cursor-pointer transition-colors"
                     >
                       Effacer
                     </button>
@@ -546,7 +546,7 @@ export const DownloaderView: React.FC<DownloaderViewProps> = ({
                     <button
                       type="button"
                       onClick={handlePasteFromClipboard}
-                      className="px-2 py-1 text-[10px] text-neutral-400 hover:text-white bg-neutral-800 rounded-md cursor-pointer flex items-center gap-1"
+                      className="px-2 py-1 text-[10px] text-neutral-500 dark:text-neutral-300 hover:text-neutral-900 dark:hover:text-white bg-white/10 hover:bg-white/20 rounded-md cursor-pointer flex items-center gap-1 transition-colors"
                     >
                       <Copy className="w-3 h-3" />
                       Coller
@@ -561,7 +561,7 @@ export const DownloaderView: React.FC<DownloaderViewProps> = ({
                 disabled={!inputUrl.trim() || isInspecting}
                 className={`w-full sm:w-auto px-5 py-3 rounded-xl text-xs font-bold flex items-center justify-center gap-2 shadow-md transition-all cursor-pointer ${
                   !inputUrl.trim() || isInspecting
-                    ? 'opacity-50 cursor-not-allowed bg-neutral-800 text-neutral-400'
+                    ? 'opacity-50 cursor-not-allowed bg-white/10 text-neutral-500'
                     : 'bg-red-600 hover:bg-red-500 text-white shadow-red-950/50'
                 }`}
               >
@@ -581,11 +581,11 @@ export const DownloaderView: React.FC<DownloaderViewProps> = ({
 
             {/* Supported services tags */}
             <div className="pt-2 flex items-center gap-2 flex-wrap text-[11px] text-neutral-400">
-              <span className="font-semibold text-neutral-400">Services pris en charge :</span>
+              <span className="font-semibold text-neutral-500 dark:text-neutral-400">Services pris en charge :</span>
               {SUPPORTED_SERVICES.map((s) => (
                 <span
                   key={s.name}
-                  className="px-2 py-0.5 rounded-md bg-neutral-950/80 border border-neutral-800 text-neutral-300 font-medium"
+                  className="px-2 py-0.5 rounded-md bg-white/5 border border-white/10 text-neutral-700 dark:text-neutral-300 font-medium backdrop-blur-md"
                 >
                   <span className={s.color}>{s.name}</span>
                 </span>
@@ -606,11 +606,11 @@ export const DownloaderView: React.FC<DownloaderViewProps> = ({
 
           {/* INSPECTION RESULT & USER CHOICES CARD */}
           {inspectedMedia && (
-            <div className="p-6 rounded-2xl bg-neutral-900/95 border border-neutral-800 shadow-2xl space-y-6 animate-in fade-in zoom-in-95">
+            <div className="p-6 rounded-2xl glass-card border border-white/10 shadow-2xl space-y-6 animate-in fade-in zoom-in-95 backdrop-blur-xl">
               {/* Media Preview Banner */}
-              <div className="flex flex-col md:flex-row items-start gap-5 bg-neutral-950/80 p-4 rounded-xl border border-neutral-800/80">
+              <div className="flex flex-col md:flex-row items-start gap-5 bg-white/5 dark:bg-black/30 p-4 rounded-xl border border-white/10 backdrop-blur-md">
                 {inspectedMedia.thumbnail && (
-                  <div className="relative w-full md:w-48 h-32 rounded-lg overflow-hidden flex-shrink-0 bg-neutral-900 border border-neutral-800 group">
+                  <div className="relative w-full md:w-48 h-32 rounded-lg overflow-hidden flex-shrink-0 bg-black/40 border border-white/10 group">
                     <img
                       src={inspectedMedia.thumbnail}
                       alt={inspectedMedia.title}
@@ -624,11 +624,11 @@ export const DownloaderView: React.FC<DownloaderViewProps> = ({
 
                 <div className="flex-1 min-w-0 space-y-2">
                   <div className="flex items-center gap-2 flex-wrap">
-                    <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-red-500/10 border border-red-500/20 text-red-400 uppercase">
+                    <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-red-500/15 border border-red-500/30 text-red-400 uppercase">
                       {inspectedMedia.extractor || 'Web'}
                     </span>
                     {inspectedMedia.viewCount && (
-                      <span className="text-[11px] text-neutral-400 font-medium">
+                      <span className="text-[11px] text-neutral-500 dark:text-neutral-400 font-medium">
                         {typeof inspectedMedia.viewCount === 'number'
                           ? `${(inspectedMedia.viewCount / 1000000).toFixed(1)}M vues`
                           : inspectedMedia.viewCount}
@@ -636,17 +636,17 @@ export const DownloaderView: React.FC<DownloaderViewProps> = ({
                     )}
                   </div>
 
-                  <h3 className="text-base font-extrabold text-white leading-snug">
+                  <h3 className="text-base font-extrabold text-neutral-900 dark:text-white leading-snug">
                     {inspectedMedia.title}
                   </h3>
 
-                  <p className="text-xs text-neutral-300 font-medium flex items-center gap-1.5">
+                  <p className="text-xs text-neutral-600 dark:text-neutral-300 font-medium flex items-center gap-1.5">
                     <span>Créateur / Artiste :</span>
                     <span className="text-red-400 font-semibold">{inspectedMedia.artist}</span>
                   </p>
 
                   {inspectedMedia.description && (
-                    <p className="text-[11px] text-neutral-400 line-clamp-2">
+                    <p className="text-[11px] text-neutral-500 dark:text-neutral-400 line-clamp-2">
                       {inspectedMedia.description}
                     </p>
                   )}
@@ -654,9 +654,9 @@ export const DownloaderView: React.FC<DownloaderViewProps> = ({
               </div>
 
               {/* DEMANDE À L'UTILISATEUR : CHOIX DU TYPE DE MÉDIA (AUDIO vs VIDÉO) */}
-              <div className="space-y-4 pt-2 border-t border-neutral-800">
+              <div className="space-y-4 pt-2 border-t border-white/10">
                 <div className="flex items-center justify-between">
-                  <span className="text-xs uppercase font-extrabold text-neutral-400 tracking-wider">
+                  <span className="text-xs uppercase font-extrabold text-neutral-500 dark:text-neutral-400 tracking-wider">
                     1. Choisissez le type de conversion
                   </span>
                 </div>
@@ -666,26 +666,26 @@ export const DownloaderView: React.FC<DownloaderViewProps> = ({
                   <button
                     type="button"
                     onClick={() => setMediaType('audio')}
-                    className={`p-4 rounded-xl border transition-all text-left flex items-start gap-3.5 cursor-pointer ${
+                    className={`p-4 rounded-xl border transition-all text-left flex items-start gap-3.5 cursor-pointer backdrop-blur-md ${
                       mediaType === 'audio'
-                        ? 'bg-neutral-800/90 border-red-500 shadow-md ring-1 ring-red-500/50'
-                        : 'bg-neutral-950/60 border-neutral-800 hover:border-neutral-700 text-neutral-400'
+                        ? 'bg-red-500/15 border-red-500 shadow-md ring-1 ring-red-500/50'
+                        : 'bg-white/5 border-white/10 hover:border-white/20 text-neutral-500 dark:text-neutral-400'
                     }`}
                   >
                     <div
                       className={`p-2.5 rounded-xl ${
                         mediaType === 'audio'
                           ? 'bg-red-500/20 text-red-400'
-                          : 'bg-neutral-900 text-neutral-400'
+                          : 'bg-white/5 text-neutral-400'
                       }`}
                     >
                       <FileAudio className="w-5 h-5" />
                     </div>
                     <div>
-                      <span className="font-bold text-sm text-white block">
+                      <span className="font-bold text-sm text-neutral-900 dark:text-white block">
                         Extraction Audio / Musique
                       </span>
-                      <span className="text-[11px] text-neutral-400 block mt-0.5">
+                      <span className="text-[11px] text-neutral-500 dark:text-neutral-400 block mt-0.5">
                         MP3 (320k), FLAC Lossless, WAV Studio, M4A, OGG, OPUS
                       </span>
                     </div>
@@ -695,26 +695,26 @@ export const DownloaderView: React.FC<DownloaderViewProps> = ({
                   <button
                     type="button"
                     onClick={() => setMediaType('video')}
-                    className={`p-4 rounded-xl border transition-all text-left flex items-start gap-3.5 cursor-pointer ${
+                    className={`p-4 rounded-xl border transition-all text-left flex items-start gap-3.5 cursor-pointer backdrop-blur-md ${
                       mediaType === 'video'
-                        ? 'bg-neutral-800/90 border-red-500 shadow-md ring-1 ring-red-500/50'
-                        : 'bg-neutral-950/60 border-neutral-800 hover:border-neutral-700 text-neutral-400'
+                        ? 'bg-red-500/15 border-red-500 shadow-md ring-1 ring-red-500/50'
+                        : 'bg-white/5 border-white/10 hover:border-white/20 text-neutral-500 dark:text-neutral-400'
                     }`}
                   >
                     <div
                       className={`p-2.5 rounded-xl ${
                         mediaType === 'video'
                           ? 'bg-red-500/20 text-red-400'
-                          : 'bg-neutral-900 text-neutral-400'
+                          : 'bg-white/5 text-neutral-400'
                       }`}
                     >
                       <FileVideo className="w-5 h-5" />
                     </div>
                     <div>
-                      <span className="font-bold text-sm text-white block">
+                      <span className="font-bold text-sm text-neutral-900 dark:text-white block">
                         Téléchargement Vidéo & Clip
                       </span>
-                      <span className="text-[11px] text-neutral-400 block mt-0.5">
+                      <span className="text-[11px] text-neutral-500 dark:text-neutral-400 block mt-0.5">
                         MP4, MKV, WebM (4K, 1440p, 1080p Full HD, 720p)
                       </span>
                     </div>
@@ -723,8 +723,8 @@ export const DownloaderView: React.FC<DownloaderViewProps> = ({
               </div>
 
               {/* DEMANDE À L'UTILISATEUR : PARAMÈTRES DE FORMAT & QUALITÉ */}
-              <div className="space-y-4 pt-2 border-t border-neutral-800">
-                <span className="text-xs uppercase font-extrabold text-neutral-400 tracking-wider">
+              <div className="space-y-4 pt-2 border-t border-white/10">
+                <span className="text-xs uppercase font-extrabold text-neutral-500 dark:text-neutral-400 tracking-wider">
                   2. Personnalisez le format et la qualité
                 </span>
 
@@ -733,7 +733,7 @@ export const DownloaderView: React.FC<DownloaderViewProps> = ({
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     {/* Format Audio */}
                     <div className="space-y-2">
-                      <label className="text-xs font-semibold text-neutral-300">
+                      <label className="text-xs font-semibold text-neutral-700 dark:text-neutral-300">
                         Format du fichier audio
                       </label>
                       <div className="grid grid-cols-3 gap-2">
@@ -745,10 +745,10 @@ export const DownloaderView: React.FC<DownloaderViewProps> = ({
                               setAudioFormat(af.format);
                               setAudioBitrate(af.defaultBitrate);
                             }}
-                            className={`px-3 py-2 rounded-xl text-xs font-bold border transition-all cursor-pointer ${
+                            className={`px-3 py-2 rounded-xl text-xs font-bold border transition-all cursor-pointer backdrop-blur-md ${
                               audioFormat === af.format
                                 ? 'bg-red-500/20 border-red-500 text-red-300 shadow-xs'
-                                : 'bg-neutral-950/80 border-neutral-800 text-neutral-400 hover:text-white hover:bg-neutral-800'
+                                : 'bg-white/5 border-white/10 text-neutral-700 dark:text-neutral-300 hover:text-black dark:hover:text-white hover:bg-white/10'
                             }`}
                           >
                             <span className="uppercase">{af.format}</span>
@@ -759,7 +759,7 @@ export const DownloaderView: React.FC<DownloaderViewProps> = ({
 
                     {/* Bitrate / Qualité */}
                     <div className="space-y-2">
-                      <label className="text-xs font-semibold text-neutral-300">
+                      <label className="text-xs font-semibold text-neutral-700 dark:text-neutral-300">
                         Débit audio & Qualité
                       </label>
                       <div className="grid grid-cols-2 gap-2">
@@ -768,10 +768,10 @@ export const DownloaderView: React.FC<DownloaderViewProps> = ({
                             key={br}
                             type="button"
                             onClick={() => setAudioBitrate(br)}
-                            className={`px-3 py-2 rounded-xl text-xs font-bold border transition-all cursor-pointer ${
+                            className={`px-3 py-2 rounded-xl text-xs font-bold border transition-all cursor-pointer backdrop-blur-md ${
                               audioBitrate === br
                                 ? 'bg-red-500/20 border-red-500 text-red-300 shadow-xs'
-                                : 'bg-neutral-950/80 border-neutral-800 text-neutral-400 hover:text-white hover:bg-neutral-800'
+                                : 'bg-white/5 border-white/10 text-neutral-700 dark:text-neutral-300 hover:text-black dark:hover:text-white hover:bg-white/10'
                             }`}
                           >
                             <span>{br === '320k' ? '320 kbps (Hi-Fi Studio)' : `${br.replace('k', ' kbps')}`}</span>
@@ -785,7 +785,7 @@ export const DownloaderView: React.FC<DownloaderViewProps> = ({
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     {/* Conteneur Vidéo */}
                     <div className="space-y-2">
-                      <label className="text-xs font-semibold text-neutral-300">
+                      <label className="text-xs font-semibold text-neutral-700 dark:text-neutral-300">
                         Format vidéo
                       </label>
                       <div className="grid grid-cols-3 gap-2">
@@ -794,10 +794,10 @@ export const DownloaderView: React.FC<DownloaderViewProps> = ({
                             key={vf.format}
                             type="button"
                             onClick={() => setVideoFormat(vf.format)}
-                            className={`px-3 py-2 rounded-xl text-xs font-bold border transition-all cursor-pointer ${
+                            className={`px-3 py-2 rounded-xl text-xs font-bold border transition-all cursor-pointer backdrop-blur-md ${
                               videoFormat === vf.format
                                 ? 'bg-red-500/20 border-red-500 text-red-300 shadow-xs'
-                                : 'bg-neutral-950/80 border-neutral-800 text-neutral-400 hover:text-white hover:bg-neutral-800'
+                                : 'bg-white/5 border-white/10 text-neutral-700 dark:text-neutral-300 hover:text-black dark:hover:text-white hover:bg-white/10'
                             }`}
                           >
                             <span className="uppercase">{vf.format}</span>
@@ -808,7 +808,7 @@ export const DownloaderView: React.FC<DownloaderViewProps> = ({
 
                     {/* Résolution Vidéo */}
                     <div className="space-y-2">
-                      <label className="text-xs font-semibold text-neutral-300">
+                      <label className="text-xs font-semibold text-neutral-700 dark:text-neutral-300">
                         Résolution vidéo
                       </label>
                       <div className="grid grid-cols-3 gap-2">
@@ -818,10 +818,10 @@ export const DownloaderView: React.FC<DownloaderViewProps> = ({
                               key={res}
                               type="button"
                               onClick={() => setVideoQuality(res.toString())}
-                              className={`px-3 py-2 rounded-xl text-xs font-bold border transition-all cursor-pointer ${
+                              className={`px-3 py-2 rounded-xl text-xs font-bold border transition-all cursor-pointer backdrop-blur-md ${
                                 videoQuality === res.toString()
                                   ? 'bg-red-500/20 border-red-500 text-red-300 shadow-xs'
-                                  : 'bg-neutral-950/80 border-neutral-800 text-neutral-400 hover:text-white hover:bg-neutral-800'
+                                  : 'bg-white/5 border-white/10 text-neutral-700 dark:text-neutral-300 hover:text-black dark:hover:text-white hover:bg-white/10'
                               }`}
                             >
                               <span>{res >= 2160 ? '4K (2160p)' : res >= 1440 ? '2K (1440p)' : res >= 1080 ? '1080p HD' : `${res}p`}</span>
@@ -844,33 +844,33 @@ export const DownloaderView: React.FC<DownloaderViewProps> = ({
                 {/* Métadonnées éditables */}
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2">
                   <div>
-                    <label className="text-[11px] font-medium text-neutral-400 block mb-1">
+                    <label className="text-[11px] font-medium text-neutral-500 dark:text-neutral-400 block mb-1">
                       Titre du fichier
                     </label>
                     <input
                       type="text"
                       value={customTitle}
                       onChange={(e) => setCustomTitle(e.target.value)}
-                      className="w-full px-3 py-2 rounded-lg bg-neutral-950 border border-neutral-800 text-xs text-white focus:outline-none focus:border-red-500/60"
+                      className="w-full px-3 py-2 rounded-lg bg-black/30 dark:bg-black/40 border border-white/10 text-xs text-neutral-900 dark:text-white focus:outline-none focus:border-red-500/60 backdrop-blur-md"
                     />
                   </div>
                   <div>
-                    <label className="text-[11px] font-medium text-neutral-400 block mb-1">
+                    <label className="text-[11px] font-medium text-neutral-500 dark:text-neutral-400 block mb-1">
                       Artiste / Chaîne
                     </label>
                     <input
                       type="text"
                       value={customArtist}
                       onChange={(e) => setCustomArtist(e.target.value)}
-                      className="w-full px-3 py-2 rounded-lg bg-neutral-950 border border-neutral-800 text-xs text-white focus:outline-none focus:border-red-500/60"
+                      className="w-full px-3 py-2 rounded-lg bg-black/30 dark:bg-black/40 border border-white/10 text-xs text-neutral-900 dark:text-white focus:outline-none focus:border-red-500/60 backdrop-blur-md"
                     />
                   </div>
                 </div>
               </div>
 
               {/* DEMANDE À L'UTILISATEUR : ACTIONS DE SORTIE */}
-              <div className="space-y-3 pt-4 border-t border-neutral-800">
-                <span className="text-xs uppercase font-extrabold text-neutral-400 tracking-wider block">
+              <div className="space-y-3 pt-4 border-t border-white/10">
+                <span className="text-xs uppercase font-extrabold text-neutral-500 dark:text-neutral-400 tracking-wider block">
                   3. Choisissez l'action de sortie
                 </span>
 
@@ -891,7 +891,7 @@ export const DownloaderView: React.FC<DownloaderViewProps> = ({
                     type="button"
                     onClick={() => handleSaveToApp(false)}
                     disabled={isDownloading}
-                    className="p-3.5 rounded-xl font-bold text-xs bg-neutral-800 hover:bg-neutral-700 text-white border border-neutral-700/80 transition-all flex items-center justify-center gap-2 shadow-sm cursor-pointer disabled:opacity-50"
+                    className="p-3.5 rounded-xl font-bold text-xs bg-white/10 hover:bg-white/20 text-neutral-900 dark:text-white border border-white/10 transition-all flex items-center justify-center gap-2 shadow-sm cursor-pointer disabled:opacity-50 backdrop-blur-md"
                   >
                     <HardDrive className="w-4 h-4 text-red-400" />
                     <span>Ajouter à la Bibliothèque</span>
@@ -911,11 +911,11 @@ export const DownloaderView: React.FC<DownloaderViewProps> = ({
 
                 {/* Real-time Progress / Success / Error feedback */}
                 {isDownloading && (
-                  <div className="p-4 sm:p-5 rounded-2xl bg-neutral-950/95 border-2 border-red-500/40 text-xs text-neutral-300 flex flex-col gap-3.5 animate-in fade-in shadow-2xl shadow-red-950/30">
+                  <div className="p-4 sm:p-5 rounded-2xl bg-white/5 dark:bg-black/40 border-2 border-red-500/40 text-xs text-neutral-700 dark:text-neutral-300 flex flex-col gap-3.5 animate-in fade-in shadow-2xl backdrop-blur-xl">
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-2.5 min-w-0">
                         <RefreshCw className="w-4 h-4 animate-spin text-red-400 shrink-0" />
-                        <span className="font-bold text-white text-sm truncate">
+                        <span className="font-bold text-neutral-900 dark:text-white text-sm truncate">
                           {downloadProgressStep || t.downloadingState}
                         </span>
                       </div>
@@ -926,7 +926,7 @@ export const DownloaderView: React.FC<DownloaderViewProps> = ({
 
                     {/* Prominent High-Visibility 0% to 100% Progress Bar */}
                     <div className="flex flex-col gap-1.5">
-                      <div className="w-full h-4 sm:h-5 rounded-full bg-neutral-900 overflow-hidden relative border border-neutral-700/80 shadow-inner p-0.5">
+                      <div className="w-full h-4 sm:h-5 rounded-full bg-black/40 overflow-hidden relative border border-white/10 shadow-inner p-0.5">
                         <div
                           className="h-full bg-gradient-to-r from-red-600 via-amber-500 to-emerald-400 rounded-full transition-all duration-300 shadow-md relative"
                           style={{ width: `${Math.min(100, Math.max(2, downloadProgressData?.percent || 0))}%` }}
@@ -935,26 +935,26 @@ export const DownloaderView: React.FC<DownloaderViewProps> = ({
                           <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/30 to-transparent animate-pulse" />
                         </div>
                       </div>
-                      <div className="flex items-center justify-between text-[10px] font-mono font-semibold text-neutral-400 px-1">
+                      <div className="flex items-center justify-between text-[10px] font-mono font-semibold text-neutral-500 dark:text-neutral-400 px-1">
                         <span>0%</span>
-                        <span className="text-neutral-500">50%</span>
+                        <span className="text-neutral-400">50%</span>
                         <span>100%</span>
                       </div>
                     </div>
 
                     {/* Metrics: Speed, ETA, Size */}
                     {(downloadProgressData?.speed || downloadProgressData?.eta || downloadProgressData?.totalSize) && (
-                      <div className="grid grid-cols-3 gap-2 text-center text-[11px] font-mono pt-1 border-t border-neutral-800/80">
-                        <div className="bg-neutral-900/80 py-1.5 px-2 rounded-lg border border-neutral-800">
-                          <span className="text-neutral-500 block text-[9px] uppercase font-bold">{t.speedLabel}</span>
+                      <div className="grid grid-cols-3 gap-2 text-center text-[11px] font-mono pt-1 border-t border-white/10">
+                        <div className="bg-white/5 py-1.5 px-2 rounded-lg border border-white/10 backdrop-blur-md">
+                          <span className="text-neutral-500 dark:text-neutral-400 block text-[9px] uppercase font-bold">{t.speedLabel}</span>
                           <span className="text-amber-400 font-bold">{downloadProgressData.speed || '—'}</span>
                         </div>
-                        <div className="bg-neutral-900/80 py-1.5 px-2 rounded-lg border border-neutral-800">
-                          <span className="text-neutral-500 block text-[9px] uppercase font-bold">{t.etaLabel}</span>
-                          <span className="text-neutral-200 font-bold">{downloadProgressData.eta || '—'}</span>
+                        <div className="bg-white/5 py-1.5 px-2 rounded-lg border border-white/10 backdrop-blur-md">
+                          <span className="text-neutral-500 dark:text-neutral-400 block text-[9px] uppercase font-bold">{t.etaLabel}</span>
+                          <span className="text-neutral-700 dark:text-neutral-200 font-bold">{downloadProgressData.eta || '—'}</span>
                         </div>
-                        <div className="bg-neutral-900/80 py-1.5 px-2 rounded-lg border border-neutral-800">
-                          <span className="text-neutral-500 block text-[9px] uppercase font-bold">{t.sizeLabel}</span>
+                        <div className="bg-white/5 py-1.5 px-2 rounded-lg border border-white/10 backdrop-blur-md">
+                          <span className="text-neutral-500 dark:text-neutral-400 block text-[9px] uppercase font-bold">{t.sizeLabel}</span>
                           <span className="text-cyan-400 font-bold">{downloadProgressData.totalSize || '—'}</span>
                         </div>
                       </div>
@@ -963,14 +963,14 @@ export const DownloaderView: React.FC<DownloaderViewProps> = ({
                 )}
 
                 {downloadSuccessMessage && (
-                  <div className="p-3 rounded-xl bg-red-950/60 border border-red-500/40 text-xs text-red-200 flex items-center gap-2.5 animate-in fade-in">
+                  <div className="p-3 rounded-xl bg-red-500/15 border border-red-500/40 text-xs text-red-300 flex items-center gap-2.5 animate-in fade-in backdrop-blur-md">
                     <CheckCircle2 className="w-4 h-4 text-red-400 shrink-0" />
                     <span>{downloadSuccessMessage}</span>
                   </div>
                 )}
 
                 {downloadError && (
-                  <div className="p-3 rounded-xl bg-rose-950/60 border border-rose-500/40 text-xs text-rose-300 flex items-center gap-2.5 animate-in fade-in">
+                  <div className="p-3 rounded-xl bg-rose-500/15 border border-rose-500/40 text-xs text-rose-300 flex items-center gap-2.5 animate-in fade-in backdrop-blur-md">
                     <AlertCircle className="w-4 h-4 text-rose-400 shrink-0" />
                     <span>{downloadError}</span>
                   </div>
@@ -983,12 +983,12 @@ export const DownloaderView: React.FC<DownloaderViewProps> = ({
 
       {/* BATCH DOWNLOAD MODE */}
       {activeTab === 'batch' && (
-        <div className="p-6 rounded-2xl bg-neutral-900/90 border border-neutral-800 shadow-xl space-y-5 animate-in fade-in">
+        <div className="p-6 rounded-2xl glass-card border border-white/10 shadow-xl space-y-5 animate-in fade-in backdrop-blur-xl">
           <div>
-            <h3 className="text-base font-extrabold text-white">
+            <h3 className="text-base font-extrabold text-neutral-900 dark:text-white">
               Téléchargement Multi-Liens par Lots
             </h3>
-            <p className="text-xs text-neutral-400 mt-0.5">
+            <p className="text-xs text-neutral-500 dark:text-neutral-400 mt-0.5">
               Collez plusieurs liens (un par ligne). Chaque vidéo ou piste sera téléchargée automatiquement avec les paramètres ci-dessous.
             </p>
           </div>
@@ -998,12 +998,12 @@ export const DownloaderView: React.FC<DownloaderViewProps> = ({
             onChange={(e) => setBatchUrls(e.target.value)}
             rows={5}
             placeholder="https://www.youtube.com/watch?v=...&#10;https://www.youtube.com/watch?v=...&#10;https://soundcloud.com/..."
-            className="w-full p-4 rounded-xl bg-neutral-950 border border-neutral-800 text-xs text-white placeholder-neutral-500 font-mono focus:outline-none focus:ring-1 focus:ring-red-500/50"
+            className="w-full p-4 rounded-xl bg-black/30 dark:bg-black/40 border border-white/10 text-xs text-neutral-900 dark:text-white placeholder-neutral-500 font-mono focus:outline-none focus:ring-1 focus:ring-red-500/50 backdrop-blur-md"
           />
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 bg-neutral-950/70 p-4 rounded-xl border border-neutral-800">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 bg-white/5 dark:bg-black/30 p-4 rounded-xl border border-white/10 backdrop-blur-md">
             <div className="space-y-1.5">
-              <label className="text-xs font-bold text-neutral-300">Format de conversion</label>
+              <label className="text-xs font-bold text-neutral-700 dark:text-neutral-300">Format de conversion</label>
               <div className="flex gap-2">
                 <button
                   type="button"
@@ -1011,7 +1011,7 @@ export const DownloaderView: React.FC<DownloaderViewProps> = ({
                   className={`px-3 py-1.5 rounded-lg text-xs font-semibold cursor-pointer ${
                     mediaType === 'audio'
                       ? 'bg-red-600 text-white'
-                      : 'bg-neutral-800 text-neutral-400'
+                      : 'bg-white/10 text-neutral-600 dark:text-neutral-400'
                   }`}
                 >
                   Audio (MP3 320k)
@@ -1022,7 +1022,7 @@ export const DownloaderView: React.FC<DownloaderViewProps> = ({
                   className={`px-3 py-1.5 rounded-lg text-xs font-semibold cursor-pointer ${
                     mediaType === 'video'
                       ? 'bg-red-600 text-white'
-                      : 'bg-neutral-800 text-neutral-400'
+                      : 'bg-white/10 text-neutral-600 dark:text-neutral-400'
                   }`}
                 >
                   Vidéo (MP4 1080p)
@@ -1037,7 +1037,7 @@ export const DownloaderView: React.FC<DownloaderViewProps> = ({
                 disabled={!batchUrls.trim()}
                 className={`px-5 py-2.5 rounded-xl text-xs font-bold flex items-center gap-2 shadow-md cursor-pointer ${
                   !batchUrls.trim()
-                    ? 'opacity-50 cursor-not-allowed bg-neutral-800 text-neutral-500'
+                    ? 'opacity-50 cursor-not-allowed bg-white/10 text-neutral-500'
                     : 'bg-red-600 hover:bg-red-500 text-white shadow-red-950/50'
                 }`}
               >
@@ -1049,14 +1049,14 @@ export const DownloaderView: React.FC<DownloaderViewProps> = ({
 
           {batchStatusList.length > 0 && (
             <div className="space-y-2 pt-2">
-              <span className="text-xs font-bold text-neutral-300">Statut de la file :</span>
+              <span className="text-xs font-bold text-neutral-700 dark:text-neutral-300">Statut de la file :</span>
               <div className="space-y-1.5 max-h-48 overflow-y-auto">
                 {batchStatusList.map((item, idx) => (
                   <div
                     key={idx}
-                    className="p-2.5 rounded-lg bg-neutral-950 border border-neutral-800 flex items-center justify-between text-xs"
+                    className="p-2.5 rounded-lg bg-white/5 border border-white/10 flex items-center justify-between text-xs backdrop-blur-md"
                   >
-                    <span className="truncate max-w-[70%] font-mono text-neutral-300">
+                    <span className="truncate max-w-[70%] font-mono text-neutral-700 dark:text-neutral-300">
                       {item.url}
                     </span>
                     <span
@@ -1088,13 +1088,13 @@ export const DownloaderView: React.FC<DownloaderViewProps> = ({
 
       {/* HISTORY MODE */}
       {activeTab === 'history' && (
-        <div className="p-6 rounded-2xl bg-neutral-900/90 border border-neutral-800 shadow-xl space-y-4 animate-in fade-in">
+        <div className="p-6 rounded-2xl glass-card border border-white/10 shadow-xl space-y-4 animate-in fade-in backdrop-blur-xl">
           <div className="flex items-center justify-between">
             <div>
-              <h3 className="text-base font-extrabold text-white">
+              <h3 className="text-base font-extrabold text-neutral-900 dark:text-white">
                 Historique des téléchargements récents
               </h3>
-              <p className="text-xs text-neutral-400 mt-0.5">
+              <p className="text-xs text-neutral-500 dark:text-neutral-400 mt-0.5">
                 Retrouvez facilement les fichiers téléchargés lors de cette session.
               </p>
             </div>
@@ -1121,26 +1121,26 @@ export const DownloaderView: React.FC<DownloaderViewProps> = ({
               {history.map((item) => (
                 <div
                   key={item.id}
-                  className="p-3 rounded-xl bg-neutral-950 border border-neutral-800/90 hover:border-neutral-700 flex items-center justify-between gap-3 transition-colors"
+                  className="p-3 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 hover:border-white/20 flex items-center justify-between gap-3 transition-colors backdrop-blur-md"
                 >
                   <div className="flex items-center gap-3 min-w-0">
                     {item.thumbnail ? (
                       <img
                         src={item.thumbnail}
                         alt=""
-                        className="w-12 h-12 rounded-lg object-cover bg-neutral-900 border border-neutral-800 flex-shrink-0"
+                        className="w-12 h-12 rounded-lg object-cover bg-black/40 border border-white/10 flex-shrink-0"
                       />
                     ) : (
-                      <div className="w-12 h-12 rounded-lg bg-neutral-900 border border-neutral-800 flex items-center justify-center text-neutral-500 flex-shrink-0">
+                      <div className="w-12 h-12 rounded-lg bg-black/40 border border-white/10 flex items-center justify-center text-neutral-500 flex-shrink-0">
                         {item.type === 'video' ? <Film className="w-5 h-5" /> : <Music className="w-5 h-5" />}
                       </div>
                     )}
 
                     <div className="min-w-0">
-                      <span className="font-bold text-xs text-white block truncate">
+                      <span className="font-bold text-xs text-neutral-900 dark:text-white block truncate">
                         {item.title}
                       </span>
-                      <span className="text-[11px] text-neutral-400 block truncate">
+                      <span className="text-[11px] text-neutral-500 dark:text-neutral-400 block truncate">
                         {item.artist}
                       </span>
                       <div className="flex items-center gap-2 mt-0.5 text-[10px] text-neutral-500">
@@ -1160,7 +1160,7 @@ export const DownloaderView: React.FC<DownloaderViewProps> = ({
                       <a
                         href={item.downloadUrl}
                         download
-                        className="p-2 rounded-lg bg-neutral-900 hover:bg-neutral-800 text-neutral-300 hover:text-white border border-neutral-800 transition-colors"
+                        className="p-2 rounded-lg bg-white/10 hover:bg-white/20 text-neutral-700 dark:text-neutral-300 hover:text-black dark:hover:text-white border border-white/10 transition-colors"
                         title="Re-télécharger"
                       >
                         <Download className="w-4 h-4" />
