@@ -53,6 +53,7 @@ interface LibraryViewProps {
   onPlayAll?: (tracks: Track[], shuffle: boolean) => void;
   onToggleFavorite: (trackId: string) => void;
   onAddToPlaylist: (playlistId: string, trackId: string) => void;
+  onRemoveFromPlaylist?: (playlistId: string, trackId: string) => void;
   onCreatePlaylist?: (title: string) => Promise<string | void> | void;
   onAddToQueue: (track: Track) => void;
   onDeleteTrack?: (trackId: string) => void;
@@ -104,6 +105,7 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
   onPlayAll,
   onToggleFavorite,
   onAddToPlaylist,
+  onRemoveFromPlaylist,
   onCreatePlaylist,
   onAddToQueue,
   onDeleteTrack,
@@ -1472,6 +1474,7 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
         track={addToPlaylistTrack}
         playlists={playlists}
         onAddToPlaylist={onAddToPlaylist}
+        onRemoveFromPlaylist={onRemoveFromPlaylist}
         onCreatePlaylist={onCreatePlaylist}
         accent={accent}
       />

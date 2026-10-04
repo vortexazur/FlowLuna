@@ -794,6 +794,7 @@ export const PlaylistView: React.FC<PlaylistViewProps> = ({
           track={addToPlaylistTrack}
           playlists={playlists}
           onAddToPlaylist={onAddToPlaylist}
+          onRemoveFromPlaylist={onRemoveTrackFromPlaylist}
           onCreatePlaylist={onCreatePlaylist}
           accent={accent}
         />

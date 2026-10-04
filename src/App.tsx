@@ -1332,6 +1332,7 @@ export default function App() {
         onPlayAll={handlePlayAllInPlaylist}
         onToggleFavorite={handleToggleFavorite}
         onAddToPlaylist={handleAddToPlaylist}
+        onRemoveFromPlaylist={handleRemoveTrackFromPlaylist}
         onCreatePlaylist={handleSaveNewPlaylist}
         onAddToQueue={handleAddToQueue}
         onDeleteTrack={handleDeleteTrack}
@@ -1554,6 +1555,7 @@ export default function App() {
             accent={playerSettings.accent}
             playlists={playlists}
             onAddToPlaylist={handleAddToPlaylist}
+            onRemoveFromPlaylist={handleRemoveTrackFromPlaylist}
             onCreatePlaylist={() => setIsCreatePlaylistModalOpen(true)}
             settings={playerSettings}
             onUpdateSettings={handleUpdatePlayerSettings}

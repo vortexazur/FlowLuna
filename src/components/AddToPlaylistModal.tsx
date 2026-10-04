@@ -9,6 +9,7 @@ interface AddToPlaylistModalProps {
   track: Track | null;
   playlists: Playlist[];
   onAddToPlaylist: (playlistId: string, trackId: string) => void;
+  onRemoveFromPlaylist?: (playlistId: string, trackId: string) => void;
   onCreatePlaylist?: (title: string) => Promise<string | void> | void;
   accent?: AccentColor;
 }
@@ -28,6 +29,7 @@ export const AddToPlaylistModal: React.FC<AddToPlaylistModalProps> = ({
   track,
   playlists,
   onAddToPlaylist,
+  onRemoveFromPlaylist,
   onCreatePlaylist,
   accent = 'emerald',
 }) => {
@@ -35,6 +37,15 @@ export const AddToPlaylistModal: React.FC<AddToPlaylistModalProps> = ({
   const [newPlaylistName, setNewPlaylistName] = useState('');
   const [isCreating, setIsCreating] = useState(false);
   const [addedPlaylists, setAddedPlaylists] = useState<Set<string>>(new Set());
+  const [removedPlaylists, setRemovedPlaylists] = useState<Set<string>>(new Set());
+  const [feedback, setFeedback] = useState<string | null>(null);
+
+  // Reset local override tracking on track change or modal open
+  React.useEffect(() => {
+    setAddedPlaylists(new Set());
+    setRemovedPlaylists(new Set());
+    setFeedback(null);
+  }, [track?.id, isOpen]);
 
   // Filter available playlists
   const availablePlaylists = useMemo(() => {
@@ -47,9 +58,30 @@ export const AddToPlaylistModal: React.FC<AddToPlaylistModalProps> = ({
 
   if (!isOpen || !track) return null;
 
-  const handleAdd = (playlistId: string) => {
+  const handleAdd = (playlistId: string, playlistTitle: string) => {
     onAddToPlaylist(playlistId, track.id);
     setAddedPlaylists((prev) => new Set([...prev, playlistId]));
+    setRemovedPlaylists((prev) => {
+      const next = new Set(prev);
+      next.delete(playlistId);
+      return next;
+    });
+    setFeedback(`Ajouté à "${playlistTitle}"`);
+    setTimeout(() => setFeedback(null), 2200);
+  };
+
+  const handleRemove = (playlistId: string, playlistTitle: string) => {
+    if (onRemoveFromPlaylist) {
+      onRemoveFromPlaylist(playlistId, track.id);
+    }
+    setRemovedPlaylists((prev) => new Set([...prev, playlistId]));
+    setAddedPlaylists((prev) => {
+      const next = new Set(prev);
+      next.delete(playlistId);
+      return next;
+    });
+    setFeedback(`Retiré de "${playlistTitle}"`);
+    setTimeout(() => setFeedback(null), 2200);
   };
 
   const handleCreateAndAdd = async (e: React.FormEvent) => {
@@ -61,7 +93,7 @@ export const AddToPlaylistModal: React.FC<AddToPlaylistModalProps> = ({
     try {
       const res = await onCreatePlaylist(trimmed);
       if (typeof res === 'string') {
-        handleAdd(res);
+        handleAdd(res, trimmed);
       }
       setNewPlaylistName('');
     } catch (err) {
@@ -170,35 +202,57 @@ export const AddToPlaylistModal: React.FC<AddToPlaylistModalProps> = ({
             </div>
           ) : (
             availablePlaylists.map((pl) => {
-              const isAlreadyPresent = (pl.trackIds || []).includes(track.id) || addedPlaylists.has(pl.id);
+              const isInitialPresent = (pl.trackIds || []).includes(track.id);
+              const isPresent = (isInitialPresent || addedPlaylists.has(pl.id)) && !removedPlaylists.has(pl.id);
+              const currentCount = Math.max(
+                0,
+                (pl.trackIds?.length ?? 0) +
+                  (addedPlaylists.has(pl.id) && !isInitialPresent ? 1 : 0) -
+                  (removedPlaylists.has(pl.id) && isInitialPresent ? 1 : 0)
+              );
+
               return (
                 <div
                   key={pl.id}
-                  className="flex items-center justify-between p-2 rounded-xl hover:bg-neutral-800/60 transition-colors group"
+                  className={`flex items-center justify-between p-2.5 rounded-xl transition-all group ${
+                    isPresent
+                      ? 'bg-emerald-950/20 border border-emerald-500/15 hover:bg-emerald-950/30'
+                      : 'hover:bg-neutral-800/60 border border-transparent'
+                  }`}
                 >
                   <div className="flex items-center gap-3 min-w-0 flex-1 mr-2">
                     <PlaylistIcon playlist={pl} size="sm" showCoverIfAvailable />
                     <div className="min-w-0 flex-1">
-                      <p className="text-xs font-medium text-neutral-200 truncate">{pl.title}</p>
+                      <p className={`text-xs font-semibold truncate ${isPresent ? 'text-emerald-300' : 'text-neutral-200'}`}>
+                        {pl.title}
+                      </p>
                       <p className="text-[10px] text-neutral-400">
-                        {pl.trackIds?.length ?? 0} titre{pl.trackIds?.length !== 1 ? 's' : ''}
+                        {currentCount} titre{currentCount !== 1 ? 's' : ''}
                       </p>
                     </div>
                   </div>
 
-                  {isAlreadyPresent ? (
-                    <span className="flex items-center gap-1 text-[11px] font-medium text-emerald-400 bg-emerald-950/40 border border-emerald-500/20 px-2.5 py-1 rounded-lg">
-                      <Check className="w-3 h-3" />
-                      Ajouté
-                    </span>
+                  {isPresent ? (
+                    <button
+                      type="button"
+                      onClick={() => handleRemove(pl.id, pl.title)}
+                      className="group/btn flex items-center gap-1.5 text-[11px] font-semibold text-emerald-400 hover:text-rose-400 bg-emerald-950/40 hover:bg-rose-950/50 border border-emerald-500/25 hover:border-rose-500/30 px-3 py-1.5 rounded-lg transition-all cursor-pointer shadow-sm hover:scale-[1.02] active:scale-95"
+                      title={`Cliquer pour retirer de "${pl.title}"`}
+                    >
+                      <Check className="w-3.5 h-3.5 text-emerald-400 group-hover/btn:hidden flex-shrink-0" />
+                      <span className="group-hover/btn:hidden">Ajouté</span>
+                      <X className="w-3.5 h-3.5 text-rose-400 hidden group-hover/btn:inline flex-shrink-0" />
+                      <span className="hidden group-hover/btn:inline">Retirer</span>
+                    </button>
                   ) : (
                     <button
                       type="button"
-                      onClick={() => handleAdd(pl.id)}
-                      className="flex items-center gap-1 text-[11px] font-medium text-neutral-300 hover:text-white bg-neutral-800 hover:bg-neutral-700 px-2.5 py-1 rounded-lg transition-colors cursor-pointer"
+                      onClick={() => handleAdd(pl.id, pl.title)}
+                      className="flex items-center gap-1.5 text-[11px] font-semibold text-neutral-300 hover:text-white bg-neutral-800 hover:bg-neutral-700 border border-neutral-700/60 px-3 py-1.5 rounded-lg transition-all cursor-pointer shadow-sm hover:scale-[1.02] active:scale-95"
+                      title={`Cliquer pour ajouter à "${pl.title}"`}
                     >
-                      <Plus className="w-3 h-3" />
-                      Ajouter
+                      <Plus className="w-3.5 h-3.5" />
+                      <span>Ajouter</span>
                     </button>
                   )}
                 </div>
@@ -208,11 +262,18 @@ export const AddToPlaylistModal: React.FC<AddToPlaylistModalProps> = ({
         </div>
 
         {/* Footer */}
-        <div className="px-5 py-3 border-t border-neutral-800/60 bg-neutral-900/40 flex justify-end">
+        <div className="px-5 py-3 border-t border-neutral-800/60 bg-neutral-900/40 flex items-center justify-between">
+          <div className="flex-1 min-w-0 mr-2">
+            {feedback && (
+              <span className="text-[11px] font-medium text-emerald-400 bg-emerald-950/40 border border-emerald-500/20 px-2.5 py-1 rounded-full animate-in fade-in duration-150 inline-block truncate max-w-full">
+                {feedback}
+              </span>
+            )}
+          </div>
           <button
             type="button"
             onClick={onClose}
-            className="px-4 py-1.5 rounded-xl text-xs font-medium text-neutral-300 hover:text-white hover:bg-neutral-800 transition-colors"
+            className="px-4 py-1.5 rounded-xl text-xs font-medium text-neutral-300 hover:text-white hover:bg-neutral-800 transition-colors cursor-pointer"
           >
             Fermer
           </button>

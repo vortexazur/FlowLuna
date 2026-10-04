@@ -44,6 +44,7 @@ interface MiniPlayerProps {
   accent: AccentColor;
   playlists?: Playlist[];
   onAddToPlaylist?: (playlistId: string, trackId: string) => void;
+  onRemoveFromPlaylist?: (playlistId: string, trackId: string) => void;
   onCreatePlaylist?: () => void;
   settings?: PlayerSettings;
   onUpdateSettings?: (newSettings: PlayerSettings) => void;
@@ -108,6 +109,7 @@ export const MiniPlayer: React.FC<MiniPlayerProps> = ({
   accent,
   playlists = [],
   onAddToPlaylist,
+  onRemoveFromPlaylist,
   onCreatePlaylist,
   settings,
   onUpdateSettings,
@@ -227,13 +229,20 @@ export const MiniPlayer: React.FC<MiniPlayerProps> = ({
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, [isPlaylistMenuOpen]);
 
-  const handleAddTrack = (playlistId: string, playlistTitle: string) => {
-    if (onAddToPlaylist && currentTrack) {
-      onAddToPlaylist(playlistId, currentTrack.id);
-      setFeedbackMessage(`Ajouté à "${playlistTitle}"`);
-      setIsPlaylistMenuOpen(false);
-      setTimeout(() => setFeedbackMessage(null), 2500);
+  const handleToggleTrack = (playlistId: string, playlistTitle: string, isPresent: boolean) => {
+    if (!currentTrack) return;
+    if (isPresent) {
+      if (onRemoveFromPlaylist) {
+        onRemoveFromPlaylist(playlistId, currentTrack.id);
+        setFeedbackMessage(`Retiré de "${playlistTitle}"`);
+      }
+    } else {
+      if (onAddToPlaylist) {
+        onAddToPlaylist(playlistId, currentTrack.id);
+        setFeedbackMessage(`Ajouté à "${playlistTitle}"`);
+      }
     }
+    setTimeout(() => setFeedbackMessage(null), 2500);
   };
 
   const customPlaylists = playlists.filter((p) => !p.isSmart);
@@ -411,31 +420,52 @@ export const MiniPlayer: React.FC<MiniPlayerProps> = ({
 
               {isPlaylistMenuOpen && (
                 <div
-                  className="absolute right-0 top-full mt-1.5 z-50 w-52 bg-neutral-900/95 backdrop-blur-xl border border-neutral-700/80 rounded-xl shadow-2xl p-1.5 flex flex-col gap-1 text-left animate-in fade-in slide-in-from-top-1 duration-150"
+                  className="absolute right-0 top-full mt-1.5 z-50 w-56 bg-neutral-900/95 backdrop-blur-xl border border-neutral-700/80 rounded-xl shadow-2xl p-1.5 flex flex-col gap-1 text-left animate-in fade-in slide-in-from-top-1 duration-150"
                   onClick={(e) => e.stopPropagation()}
                 >
-                  <div className="px-2.5 py-1 text-[10px] font-mono font-bold uppercase tracking-wider text-neutral-400 border-b border-neutral-800">
-                    Ajouter à une playlist
+                  <div className="flex items-center justify-between px-2.5 py-1 text-[10px] font-mono font-bold uppercase tracking-wider text-neutral-400 border-b border-neutral-800">
+                    <span>Playlists</span>
+                    <button
+                      type="button"
+                      onClick={() => setIsPlaylistMenuOpen(false)}
+                      className="text-neutral-500 hover:text-white transition-colors cursor-pointer"
+                      title="Fermer"
+                    >
+                      <X className="w-3 h-3" />
+                    </button>
                   </div>
                   {customPlaylists.length === 0 ? (
                     <div className="px-3 py-2 text-xs text-neutral-400 text-center">
                       Aucune playlist disponible
                     </div>
                   ) : (
-                    <div className="max-h-28 overflow-y-auto flex flex-col gap-0.5 pr-0.5">
-                      {customPlaylists.map((pl) => (
-                        <button
-                          key={pl.id}
-                          type="button"
-                          onClick={() => handleAddTrack(pl.id, pl.title)}
-                          className="w-full text-left px-2 py-1.5 rounded-lg text-xs hover:bg-neutral-800 text-neutral-200 flex items-center justify-between gap-1 transition-colors cursor-pointer"
-                        >
-                          <span className="truncate">{pl.title}</span>
-                          {pl.trackIds.includes(currentTrack.id) && (
-                            <Check className="w-3.5 h-3.5 text-emerald-400 flex-shrink-0" />
-                          )}
-                        </button>
-                      ))}
+                    <div className="max-h-36 overflow-y-auto flex flex-col gap-0.5 pr-0.5">
+                      {customPlaylists.map((pl) => {
+                        const isPresent = pl.trackIds.includes(currentTrack.id);
+                        return (
+                          <button
+                            key={pl.id}
+                            type="button"
+                            onClick={() => handleToggleTrack(pl.id, pl.title, isPresent)}
+                            className={`w-full text-left px-2.5 py-1.5 rounded-lg text-xs flex items-center justify-between gap-1.5 transition-colors cursor-pointer group ${
+                              isPresent
+                                ? 'bg-emerald-500/10 text-emerald-300 hover:bg-rose-500/15 hover:text-rose-300'
+                                : 'text-neutral-200 hover:bg-neutral-800 hover:text-white'
+                            }`}
+                            title={isPresent ? `Cliquer pour retirer de "${pl.title}"` : `Cliquer pour ajouter à "${pl.title}"`}
+                          >
+                            <span className="truncate flex-1 font-medium">{pl.title}</span>
+                            {isPresent ? (
+                              <span className="flex items-center gap-1 flex-shrink-0">
+                                <Check className="w-3.5 h-3.5 text-emerald-400 group-hover:hidden" />
+                                <span className="text-[10px] text-rose-400 font-semibold hidden group-hover:inline">Retirer</span>
+                              </span>
+                            ) : (
+                              <Plus className="w-3.5 h-3.5 text-neutral-500 group-hover:text-white flex-shrink-0" />
+                            )}
+                          </button>
+                        );
+                      })}
                     </div>
                   )}
                 </div>

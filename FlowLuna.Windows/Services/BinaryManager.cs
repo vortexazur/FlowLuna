@@ -211,7 +211,7 @@ public static class BinaryManager
         try
         {
             using var req = new HttpRequestMessage(HttpMethod.Get, "https://api.github.com/repos/videolan/libvlcsharp/releases/latest");
-            req.Headers.UserAgent.ParseAdd("FlowLuna-Desktop/1.1.6");
+            req.Headers.UserAgent.ParseAdd("FlowLuna-Desktop/1.1.7");
 
             using var res = await HttpClient.SendAsync(req);
             if (res.IsSuccessStatusCode)
@@ -287,11 +287,11 @@ public static class BinaryManager
 
     public static async Task<AppUpdateStatus> CheckAppUpdateAsync()
     {
-        const string currentVer = "1.1.6";
+        const string currentVer = "1.1.7";
         try
         {
             using var req = new HttpRequestMessage(HttpMethod.Get, "https://api.github.com/repos/vortexazur/FlowLuna/releases/latest");
-            req.Headers.UserAgent.ParseAdd("FlowLuna-App/1.1.6");
+            req.Headers.UserAgent.ParseAdd("FlowLuna-App/1.1.7");
 
             using var res = await HttpClient.SendAsync(req);
             if (res.IsSuccessStatusCode)
@@ -381,7 +381,7 @@ public static class BinaryManager
             try
             {
                 using var req = new HttpRequestMessage(HttpMethod.Get, downloadUrl);
-                req.Headers.UserAgent.ParseAdd("FlowLuna-App/1.1.6");
+                req.Headers.UserAgent.ParseAdd("FlowLuna-App/1.1.7");
 
                 using var response = await HttpClient.SendAsync(req, HttpCompletionOption.ResponseHeadersRead);
                 response.EnsureSuccessStatusCode();
