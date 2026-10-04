@@ -12,6 +12,7 @@ Unicode true
 
 SetCompressor /SOLID lzma
 SetCompressorDictSize 64
+RequestExecutionLevel user
 
 !include "MUI2.nsh"
 !include "LogicLib.nsh"

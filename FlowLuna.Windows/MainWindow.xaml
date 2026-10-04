@@ -20,7 +20,7 @@
     </WindowChrome.WindowChrome>
 
     <Grid Background="#0a0a0a">
-        <wv2:WebView2 x:Name="WebViewControl" Visibility="Collapsed" />
+        <wv2:WebView2 x:Name="WebViewControl" />
 
         <!-- Native loading overlay — hides black screen during WebView2 init -->
         <Grid x:Name="LoadingOverlay" Background="#0a0a0a"

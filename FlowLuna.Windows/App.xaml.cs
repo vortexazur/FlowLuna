@@ -23,6 +23,42 @@ public partial class App : Application
 
         // Proactively clean corrupted WebView2 lock files on startup
         CleanWebView2LocksOnStartup();
+
+        // Proactively clean Windows AppCompat / DPI flags that cause 0x8007139F
+        CleanAppCompatFlagsOnStartup();
+    }
+
+    /// <summary>
+    /// Proactively remove any Windows Compatibility Mode / DPI shims on msedgewebview2.exe
+    /// and FlowLuna.exe in HKCU:\Software\Microsoft\Windows NT\CurrentVersion\AppCompatFlags\Layers.
+    /// These flags cause CreateCoreWebView2ControllerAsync to fail with COMException 0x8007139F.
+    /// </summary>
+    private static void CleanAppCompatFlagsOnStartup()
+    {
+        try
+        {
+            using var key = Microsoft.Win32.Registry.CurrentUser.OpenSubKey(
+                @"Software\Microsoft\Windows NT\CurrentVersion\AppCompatFlags\Layers", writable: true);
+            if (key == null) return;
+
+            foreach (var valueName in key.GetValueNames())
+            {
+                if (valueName.Contains("msedgewebview2.exe", StringComparison.OrdinalIgnoreCase) ||
+                    valueName.Contains("FlowLuna.exe", StringComparison.OrdinalIgnoreCase))
+                {
+                    try
+                    {
+                        key.DeleteValue(valueName);
+                        Debug.WriteLine($"[FlowLuna] Removed AppCompat flag for: {valueName}");
+                    }
+                    catch { }
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            Debug.WriteLine($"[FlowLuna] AppCompat cleanup warning: {ex.Message}");
+        }
     }
 
     private void App_DispatcherUnhandledException(object sender, DispatcherUnhandledExceptionEventArgs e)

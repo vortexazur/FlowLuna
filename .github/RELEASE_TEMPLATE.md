@@ -33,7 +33,8 @@
 ---
 
 ## 🛡️ 5. Correctif Démarrage Critique & Écran Noir (Résilience WebView2)
-- **Résolution Définitive de l'Écran Noir :** Éradication du crash `COMException 0x8007139F` en cas de corruption ou verrouillage du dossier de données WebView2.
+- **Résolution Définitive de l'Écran Noir :** Éradication du crash `COMException 0x8007139F` causé par les shims de compatibilité Windows (`AppCompatFlags\Layers HIGHDPIAWARE`) et les conflits de verrous WebView2.
+- **Auto-Nettoyage des Flags de Compatibilité :** Nettoyage automatique au démarrage de tout shim de compatibilité Windows parasite sur `msedgewebview2.exe` ou `FlowLuna.exe`.
 - **Auto-Réparation Tripartite :** Nettoyage automatique du cache corrompu avec nouvelle tentative et bascule instantanée vers un profil temporaire isolé (`FlowLuna_WV2_*`).
 - **Écran de Chargement Fluide Natif :** Overlay WPF animé masquant le chargement WebView2 pour éviter tout flash noir au démarrage.
 - **Sécurisation Port Kestrel :** Bascule automatique et propre du port 3000 vers 3001 si le port est occupé.
@@ -56,7 +57,7 @@ Get-FileHash -Algorithm SHA256 "FlowLuna-Setup-1.1.1.exe"
 
 | Fichier | Empreinte SHA-256 |
 |---|---|
-| `FlowLuna-Setup-1.1.1.exe` | `AA14468FA779239081C4A01CFB33C7D692D2B56ECAAC82601DD554F71EBB30DA` |
+| `FlowLuna-Setup-1.1.1.exe` | `91F9D30FBD9EA25009F248BD0F3320410C3E1BF40FE3AF23C80A768BDF5771FC` |
 
 ---
 

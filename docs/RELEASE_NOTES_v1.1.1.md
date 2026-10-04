@@ -54,9 +54,10 @@ La version **1.1.1** de FlowLuna apporte des raffinements ergonomiques majeurs, 
 ---
 
 ### 7. 🛡️ Correctif Démarrage Critique & Écran Noir (Résilience WebView2)
-- **Résolution Définitive de l'Écran Noir :** Éradication de l'erreur `COMException 0x8007139F` survenant lors de verrous résiduels ou d'altération du dossier de profil WebView2.
+- **Résolution Définitive de l'Écran Noir :** Éradication de l'erreur `COMException 0x8007139F` causée par les shims de compatibilité Windows (`AppCompatFlags\Layers HIGHDPIAWARE`) et les conflits de verrous WebView2.
+- **Auto-Nettoyage des Flags de Compatibilité :** Nettoyage automatique au démarrage de tout shim de compatibilité Windows parasite injecté sur `msedgewebview2.exe` ou `FlowLuna.exe`.
 - **Stratégie d'Auto-Réparation Tripartite :** 
-  1. Tentative d'initialisation standard.
+  1. Tentative d'initialisation standard dans `AppData\Local`.
   2. Nettoyage proactif et suppression automatisée du cache corrompu en cas d'exception avec nouvelle tentative.
   3. Bascule instantanée vers un environnement temporaire isolé (`FlowLuna_WV2_*`) garantissant un lancement infaillible.
 - **Écran de Chargement Fluide Natif :** Ajout d'un overlay d'initialisation avec animation fluide masquant le temps de chargement WebView2 pour éviter tout flash sombre ou écran noir.
@@ -81,7 +82,7 @@ Get-FileHash -Algorithm SHA256 "FlowLuna-Setup-1.1.1.exe"
 
 | Fichier | Empreinte SHA-256 |
 |---|---|
-| `FlowLuna-Setup-1.1.1.exe` | `AA14468FA779239081C4A01CFB33C7D692D2B56ECAAC82601DD554F71EBB30DA` |
+| `FlowLuna-Setup-1.1.1.exe` | `91F9D30FBD9EA25009F248BD0F3320410C3E1BF40FE3AF23C80A768BDF5771FC` |
 
 ---
 

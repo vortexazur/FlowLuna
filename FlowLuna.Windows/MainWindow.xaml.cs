@@ -139,10 +139,18 @@ public partial class MainWindow : Window
             {
                 Dispatcher.Invoke(() =>
                 {
-                    WebViewControl.Visibility = Visibility.Visible;
                     LoadingOverlay.Visibility = Visibility.Collapsed;
                 });
             };
+
+            // Safety fallback: ensure loading overlay disappears after 5s max
+            _ = Task.Delay(5000).ContinueWith(_ =>
+            {
+                Dispatcher.Invoke(() =>
+                {
+                    LoadingOverlay.Visibility = Visibility.Collapsed;
+                });
+            });
 
             // 7. Navigate to in-process server
             WebViewControl.CoreWebView2.Navigate(_httpServer.BaseUrl);
@@ -176,24 +184,16 @@ public partial class MainWindow : Window
     /// </summary>
     private async Task InitializeWebView2WithRetryAsync(bool isRetry = false)
     {
-        var userDataFolder = Path.Combine(BinaryManager.FlowLunaDataDir, "webview2_data");
+        var localAppData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
+        var userDataFolder = Path.Combine(localAppData, "FlowLuna", "webview2_data");
         Directory.CreateDirectory(userDataFolder);
-
-        var envOptions = new CoreWebView2EnvironmentOptions(
-            "--disable-features=Translate,OptimizationHints,MediaRouter " +
-            "--renderer-process-limit=1 " +
-            "--disable-renderer-backgrounding " +
-            "--disable-backgrounding-occluded-windows " +
-            "--enable-low-res-tiling " +
-            "--js-flags=\"--max-old-space-size=128\""
-        );
 
         try
         {
             var env = await CoreWebView2Environment.CreateAsync(
                 browserExecutableFolder: null,
                 userDataFolder: userDataFolder,
-                options: envOptions);
+                options: null);
             await WebViewControl.EnsureCoreWebView2Async(env);
         }
         catch (System.Runtime.InteropServices.COMException comEx)
@@ -240,7 +240,7 @@ public partial class MainWindow : Window
                 var fallbackEnv = await CoreWebView2Environment.CreateAsync(
                     browserExecutableFolder: null,
                     userDataFolder: fallbackFolder,
-                    options: envOptions);
+                    options: null);
                 await WebViewControl.EnsureCoreWebView2Async(fallbackEnv);
             }
         }
