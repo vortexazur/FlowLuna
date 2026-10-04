@@ -33,6 +33,7 @@ export interface Track {
   playCount: number;
   addedAt: number;
   lyrics?: string[];
+  lyricsOffset?: number; // In seconds (e.g. -1.5s to +2.0s) for manual sync calibration
   sizeInBytes?: number;
   year?: string;
   genre?: string;

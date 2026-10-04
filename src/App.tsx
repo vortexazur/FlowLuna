@@ -1705,6 +1705,7 @@ export default function App() {
         }
         accent={playerSettings.accent}
         settings={playerSettings}
+        onUpdateSettings={handleUpdatePlayerSettings}
       />
 
       {/* Queue Drawer */}

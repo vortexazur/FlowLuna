@@ -90,6 +90,23 @@ export const AudioVisualizer: React.FC<AudioVisualizerProps> = ({
     onStyleChange(nextStyle);
   };
 
+  // Keep canvas resolution strictly in sync with its CSS size
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas || typeof ResizeObserver === 'undefined') return;
+
+    const ro = new ResizeObserver(() => {
+      const dpr = Math.max(1, window.devicePixelRatio || 1);
+      const displayWidth = Math.max(10, canvas.clientWidth || 100);
+      const displayHeight = Math.max(8, canvas.clientHeight || 30);
+      canvas.width = Math.round(displayWidth * dpr);
+      canvas.height = Math.round(displayHeight * dpr);
+    });
+
+    ro.observe(canvas);
+    return () => ro.disconnect();
+  }, []);
+
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
@@ -159,23 +176,28 @@ export const AudioVisualizer: React.FC<AudioVisualizerProps> = ({
         audioEngine.getFrequencyData(rawFreqArray);
         audioEngine.getTimeDomainData(timeDomainArray);
 
-        // Compute logarithmic bands for natural spectrum display
+        // Compute logarithmic bands for natural spectrum display across audible music frequencies (~30Hz to ~14kHz)
         const bands: number[] = [];
         const numBands = Math.max(4, Math.min(barCount, 64));
         const totalBins = rawFreqArray.length;
+        const maxBin = Math.min(totalBins, 86); // Focus on musically active range
 
         for (let i = 0; i < numBands; i++) {
-          const startBin = Math.floor(Math.pow(totalBins, i / numBands) - 1);
-          const endBin = Math.floor(Math.pow(totalBins, (i + 1) / numBands));
+          const ratio = i / numBands;
+          const nextRatio = (i + 1) / numBands;
+          const startBin = Math.floor(Math.pow(maxBin, ratio) - 1);
+          const endBin = Math.ceil(Math.pow(maxBin, nextRatio));
           const s = Math.max(0, startBin);
-          const e = Math.min(totalBins - 1, Math.max(s + 1, endBin));
+          const e = Math.min(maxBin, Math.max(s + 1, endBin));
           let sum = 0;
           for (let j = s; j < e; j++) {
             sum += rawFreqArray[j];
           }
-          const avg = isPlaying ? sum / Math.max(1, e - s) : 0;
-          const freqBoost = 1 + (i / numBands) * 0.4;
-          bands.push(Math.min(255, Math.max(0, avg * freqBoost)));
+          const rawAvg = isPlaying ? sum / Math.max(1, e - s) : 0;
+          // Perceptual weighting: human ear is less sensitive to treble, and audio files have naturally lower high-freq energy
+          const trebleEmphasis = 1 + ratio * 1.5;
+          const boosted = rawAvg * trebleEmphasis;
+          bands.push(Math.min(255, Math.max(0, boosted)));
         }
 
         // Update peaks with gravity
@@ -250,14 +272,15 @@ export const AudioVisualizer: React.FC<AudioVisualizerProps> = ({
           const halfCount = Math.floor(numBands / 2);
           const totalPillars = Math.max(2, halfCount * 2);
           const gap = 1.5;
-          const pillarWidth = Math.max(1.5, (width - (totalPillars - 1) * gap) / totalPillars);
+          const stepX = width / totalPillars;
+          const pillarWidth = Math.max(1.5, stepX - gap);
           const centerY = height / 2;
 
           for (let i = 0; i < totalPillars; i++) {
             const bandIdx = i < halfCount ? halfCount - 1 - i : i - halfCount;
             const val = bands[bandIdx] || 0;
             const pillarHeight = Math.max(2, (val / 255) * (height * 0.9));
-            const x = i * (pillarWidth + gap);
+            const x = i * stepX;
             const topY = centerY - pillarHeight / 2;
 
             if (pillarHeight > 1) {
@@ -273,33 +296,35 @@ export const AudioVisualizer: React.FC<AudioVisualizerProps> = ({
         // 4. MINIMAL (Micro Dot LED Matrix)
         else if (style === 'minimal') {
           const gap = 2;
-          const dotWidth = Math.max(2, (width - (numBands - 1) * gap) / numBands);
+          const stepX = width / numBands;
+          const dotWidth = Math.max(2, stepX - gap);
           const maxDots = 5;
 
           for (let i = 0; i < numBands; i++) {
             const val = bands[i];
             const activeDots = Math.round((val / 255) * maxDots);
-            const x = i * (dotWidth + gap);
+            const x = i * stepX;
 
             for (let d = 0; d < maxDots; d++) {
-              const dotH = Math.max(1, height / maxDots - 1.5);
-              const dotY = height - (d + 1) * (height / maxDots);
+              const dotH = Math.max(1, (height - (maxDots - 1) * gap) / maxDots);
+              const dotY = height - (d + 1) * dotH - d * gap;
               const isActive = isPlaying && d < activeDots;
 
               ctx.fillStyle = isActive ? colorHex : 'rgba(255, 255, 255, 0.08)';
-              drawSafeRoundedRect(ctx, x, dotY, dotWidth, dotH, 1);
+              drawSafeRoundedRect(ctx, x, dotY, dotWidth, dotH, 1.5);
             }
           }
         }
         // 5. STANDARD BARS (Studio Spectrum with Peak Caps)
         else {
           const gap = 2;
-          const barWidth = Math.max(2, (width - (numBands - 1) * gap) / numBands);
+          const stepX = width / numBands;
+          const barWidth = Math.max(2, stepX - gap);
 
           for (let i = 0; i < numBands; i++) {
             const val = bands[i];
             const barHeight = Math.max(1.5, (val / 255) * Math.max(2, height - 3));
-            const x = i * (barWidth + gap);
+            const x = i * stepX;
             const y = Math.max(0, height - barHeight);
 
             // Bar gradient

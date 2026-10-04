@@ -20,6 +20,16 @@ export function parseLrc(lrcText: string): LyricLine[] {
   const lines: LyricLine[] = [];
   const rawLines = lrcText.split(/\r?\n/);
 
+  // Check for global [offset: +/-ms] tag (standard LRC spec: +ms = playback later / lyrics earlier)
+  let globalOffset = 0;
+  for (const rawLine of rawLines) {
+    const offsetMatch = rawLine.match(/\[offset:\s*([+-]?\d+)\s*\]/i);
+    if (offsetMatch) {
+      globalOffset = parseInt(offsetMatch[1], 10) / 1000;
+      break;
+    }
+  }
+
   // Match [mm:ss.xx] or [mm:ss.xxx] or [mm:ss]
   const timeRegex = /\[(\d{1,2}):(\d{2})(?:\.(\d{1,3}))?\]/g;
 
@@ -41,7 +51,7 @@ export function parseLrc(lrcText: string): LyricLine[] {
       if (match[3]) {
         ms = match[3].length === 2 ? parseInt(match[3], 10) * 10 : parseInt(match[3], 10);
       }
-      const timeInSec = min * 60 + sec + ms / 1000;
+      const timeInSec = Math.max(0, min * 60 + sec + ms / 1000 + globalOffset);
       lines.push({ time: timeInSec, text });
     }
   }

@@ -50,7 +50,16 @@ interface LyricsAndFullscreenProps {
   onCycleRepeat: () => void;
   accent: AccentColor;
   settings: PlayerSettings;
+  onUpdateSettings?: (settings: PlayerSettings) => void;
 }
+
+const VISUALIZER_NAMES: Record<string, string> = {
+  bars: 'Barres',
+  wave: 'Onde',
+  pillars: 'Piliers',
+  circle: 'Radar',
+  minimal: 'LEDs Micro',
+};
 
 const ACCENT_TEXT: Record<AccentColor, string> = {
   emerald: 'text-emerald-400',
@@ -127,6 +136,7 @@ export const LyricsAndFullscreen: React.FC<LyricsAndFullscreenProps> = ({
   onCycleRepeat,
   accent,
   settings,
+  onUpdateSettings,
 }) => {
   const [lyricsLines, setLyricsLines] = useState<LyricLine[]>([]);
   const [isSynced, setIsSynced] = useState(false);
@@ -137,6 +147,11 @@ export const LyricsAndFullscreen: React.FC<LyricsAndFullscreenProps> = ({
   const [isSearchOpen, setIsSearchOpen] = useState(false);
   const [customSearchTerm, setCustomSearchTerm] = useState('');
   const [fontSize, setFontSize] = useState<'sm' | 'md' | 'lg'>('md');
+  const [syncOffset, setSyncOffset] = useState<number>(currentTrack?.lyricsOffset ?? 0);
+
+  useEffect(() => {
+    setSyncOffset(currentTrack?.lyricsOffset ?? 0);
+  }, [currentTrack?.id, currentTrack?.lyricsOffset]);
 
   const lyricsContainerRef = useRef<HTMLDivElement | null>(null);
   const lineRefs = useRef<(HTMLParagraphElement | null)[]>([]);
@@ -258,35 +273,102 @@ export const LyricsAndFullscreen: React.FC<LyricsAndFullscreenProps> = ({
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [isOpen, onClose, onTogglePlay, onSeek, currentTime, duration, onVolumeChange, volume]);
 
-  // Compute active lyric index based on audio currentTime
+  const cycleVisualizerStyle = () => {
+    const styles: Array<'bars' | 'wave' | 'pillars' | 'circle' | 'minimal'> = [
+      'bars',
+      'wave',
+      'pillars',
+      'circle',
+      'minimal',
+    ];
+    const currentIndex = styles.indexOf(settings.visualizerStyle || 'bars');
+    const nextStyle = styles[(currentIndex + 1) % styles.length];
+    if (onUpdateSettings) {
+      onUpdateSettings({ ...settings, visualizerStyle: nextStyle });
+    }
+  };
+
+  const handleAdjustSync = (delta: number) => {
+    if (!currentTrack) return;
+    const newOffset = Math.round((syncOffset + delta) * 10) / 10;
+    setSyncOffset(newOffset);
+    const updated = { ...currentTrack, lyricsOffset: newOffset };
+    saveTrack(updated).catch(() => {});
+  };
+
+  // Synchronized time taking manual offset into account
+  const effectiveCurrentTime = Math.max(0, currentTime + syncOffset);
+
+  // First audible lyric line timestamp (excluding metadata or blank intro lines)
+  const firstLyricTime = useMemo(() => {
+    if (!lyricsLines || lyricsLines.length === 0) return 0;
+    const firstWithText = lyricsLines.find((l) => l.text.trim().length > 0);
+    return firstWithText ? firstWithText.time : 0;
+  }, [lyricsLines]);
+
+  // Are we currently playing an instrumental introduction before singing begins?
+  const isIntro = isSynced && firstLyricTime > 2.0 && effectiveCurrentTime < firstLyricTime;
+
+  // Compute active lyric index based on audio effectiveCurrentTime
   const activeLyricIndex = useMemo(() => {
     if (!lyricsLines || lyricsLines.length === 0) return -1;
     if (!isSynced) {
-      // For unsynced text, estimate smoothly by track duration
-      const ratio = duration > 0 ? currentTime / duration : 0;
+      const ratio = duration > 0 ? effectiveCurrentTime / duration : 0;
       return Math.min(lyricsLines.length - 1, Math.floor(ratio * lyricsLines.length));
     }
 
-    // For synced LRC, find the latest timestamp <= currentTime + 0.15s (graceful anticipation)
+    // If still in the instrumental introduction, do NOT activate any lyric line!
+    if (effectiveCurrentTime < firstLyricTime - 0.2) {
+      return -1;
+    }
+
+    // For synced LRC, find the latest timestamp <= effectiveCurrentTime + 0.15s
     let active = -1;
     for (let i = 0; i < lyricsLines.length; i++) {
-      if (lyricsLines[i].time <= currentTime + 0.15) {
+      if (lyricsLines[i].time <= effectiveCurrentTime + 0.15) {
         active = i;
       } else {
         break;
       }
     }
+
+    // Check if current line has finished and song is in an instrumental break
+    if (active >= 0) {
+      const currentLine = lyricsLines[active];
+      const nextLine = lyricsLines[active + 1];
+      if (nextLine) {
+        const gap = nextLine.time - currentLine.time;
+        // If current line has no text, it's explicitly an instrumental pause
+        if (currentLine.text.trim().length === 0) {
+          return -1;
+        }
+        // If the gap to next line is large (> 6s) and current line has been singing for > 4.5s:
+        if (gap > 6.0 && effectiveCurrentTime > currentLine.time + 4.5) {
+          return -1; // singing has finished, currently in instrumental bridge
+        }
+      }
+    }
+
     return active;
-  }, [lyricsLines, currentTime, isSynced, duration]);
+  }, [lyricsLines, effectiveCurrentTime, isSynced, duration, firstLyricTime]);
 
   // Auto-scroll lyrics smoothly to keep active line in view
   useEffect(() => {
-    if (activeLyricIndex < 0 || isUserScrolling) return;
+    if (isUserScrolling) return;
 
     const container = lyricsContainerRef.current;
-    const activeEl = lineRefs.current[activeLyricIndex];
+    if (!container) return;
 
-    if (container && activeEl) {
+    if (activeLyricIndex < 0) {
+      // If in intro, smoothly keep scroll at the very top
+      if (isIntro) {
+        container.scrollTo({ top: 0, behavior: 'smooth' });
+      }
+      return;
+    }
+
+    const activeEl = lineRefs.current[activeLyricIndex];
+    if (activeEl) {
       const containerHeight = container.clientHeight;
       const activeTop = activeEl.offsetTop;
       const activeHeight = activeEl.clientHeight;
@@ -298,7 +380,7 @@ export const LyricsAndFullscreen: React.FC<LyricsAndFullscreenProps> = ({
         behavior: 'smooth',
       });
     }
-  }, [activeLyricIndex, isUserScrolling]);
+  }, [activeLyricIndex, isUserScrolling, isIntro]);
 
   // User manual scroll detection: pause auto-scroll temporarily
   const handleScroll = () => {
@@ -434,6 +516,42 @@ export const LyricsAndFullscreen: React.FC<LyricsAndFullscreenProps> = ({
               Instrumental
             </span>
           )}
+
+          {/* Sync calibration widget when isSynced */}
+          {isSynced && (
+            <div className="hidden lg:flex items-center gap-1 bg-white/5 border border-white/10 rounded-full px-2.5 py-1 text-xs text-neutral-300">
+              <span className="text-[11px] text-neutral-400 mr-1">Calage :</span>
+              <button
+                type="button"
+                onClick={() => handleAdjustSync(-0.5)}
+                className="px-1.5 py-0.5 rounded hover:bg-white/15 text-neutral-300 hover:text-white transition-colors cursor-pointer"
+                title="Avancer les paroles (-0.5s)"
+              >
+                -0.5s
+              </button>
+              <span className="font-mono text-[11px] px-1 font-semibold text-emerald-400">
+                {syncOffset > 0 ? `+${syncOffset}s` : syncOffset < 0 ? `${syncOffset}s` : '0.0s'}
+              </span>
+              <button
+                type="button"
+                onClick={() => handleAdjustSync(0.5)}
+                className="px-1.5 py-0.5 rounded hover:bg-white/15 text-neutral-300 hover:text-white transition-colors cursor-pointer"
+                title="Retarder les paroles (+0.5s)"
+              >
+                +0.5s
+              </button>
+              {syncOffset !== 0 && (
+                <button
+                  type="button"
+                  onClick={() => handleAdjustSync(-syncOffset)}
+                  className="text-[10px] text-neutral-400 hover:text-white ml-1 underline transition-colors cursor-pointer"
+                  title="Réinitialiser le calage"
+                >
+                  Reset
+                </button>
+              )}
+            </div>
+          )}
         </div>
 
         {/* Header Actions: Font Sizing, Search Lyrics, Close */}
@@ -479,7 +597,7 @@ export const LyricsAndFullscreen: React.FC<LyricsAndFullscreenProps> = ({
               setCustomSearchTerm(`${currentTrack.artist || ''} ${currentTrack.title || ''}`.trim());
               setIsSearchOpen((prev) => !prev);
             }}
-            className="p-2 rounded-full bg-white/5 hover:bg-white/15 text-neutral-300 hover:text-white transition-colors border border-white/10"
+            className="p-2 rounded-full bg-white/5 hover:bg-white/15 text-neutral-300 hover:text-white transition-colors border border-white/10 cursor-pointer"
             title="Rechercher d'autres paroles"
           >
             <Search className="w-4 h-4" />
@@ -496,7 +614,7 @@ export const LyricsAndFullscreen: React.FC<LyricsAndFullscreenProps> = ({
           <button
             type="button"
             onClick={() => fileInputRef.current?.click()}
-            className="hidden md:flex p-2 rounded-full bg-white/5 hover:bg-white/15 text-neutral-300 hover:text-white transition-colors border border-white/10"
+            className="hidden md:flex p-2 rounded-full bg-white/5 hover:bg-white/15 text-neutral-300 hover:text-white transition-colors border border-white/10 cursor-pointer"
             title="Importer un fichier .lrc local"
           >
             <Upload className="w-4 h-4" />
@@ -540,7 +658,7 @@ export const LyricsAndFullscreen: React.FC<LyricsAndFullscreenProps> = ({
           <button
             type="button"
             onClick={() => setIsSearchOpen(false)}
-            className="p-1.5 rounded-lg text-neutral-400 hover:text-white hover:bg-white/10"
+            className="p-1.5 rounded-lg text-neutral-400 hover:text-white hover:bg-white/10 cursor-pointer"
           >
             <X className="w-4 h-4" />
           </button>
@@ -548,11 +666,11 @@ export const LyricsAndFullscreen: React.FC<LyricsAndFullscreenProps> = ({
       )}
 
       {/* 3. Main Stage: Left Track Info + Visualizer | Right Flowing Lyrics */}
-      <main className="relative z-10 flex-1 grid grid-cols-1 md:grid-cols-12 gap-8 lg:gap-12 px-6 md:px-12 py-6 items-center overflow-hidden">
-        {/* Left Section: Artwork, Track Info & Visualizer */}
-        <section className="md:col-span-5 flex flex-col items-center md:items-start justify-center gap-6 max-w-md mx-auto md:mx-0 w-full">
+      <main className="relative z-10 flex-1 grid grid-cols-1 md:grid-cols-12 gap-8 lg:gap-12 px-6 md:px-12 py-4 items-center overflow-hidden">
+        {/* Left Section: Artwork, Track Info & Visualizer aligned in matching width container */}
+        <section className="md:col-span-5 flex flex-col items-center md:items-start justify-center gap-4 max-w-[340px] lg:max-w-[380px] mx-auto md:mx-0 w-full">
           {/* Album Cover Art */}
-          <div className="relative group w-56 h-56 sm:w-64 sm:h-64 md:w-80 md:h-80 lg:w-96 lg:h-96 rounded-3xl overflow-hidden shadow-[0_25px_60px_-15px_rgba(0,0,0,0.9)] border border-white/10 transition-transform duration-500 group-hover:scale-[1.02]">
+          <div className="relative group w-full aspect-square max-w-[280px] sm:max-w-[320px] md:max-w-[340px] lg:max-w-[380px] rounded-3xl overflow-hidden shadow-[0_25px_60px_-15px_rgba(0,0,0,0.9)] border border-white/10 transition-transform duration-500 group-hover:scale-[1.02]">
             <img
               src={coverImage}
               alt={currentTrack.title}
@@ -565,29 +683,51 @@ export const LyricsAndFullscreen: React.FC<LyricsAndFullscreenProps> = ({
           </div>
 
           {/* Track Titles & Metadata */}
-          <div className="w-full flex flex-col gap-1.5 text-center md:text-left">
-            <h1 className="text-2xl sm:text-3xl lg:text-4xl font-extrabold text-white tracking-tight leading-tight line-clamp-2 drop-shadow-md">
+          <div className="w-full flex flex-col gap-1 text-center md:text-left">
+            <h1 className="text-xl sm:text-2xl lg:text-3xl font-extrabold text-white tracking-tight leading-tight line-clamp-2 drop-shadow-md">
               {currentTrack.title}
             </h1>
-            <p className="text-base sm:text-lg font-semibold text-neutral-300 line-clamp-1">
+            <p className="text-sm sm:text-base font-semibold text-neutral-300 line-clamp-1">
               {currentTrack.artist}
             </p>
             {currentTrack.album && currentTrack.album !== 'Bibliothèque Locale' && (
-              <p className="text-xs sm:text-sm text-neutral-400 line-clamp-1">
+              <p className="text-xs text-neutral-400 line-clamp-1">
                 {currentTrack.album}
                 {currentTrack.year ? ` • ${currentTrack.year}` : ''}
               </p>
             )}
           </div>
 
-          {/* Real-time Integrated Visualizer */}
-          <div className="w-full h-16 rounded-2xl bg-white/5 backdrop-blur-md border border-white/10 p-2 overflow-hidden shadow-inner">
-            <AudioVisualizer
-              isPlaying={isPlaying}
-              style={settings.visualizerStyle}
-              accent={accent}
-              className="w-full h-full"
-            />
+          {/* Real-time Integrated Visualizer with Interactive Style Selector */}
+          <div className="w-full rounded-2xl bg-white/5 backdrop-blur-md border border-white/10 p-2.5 overflow-hidden shadow-inner flex flex-col gap-1.5">
+            <div className="flex items-center justify-between px-1">
+              <span className="text-[11px] font-semibold text-neutral-400 uppercase tracking-wider">
+                Visualiseur
+              </span>
+              <button
+                type="button"
+                onClick={cycleVisualizerStyle}
+                className="text-xs px-2.5 py-0.5 rounded-full bg-white/10 hover:bg-white/20 text-white font-medium transition-colors border border-white/10 flex items-center gap-1.5 cursor-pointer"
+                title="Cliquer pour changer le style du visualiseur"
+              >
+                <span>{VISUALIZER_NAMES[settings.visualizerStyle || 'bars'] || 'Barres'}</span>
+                <span className="text-[10px] text-neutral-400">⇄</span>
+              </button>
+            </div>
+            <div className="w-full h-12 overflow-hidden rounded-xl">
+              <AudioVisualizer
+                isPlaying={isPlaying}
+                style={settings.visualizerStyle}
+                accent={accent}
+                interactive={true}
+                onStyleChange={(newStyle) => {
+                  if (onUpdateSettings) {
+                    onUpdateSettings({ ...settings, visualizerStyle: newStyle });
+                  }
+                }}
+                className="w-full h-full"
+              />
+            </div>
           </div>
         </section>
 
@@ -597,12 +737,12 @@ export const LyricsAndFullscreen: React.FC<LyricsAndFullscreenProps> = ({
           <div
             ref={lyricsContainerRef}
             onScroll={handleScroll}
-            className="flex-1 overflow-y-auto px-4 md:px-8 py-20 flex flex-col gap-6 md:gap-8 scroll-smooth select-text"
+            className="flex-1 overflow-y-auto px-4 md:px-8 py-14 flex flex-col gap-5 md:gap-7 scroll-smooth select-text"
             style={{
               maskImage:
-                'linear-gradient(to bottom, transparent 0%, black 15%, black 85%, transparent 100%)',
+                'linear-gradient(to bottom, transparent 0%, black 12%, black 88%, transparent 100%)',
               WebkitMaskImage:
-                'linear-gradient(to bottom, transparent 0%, black 15%, black 85%, transparent 100%)',
+                'linear-gradient(to bottom, transparent 0%, black 12%, black 88%, transparent 100%)',
             }}
           >
             {/* Loading state */}
@@ -632,18 +772,28 @@ export const LyricsAndFullscreen: React.FC<LyricsAndFullscreenProps> = ({
                       setCustomSearchTerm(`${currentTrack.artist || ''} ${currentTrack.title || ''}`.trim());
                       setIsSearchOpen(true);
                     }}
-                    className={`px-4 py-2 rounded-xl text-xs font-bold transition-all shadow-lg ${ACCENT_BG[accent]}`}
+                    className={`px-4 py-2 rounded-xl text-xs font-bold transition-all shadow-lg cursor-pointer ${ACCENT_BG[accent]}`}
                   >
                     Recherche manuelle
                   </button>
                   <button
                     type="button"
                     onClick={() => fileInputRef.current?.click()}
-                    className="px-4 py-2 rounded-xl text-xs font-bold bg-white/10 hover:bg-white/20 text-neutral-200 transition-colors border border-white/10"
+                    className="px-4 py-2 rounded-xl text-xs font-bold bg-white/10 hover:bg-white/20 text-neutral-200 transition-colors border border-white/10 cursor-pointer"
                   >
                     Importer .LRC
                   </button>
                 </div>
+              </div>
+            )}
+
+            {/* Instrumental Intro indicator */}
+            {!isLoading && isIntro && (
+              <div className="flex items-center gap-3 px-4 py-3 rounded-2xl bg-white/5 border border-white/10 text-neutral-300 animate-pulse text-sm font-semibold max-w-fit mb-2 shadow-sm">
+                <Music className={`w-4 h-4 ${ACCENT_TEXT[accent]}`} />
+                <span>
+                  Introduction instrumentale ({Math.max(0, Math.ceil(firstLyricTime - effectiveCurrentTime))}s)
+                </span>
               </div>
             )}
 
@@ -652,6 +802,23 @@ export const LyricsAndFullscreen: React.FC<LyricsAndFullscreenProps> = ({
               lyricsLines.map((line, idx) => {
                 const isActive = idx === activeLyricIndex;
                 const distance = Math.abs(idx - activeLyricIndex);
+
+                // If line is empty or purely whitespace, render subtle break indicator
+                if (!line.text || line.text.trim().length === 0) {
+                  return (
+                    <div
+                      key={idx}
+                      ref={(el) => {
+                        lineRefs.current[idx] = el as any;
+                      }}
+                      className="py-1 flex items-center gap-2 opacity-30"
+                    >
+                      <span className="w-1.5 h-1.5 rounded-full bg-white/40" />
+                      <span className="w-1.5 h-1.5 rounded-full bg-white/40" />
+                      <span className="w-1.5 h-1.5 rounded-full bg-white/40" />
+                    </div>
+                  );
+                }
 
                 // Compute opacity fading based on distance from current playing line
                 let opacityClass = 'opacity-30 hover:opacity-80';
@@ -702,12 +869,12 @@ export const LyricsAndFullscreen: React.FC<LyricsAndFullscreenProps> = ({
         </section>
       </main>
 
-      {/* 4. Bottom Floating Glass Player Bar */}
-      <footer className="relative z-10 p-4 md:p-6 flex justify-center">
-        <div className="w-full max-w-4xl flex flex-col gap-3 bg-neutral-900/70 backdrop-blur-2xl p-4 sm:p-5 rounded-3xl border border-white/10 shadow-[0_20px_50px_rgba(0,0,0,0.8)]">
+      {/* 4. Bottom Floating Glass Player Bar (Compact & Sleek) */}
+      <footer className="relative z-10 pb-3 pt-1 px-4 md:px-8 flex justify-center">
+        <div className="w-full max-w-3xl flex flex-col gap-1.5 bg-neutral-950/80 backdrop-blur-2xl py-2 px-4 sm:px-6 rounded-2xl border border-white/10 shadow-[0_15px_40px_rgba(0,0,0,0.8)]">
           {/* Progress Seek Bar */}
-          <div className="flex items-center gap-3 w-full text-xs font-mono text-neutral-400">
-            <span className="w-10 text-right">{formatTime(currentTime)}</span>
+          <div className="flex items-center gap-2.5 w-full text-[11px] font-mono text-neutral-400">
+            <span className="w-9 text-right">{formatTime(currentTime)}</span>
             <div className="relative flex-1 flex items-center">
               <input
                 type="range"
@@ -716,59 +883,59 @@ export const LyricsAndFullscreen: React.FC<LyricsAndFullscreenProps> = ({
                 step={0.2}
                 value={currentTime}
                 onChange={(e) => onSeek(parseFloat(e.target.value))}
-                className={`w-full h-1.5 bg-white/10 hover:bg-white/20 rounded-lg cursor-pointer ${ACCENT_RANGE[accent]}`}
+                className={`w-full h-1 bg-white/10 hover:bg-white/20 rounded-lg cursor-pointer ${ACCENT_RANGE[accent]}`}
               />
             </div>
-            <span className="w-10">{formatTime(duration)}</span>
+            <span className="w-9">{formatTime(duration)}</span>
           </div>
 
           {/* Player Action Buttons */}
           <div className="flex items-center justify-between">
             {/* Left Controls: Favorite & Shuffle */}
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-1 sm:gap-1.5">
               <button
                 type="button"
                 onClick={onToggleFavorite}
-                className={`p-2.5 rounded-full hover:bg-white/10 transition-colors ${
+                className={`p-1.5 rounded-full hover:bg-white/10 transition-colors cursor-pointer ${
                   isFavorite ? 'text-rose-500 fill-current' : 'text-neutral-400 hover:text-white'
                 }`}
                 title={isFavorite ? 'Retirer des favoris' : 'Ajouter aux favoris'}
               >
-                <Heart className={`w-5 h-5 ${isFavorite ? 'fill-rose-500' : ''}`} />
+                <Heart className={`w-4 h-4 ${isFavorite ? 'fill-rose-500' : ''}`} />
               </button>
               <button
                 type="button"
                 onClick={onToggleShuffle}
-                className={`p-2.5 rounded-full hover:bg-white/10 transition-colors ${
+                className={`p-1.5 rounded-full hover:bg-white/10 transition-colors cursor-pointer ${
                   shuffle ? ACCENT_TEXT[accent] : 'text-neutral-400 hover:text-white'
                 }`}
                 title={shuffle ? 'Aléatoire activé' : 'Aléatoire désactivé'}
               >
-                <Shuffle className="w-5 h-5" />
+                <Shuffle className="w-4 h-4" />
               </button>
             </div>
 
             {/* Center Controls: Prev, Play/Pause, Stop, Next */}
-            <div className="flex items-center gap-3 sm:gap-4">
+            <div className="flex items-center gap-2 sm:gap-3">
               <button
                 type="button"
                 onClick={onPrev}
-                className="p-2.5 text-neutral-300 hover:text-white hover:bg-white/10 rounded-full transition-colors active:scale-95 cursor-pointer"
+                className="p-1.5 text-neutral-300 hover:text-white hover:bg-white/10 rounded-full transition-colors active:scale-95 cursor-pointer"
                 title="Piste précédente"
               >
-                <SkipBack className="w-6 h-6" />
+                <SkipBack className="w-5 h-5" />
               </button>
 
               <button
                 type="button"
                 onClick={onTogglePlay}
-                className={`p-4 rounded-full transition-transform hover:scale-105 active:scale-95 cursor-pointer shadow-xl ${ACCENT_BG[accent]} ${ACCENT_GLOW[accent]}`}
+                className={`p-2.5 sm:p-3 rounded-full transition-transform hover:scale-105 active:scale-95 cursor-pointer shadow-lg ${ACCENT_BG[accent]} ${ACCENT_GLOW[accent]}`}
                 title={isPlaying ? 'Pause (Espace)' : 'Lecture (Espace)'}
               >
                 {isPlaying ? (
-                  <Pause className="w-6 h-6 fill-current" />
+                  <Pause className="w-5 h-5 fill-current" />
                 ) : (
-                  <Play className="w-6 h-6 fill-current ml-0.5" />
+                  <Play className="w-5 h-5 fill-current ml-0.5" />
                 )}
               </button>
 
@@ -776,44 +943,44 @@ export const LyricsAndFullscreen: React.FC<LyricsAndFullscreenProps> = ({
                 <button
                   type="button"
                   onClick={onStop}
-                  className="p-2.5 text-neutral-400 hover:text-red-400 hover:bg-white/10 rounded-full transition-colors active:scale-95 cursor-pointer"
+                  className="p-1.5 text-neutral-400 hover:text-red-400 hover:bg-white/10 rounded-full transition-colors active:scale-95 cursor-pointer"
                   title="Arrêter la lecture"
                 >
-                  <Square className="w-5 h-5 fill-current" />
+                  <Square className="w-4 h-4 fill-current" />
                 </button>
               )}
 
               <button
                 type="button"
                 onClick={onNext}
-                className="p-2.5 text-neutral-300 hover:text-white hover:bg-white/10 rounded-full transition-colors active:scale-95 cursor-pointer"
+                className="p-1.5 text-neutral-300 hover:text-white hover:bg-white/10 rounded-full transition-colors active:scale-95 cursor-pointer"
                 title="Piste suivante"
               >
-                <SkipForward className="w-6 h-6" />
+                <SkipForward className="w-5 h-5" />
               </button>
             </div>
 
             {/* Right Controls: Repeat & Volume */}
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-1 sm:gap-1.5">
               <button
                 type="button"
                 onClick={onCycleRepeat}
-                className={`p-2.5 rounded-full hover:bg-white/10 transition-colors ${
+                className={`p-1.5 rounded-full hover:bg-white/10 transition-colors cursor-pointer ${
                   repeatMode !== 'off' ? ACCENT_TEXT[accent] : 'text-neutral-400 hover:text-white'
                 }`}
                 title={`Répétition : ${repeatMode}`}
               >
-                {repeatMode === 'one' ? <Repeat1 className="w-5 h-5" /> : <Repeat className="w-5 h-5" />}
+                {repeatMode === 'one' ? <Repeat1 className="w-4 h-4" /> : <Repeat className="w-4 h-4" />}
               </button>
 
-              <div className="hidden sm:flex items-center gap-2">
+              <div className="hidden sm:flex items-center gap-1.5 ml-1">
                 <button
                   type="button"
                   onClick={onToggleMute}
-                  className="p-1.5 text-neutral-400 hover:text-white transition-colors"
+                  className="p-1 text-neutral-400 hover:text-white transition-colors cursor-pointer"
                   title={isMuted ? 'Activer le son' : 'Couper le son'}
                 >
-                  {isMuted || volume === 0 ? <VolumeX className="w-5 h-5" /> : <Volume2 className="w-5 h-5" />}
+                  {isMuted || volume === 0 ? <VolumeX className="w-4 h-4" /> : <Volume2 className="w-4 h-4" />}
                 </button>
                 <input
                   type="range"
@@ -822,7 +989,7 @@ export const LyricsAndFullscreen: React.FC<LyricsAndFullscreenProps> = ({
                   step={0.01}
                   value={isMuted ? 0 : volume}
                   onChange={(e) => onVolumeChange(parseFloat(e.target.value))}
-                  className={`w-20 md:w-24 h-1.5 bg-white/10 rounded-lg cursor-pointer ${ACCENT_RANGE[accent]}`}
+                  className={`w-16 sm:w-20 h-1 bg-white/10 rounded-lg cursor-pointer ${ACCENT_RANGE[accent]}`}
                 />
               </div>
             </div>
