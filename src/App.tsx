@@ -6,6 +6,8 @@ import {
   EqualizerSettings,
   EqualizerBand,
   AccentColor,
+  BackdropEffect,
+  AppUpdateInfo,
 } from './types';
 import {
   getAllTracks,
@@ -52,11 +54,13 @@ import { backgroundScanner } from './services/backgroundScanner';
 import { Layers, Maximize2 } from 'lucide-react';
 import { TitleBar } from './components/TitleBar';
 import { discordRpc } from './services/discordRpcService';
+import { UpdateNotificationToast } from './components/UpdateNotificationToast';
 
 const DEFAULT_PLAYER_SETTINGS: PlayerSettings = {
   language: 'fr',
   theme: 'dark',
   accent: 'emerald',
+  backdropEffect: 'glass',
   glassIntensity: 70,
   visualizerStyle: 'bars',
   crossfadeDuration: 2,
@@ -125,6 +129,13 @@ export default function App() {
   // Settings
   const [playerSettings, setPlayerSettings] = useState<PlayerSettings>(DEFAULT_PLAYER_SETTINGS);
   const [equalizerSettings, setEqualizerSettings] = useState<EqualizerSettings>(DEFAULT_EQ_SETTINGS);
+  const [settingsInitialTab, setSettingsInitialTab] = useState<
+    'appearance' | 'audio' | 'general' | 'system' | 'shortcuts'
+  >('appearance');
+
+  // Application Updates State
+  const [appUpdateInfo, setAppUpdateInfo] = useState<AppUpdateInfo | null>(null);
+  const [isUpdateToastDismissed, setIsUpdateToastDismissed] = useState<boolean>(false);
 
   // Video Mode: 'theater' (fullscreen/cinema), 'pip' (floating mini window), 'hidden' (audio-only)
   const [videoMode, setVideoMode] = useState<VideoDisplayMode>('theater');
@@ -280,11 +291,13 @@ export default function App() {
     loadDatabase();
   }, [loadDatabase]);
 
-  // Synchronize document theme attribute & classes
+  // Synchronize document theme attribute, visual effect & native Windows backdrop
   useEffect(() => {
     const root = document.documentElement;
     const currentTheme = playerSettings.theme || 'dark';
+    const effect = playerSettings.backdropEffect || 'glass';
     root.setAttribute('data-theme', currentTheme);
+    root.setAttribute('data-effect', effect);
     if (currentTheme === 'light') {
       root.classList.add('light');
       root.classList.remove('dark');
@@ -292,7 +305,28 @@ export default function App() {
       root.classList.add('dark');
       root.classList.remove('light');
     }
-  }, [playerSettings.theme]);
+
+    if (window.electronAPI?.setBackdrop) {
+      window.electronAPI.setBackdrop(effect, currentTheme);
+    }
+  }, [playerSettings.theme, playerSettings.backdropEffect]);
+
+  // Check for app updates in the background after boot
+  useEffect(() => {
+    const checkUpdate = async () => {
+      try {
+        const res = await fetch('/api/app/check-update');
+        if (res.ok) {
+          const data: AppUpdateInfo = await res.json();
+          setAppUpdateInfo(data);
+        }
+      } catch {
+        // Non-blocking
+      }
+    };
+    const timer = setTimeout(checkUpdate, 3500);
+    return () => clearTimeout(timer);
+  }, []);
 
   // Connect Web Audio API to the HTMLAudioElement
   useEffect(() => {
@@ -1287,39 +1321,64 @@ export default function App() {
 
   const cachedTracksCount = tracks.filter((t) => t.isCachedOffline).length;
 
+  const backdropEffect: BackdropEffect = playerSettings.backdropEffect || 'glass';
   const glassIntensity = playerSettings.glassIntensity ?? 70;
   const glassFactor = glassIntensity / 100;
   const isDark = playerSettings.theme !== 'light';
 
-  // Dynamic CSS variables for Pure Glass effect
-  const glassStyle = {
-    '--glass-intensity': `${glassIntensity}%`,
-    '--glass-factor': `${glassFactor}`,
-    '--glass-blur': `${Math.round(14 + glassFactor * 26)}px`,
-    '--glass-border': isDark
-      ? `rgba(255, 255, 255, ${0.06 + glassFactor * 0.14})`
-      : `rgba(203, 213, 225, ${0.45 + glassFactor * 0.35})`,
-    '--glass-sidebar-bg': isDark
-      ? `rgba(10, 10, 15, ${Math.max(0.18, 0.95 - glassFactor * 0.77)})`
-      : `rgba(255, 255, 255, ${Math.max(0.42, 0.92 - glassFactor * 0.50)})`,
-    '--glass-main-bg': isDark
-      ? `rgba(6, 6, 10, ${Math.max(0.12, 0.92 - glassFactor * 0.8)})`
-      : `rgba(248, 250, 252, ${Math.max(0.35, 0.90 - glassFactor * 0.55)})`,
-    '--glass-player-bg': isDark
-      ? `rgba(12, 12, 18, ${Math.max(0.22, 0.95 - glassFactor * 0.73)})`
-      : `rgba(255, 255, 255, ${Math.max(0.50, 0.95 - glassFactor * 0.45)})`,
-    '--glass-card-bg': isDark
-      ? `rgba(20, 20, 28, ${Math.max(0.16, 0.9 - glassFactor * 0.74)})`
-      : `rgba(255, 255, 255, ${Math.max(0.45, 0.92 - glassFactor * 0.47)})`,
-    '--glass-modal-bg': isDark
-      ? `rgba(14, 14, 22, ${Math.max(0.45, 0.95 - glassFactor * 0.5)})`
-      : `rgba(255, 255, 255, ${Math.max(0.72, 0.96 - glassFactor * 0.24)})`,
-  } as React.CSSProperties;
+  // Dynamic CSS variables for Pure Glass vs Mica & Acrylic Fluent effect
+  const glassStyle = useMemo(() => {
+    if (backdropEffect === 'mica') {
+      return {
+        '--glass-intensity': '100%',
+        '--glass-factor': '1',
+        '--glass-blur': '28px',
+        '--glass-border': isDark ? 'rgba(255, 255, 255, 0.08)' : 'rgba(0, 0, 0, 0.08)',
+        '--glass-sidebar-bg': isDark ? 'rgba(18, 18, 26, 0.82)' : 'rgba(248, 250, 252, 0.88)',
+        '--glass-main-bg': isDark ? 'rgba(14, 14, 20, 0.78)' : 'rgba(241, 245, 249, 0.85)',
+        '--glass-player-bg': isDark ? 'rgba(22, 22, 32, 0.88)' : 'rgba(255, 255, 255, 0.92)',
+        '--glass-card-bg': isDark ? 'rgba(26, 26, 38, 0.70)' : 'rgba(255, 255, 255, 0.82)',
+        '--glass-modal-bg': isDark ? 'rgba(22, 22, 32, 0.94)' : 'rgba(255, 255, 255, 0.95)',
+      } as React.CSSProperties;
+    }
+
+    return {
+      '--glass-intensity': `${glassIntensity}%`,
+      '--glass-factor': `${glassFactor}`,
+      '--glass-blur': `${Math.round(14 + glassFactor * 26)}px`,
+      '--glass-border': isDark
+        ? `rgba(255, 255, 255, ${0.06 + glassFactor * 0.14})`
+        : `rgba(203, 213, 225, ${0.45 + glassFactor * 0.35})`,
+      '--glass-sidebar-bg': isDark
+        ? `rgba(10, 10, 15, ${Math.max(0.18, 0.95 - glassFactor * 0.77)})`
+        : `rgba(255, 255, 255, ${Math.max(0.42, 0.92 - glassFactor * 0.50)})`,
+      '--glass-main-bg': isDark
+        ? `rgba(6, 6, 10, ${Math.max(0.12, 0.92 - glassFactor * 0.8)})`
+        : `rgba(248, 250, 252, ${Math.max(0.35, 0.90 - glassFactor * 0.55)})`,
+      '--glass-player-bg': isDark
+        ? `rgba(12, 12, 18, ${Math.max(0.22, 0.95 - glassFactor * 0.73)})`
+        : `rgba(255, 255, 255, ${Math.max(0.50, 0.95 - glassFactor * 0.45)})`,
+      '--glass-card-bg': isDark
+        ? `rgba(20, 20, 28, ${Math.max(0.16, 0.9 - glassFactor * 0.74)})`
+        : `rgba(255, 255, 255, ${Math.max(0.45, 0.92 - glassFactor * 0.47)})`,
+      '--glass-modal-bg': isDark
+        ? `rgba(14, 14, 22, ${Math.max(0.45, 0.95 - glassFactor * 0.5)})`
+        : `rgba(255, 255, 255, ${Math.max(0.72, 0.96 - glassFactor * 0.24)})`,
+    } as React.CSSProperties;
+  }, [backdropEffect, glassIntensity, glassFactor, isDark]);
+
+  // Check if fullscreen video or UI is active to prevent any foreground toast popup
+  const isFullscreenActive = useMemo(() => {
+    const isDocFs = typeof document !== 'undefined' && Boolean(document.fullscreenElement);
+    const isVideoTheater = videoMode === 'theater' && Boolean(currentPlayingTrack?.isVideo);
+    return isFullscreenOpen || isDocFs || isVideoTheater;
+  }, [isFullscreenOpen, videoMode, currentPlayingTrack?.isVideo]);
 
   return (
     <div
       id="app-root-container"
       data-theme={playerSettings.theme || 'dark'}
+      data-effect={backdropEffect}
       style={glassStyle}
       className={`w-screen h-screen flex flex-col overflow-hidden transition-colors duration-200 relative ${
         playerSettings.theme === 'light'
@@ -1327,11 +1386,11 @@ export default function App() {
           : 'dark bg-neutral-950 text-neutral-100'
       }`}
     >
-      {/* Pure Glass Ambient Glow & Refraction Layer */}
+      {/* Pure Glass Ambient Glow & Refraction Layer (muted in Mica mode) */}
       <div
         className="absolute inset-0 pointer-events-none overflow-hidden transition-opacity duration-700 z-0"
         style={{
-          opacity: Math.max(0.25, glassFactor),
+          opacity: backdropEffect === 'mica' ? 0 : Math.max(0.25, glassFactor),
         }}
       >
         <div
@@ -1478,7 +1537,10 @@ export default function App() {
               favoritesCount={tracks.filter((t) => t.isFavorite).length}
               videosCount={tracks.filter((t) => t.isVideo).length}
               onCreatePlaylist={() => setIsCreatePlaylistModalOpen(true)}
-              onOpenSettings={() => setIsSettingsOpen(true)}
+              onOpenSettings={() => {
+                setSettingsInitialTab('appearance');
+                setIsSettingsOpen(true);
+              }}
               onOpenEqualizer={() => setIsEqualizerOpen(true)}
               onImportFiles={handleImportFiles}
               accent={playerSettings.accent}
@@ -1564,6 +1626,21 @@ export default function App() {
         tracksCount={tracks.length}
         playlistsCount={playlists.length}
         onDataReload={loadDatabase}
+        initialTab={settingsInitialTab}
+      />
+
+      {/* Update Notification Toast (Never shown over fullscreen video) */}
+      <UpdateNotificationToast
+        updateInfo={appUpdateInfo}
+        onOpenSettingsUpdate={() => {
+          setSettingsInitialTab('system');
+          setIsSettingsOpen(true);
+        }}
+        onDismiss={() => setIsUpdateToastDismissed(true)}
+        isDismissed={isUpdateToastDismissed}
+        isFullscreenActive={isFullscreenActive}
+        accent={playerSettings.accent}
+        theme={playerSettings.theme}
       />
 
       {/* Fullscreen & Synchronized Lyrics View */}

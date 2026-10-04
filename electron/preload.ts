@@ -17,6 +17,8 @@ export interface ElectronAPI {
   setCompactMode?: (enabled: boolean, width?: number, height?: number) => Promise<any>;
   selectMusicFolder: () => Promise<string | null>;
   selectMusicFiles: () => Promise<string[]>;
+  setBackdrop?: (effect: string, theme: string) => Promise<any>;
+  applyUpdate?: (installerPath?: string) => Promise<any>;
 }
 
 const api: ElectronAPI = {
@@ -50,6 +52,14 @@ const api: ElectronAPI = {
     ipcRenderer.invoke('window-set-compact-mode', enabled, width, height),
   selectMusicFolder: () => ipcRenderer.invoke('select-music-folder'),
   selectMusicFiles: () => ipcRenderer.invoke('select-music-files'),
+  setBackdrop: (effect: string, theme: string) =>
+    ipcRenderer.invoke('window-set-backdrop', effect, theme),
+  applyUpdate: (installerPath?: string) =>
+    fetch('/api/app/apply-update', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ installerPath }),
+    }).then((r) => r.json()),
 };
 
 contextBridge.exposeInMainWorld('electronAPI', api);

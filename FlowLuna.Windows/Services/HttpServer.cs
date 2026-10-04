@@ -299,6 +299,59 @@ public class HttpServer
             return Results.Json(new { success, message });
         });
 
+        // FlowLuna Software Auto-Update endpoints
+        _app.MapGet("/api/app/check-update", async () =>
+        {
+            var res = await BinaryManager.CheckAppUpdateAsync();
+            return Results.Json(res);
+        });
+
+        _app.MapPost("/api/app/download-update", async (HttpContext ctx) =>
+        {
+            using var reader = new StreamReader(ctx.Request.Body);
+            var bodyText = await reader.ReadToEndAsync();
+            string? downloadUrl = null;
+            string? version = null;
+            if (!string.IsNullOrWhiteSpace(bodyText))
+            {
+                try
+                {
+                    using var doc = JsonDocument.Parse(bodyText);
+                    if (doc.RootElement.TryGetProperty("downloadUrl", out var dp)) downloadUrl = dp.GetString();
+                    if (doc.RootElement.TryGetProperty("version", out var vp)) version = vp.GetString();
+                }
+                catch { }
+            }
+
+            var res = await BinaryManager.StartAppUpdateDownloadAsync(downloadUrl, version);
+            return Results.Json(res);
+        });
+
+        _app.MapGet("/api/app/update-progress", () =>
+        {
+            var status = BinaryManager.GetAppUpdateProgress();
+            return Results.Json(status);
+        });
+
+        _app.MapPost("/api/app/apply-update", async (HttpContext ctx) =>
+        {
+            using var reader = new StreamReader(ctx.Request.Body);
+            var bodyText = await reader.ReadToEndAsync();
+            string? installerPath = null;
+            if (!string.IsNullOrWhiteSpace(bodyText))
+            {
+                try
+                {
+                    using var doc = JsonDocument.Parse(bodyText);
+                    if (doc.RootElement.TryGetProperty("installerPath", out var ip)) installerPath = ip.GetString();
+                }
+                catch { }
+            }
+
+            var res = BinaryManager.ApplyAppUpdate(installerPath);
+            return Results.Json(res);
+        });
+
         // Real-time SSE download progress
         _app.MapGet("/api/downloader/progress/{jobId}", async (string jobId, HttpContext ctx) =>
         {

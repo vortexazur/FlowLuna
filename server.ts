@@ -431,6 +431,256 @@ app.post('/api/engine/update-libvlc', async (req, res) => {
   }
 });
 
+// =========================================================================
+// FLOWLUNA SOFTWARE AUTO-UPDATE SYSTEM
+// =========================================================================
+
+interface AppUpdateProgressState {
+  status: 'idle' | 'checking' | 'available' | 'downloading' | 'ready_to_install' | 'error';
+  percent: number;
+  downloadedBytes: number;
+  totalBytes: number;
+  speed: string;
+  message?: string;
+  installerPath?: string;
+  latestVersion?: string;
+}
+
+let appUpdateState: AppUpdateProgressState = {
+  status: 'idle',
+  percent: 0,
+  downloadedBytes: 0,
+  totalBytes: 0,
+  speed: '',
+};
+
+function compareSemVer(v1: string, v2: string): number {
+  const p1 = v1.replace(/^v/, '').split('.').map((n) => parseInt(n, 10) || 0);
+  const p2 = v2.replace(/^v/, '').split('.').map((n) => parseInt(n, 10) || 0);
+  const max = Math.max(p1.length, p2.length);
+  for (let i = 0; i < max; i++) {
+    const num1 = p1[i] || 0;
+    const num2 = p2[i] || 0;
+    if (num1 > num2) return 1;
+    if (num1 < num2) return -1;
+  }
+  return 0;
+}
+
+app.get('/api/app/check-update', async (req, res) => {
+  const currentVersion = '1.1.5';
+  try {
+    const fetchRes = await fetch('https://api.github.com/repos/vortexazur/FlowLuna/releases/latest', {
+      headers: { 'User-Agent': 'FlowLuna-App/1.1.5' },
+    });
+    if (fetchRes.ok) {
+      const data: any = await fetchRes.json();
+      const tagName = (data.tag_name || '').trim();
+      const latestVersion = tagName.replace(/^v/, '') || currentVersion;
+
+      let downloadUrl = '';
+      let assetName = '';
+      let assetSize = 0;
+      if (Array.isArray(data.assets)) {
+        const exeAsset = data.assets.find((a: any) => a.name?.toLowerCase().endsWith('.exe'));
+        if (exeAsset) {
+          downloadUrl = exeAsset.browser_download_url;
+          assetName = exeAsset.name;
+          assetSize = exeAsset.size;
+        }
+      }
+
+      const hasUpdate = compareSemVer(latestVersion, currentVersion) > 0;
+      return res.json({
+        currentVersion,
+        latestVersion,
+        hasUpdate,
+        releaseName: data.name || `FlowLuna v${latestVersion}`,
+        releaseNotes: data.body || '',
+        downloadUrl,
+        assetName,
+        assetSize,
+        publishedAt: data.published_at,
+      });
+    }
+
+    return res.json({
+      currentVersion,
+      latestVersion: currentVersion,
+      hasUpdate: false,
+      releaseName: `FlowLuna v${currentVersion}`,
+      releaseNotes: 'Version à jour',
+    });
+  } catch (err: any) {
+    return res.json({
+      currentVersion,
+      latestVersion: currentVersion,
+      hasUpdate: false,
+      error: err.message,
+    });
+  }
+});
+
+function downloadUpdateFileWithProgress(urlStr: string, destPath: string, maxRedirects = 5) {
+  if (maxRedirects <= 0) {
+    appUpdateState.status = 'error';
+    appUpdateState.message = 'Trop de redirections HTTP';
+    return;
+  }
+
+  const client = urlStr.startsWith('https') ? https : http;
+  const req = client.get(urlStr, { headers: { 'User-Agent': 'FlowLuna-App/1.1.5' } }, (res) => {
+    if (res.statusCode && [301, 302, 303, 307, 308].includes(res.statusCode) && res.headers.location) {
+      downloadUpdateFileWithProgress(res.headers.location, destPath, maxRedirects - 1);
+      return;
+    }
+
+    if (res.statusCode && res.statusCode >= 400) {
+      appUpdateState.status = 'error';
+      appUpdateState.message = `Erreur HTTP ${res.statusCode} lors du téléchargement`;
+      return;
+    }
+
+    const totalBytes = parseInt(res.headers['content-length'] || '0', 10);
+    appUpdateState.totalBytes = totalBytes;
+    let receivedBytes = 0;
+    let lastTime = Date.now();
+    let bytesSinceLast = 0;
+
+    const fileStream = fs.createWriteStream(destPath);
+    res.on('data', (chunk) => {
+      receivedBytes += chunk.length;
+      bytesSinceLast += chunk.length;
+      const now = Date.now();
+      const elapsed = (now - lastTime) / 1000;
+      let speedStr = appUpdateState.speed;
+      if (elapsed >= 0.5) {
+        const speedMb = bytesSinceLast / (1024 * 1024) / elapsed;
+        speedStr = `${speedMb.toFixed(1)} Mo/s`;
+        lastTime = now;
+        bytesSinceLast = 0;
+      }
+
+      const percent = totalBytes > 0 ? Math.min(100, Math.round((receivedBytes / totalBytes) * 100)) : 0;
+      appUpdateState = {
+        ...appUpdateState,
+        status: 'downloading',
+        downloadedBytes: receivedBytes,
+        totalBytes,
+        percent,
+        speed: speedStr,
+        message: `Téléchargement : ${percent}% (${(receivedBytes / (1024 * 1024)).toFixed(1)} Mo / ${(totalBytes / (1024 * 1024)).toFixed(1)} Mo)`,
+      };
+    });
+
+    res.pipe(fileStream);
+
+    fileStream.on('finish', () => {
+      fileStream.close();
+      appUpdateState = {
+        ...appUpdateState,
+        status: 'ready_to_install',
+        percent: 100,
+        downloadedBytes: receivedBytes,
+        totalBytes: receivedBytes,
+        speed: '',
+        message: 'Mise à jour prête à être installée !',
+        installerPath: destPath,
+      };
+    });
+
+    fileStream.on('error', (err) => {
+      appUpdateState.status = 'error';
+      appUpdateState.message = err.message;
+    });
+  });
+
+  req.on('error', (err) => {
+    appUpdateState.status = 'error';
+    appUpdateState.message = err.message;
+  });
+}
+
+app.post('/api/app/download-update', express.json(), async (req, res) => {
+  try {
+    let downloadUrl = req.body?.downloadUrl;
+    let targetVersion = req.body?.version || 'latest';
+
+    if (!downloadUrl) {
+      const fetchRes = await fetch('https://api.github.com/repos/vortexazur/FlowLuna/releases/latest', {
+        headers: { 'User-Agent': 'FlowLuna-App/1.1.5' },
+      });
+      if (fetchRes.ok) {
+        const data: any = await fetchRes.json();
+        const exeAsset = data.assets?.find((a: any) => a.name?.toLowerCase().endsWith('.exe'));
+        if (exeAsset) {
+          downloadUrl = exeAsset.browser_download_url;
+          targetVersion = (data.tag_name || '').replace(/^v/, '');
+        }
+      }
+    }
+
+    if (!downloadUrl) {
+      return res.status(400).json({ error: 'Aucun fichier installateur officiel trouvé sur GitHub.' });
+    }
+
+    const updatesDir = path.join(getFlowLunaDataDir(), 'updates');
+    fs.mkdirSync(updatesDir, { recursive: true });
+    const targetFile = path.join(updatesDir, `FlowLuna-Setup-${targetVersion}.exe`);
+
+    appUpdateState = {
+      status: 'downloading',
+      percent: 0,
+      downloadedBytes: 0,
+      totalBytes: 0,
+      speed: 'Connexion...',
+      message: 'Téléchargement de la mise à jour officielle...',
+      installerPath: targetFile,
+      latestVersion: targetVersion,
+    };
+
+    res.json({ success: true, message: 'Téléchargement démarré', targetFile });
+
+    downloadUpdateFileWithProgress(downloadUrl, targetFile);
+  } catch (err: any) {
+    appUpdateState = {
+      status: 'error',
+      percent: 0,
+      downloadedBytes: 0,
+      totalBytes: 0,
+      speed: '',
+      message: err.message || 'Erreur lors du téléchargement de la mise à jour',
+    };
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get('/api/app/update-progress', (req, res) => {
+  res.json(appUpdateState);
+});
+
+app.post('/api/app/apply-update', express.json(), (req, res) => {
+  const installerPath = req.body?.installerPath || appUpdateState.installerPath;
+  if (!installerPath || !fs.existsSync(installerPath)) {
+    return res.status(400).json({ error: 'Fichier installateur introuvable sur le disque.' });
+  }
+
+  res.json({ success: true, message: 'Lancement de l’installateur officiel...' });
+
+  setTimeout(() => {
+    try {
+      const child = spawn(installerPath, [], {
+        detached: true,
+        stdio: 'ignore',
+      });
+      child.unref();
+      setTimeout(() => process.exit(0), 400);
+    } catch (e: any) {
+      console.error('Erreur lancement installateur:', e);
+    }
+  }, 500);
+});
+
 app.post('/api/discord/presence', express.json(), (req, res) => {
   res.json({ success: true });
 });

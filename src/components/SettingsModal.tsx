@@ -20,8 +20,10 @@ import {
   Radio,
   Film,
   Sliders,
+  Download,
+  ArrowUpCircle,
 } from 'lucide-react';
-import { PlayerSettings, AccentColor, APP_VERSION } from '../types';
+import { PlayerSettings, AccentColor, APP_VERSION, AppUpdateInfo, AppUpdateProgress } from '../types';
 import { SUPPORTED_LANGUAGES, getT } from '../i18n';
 import { CountryFlag } from './CountryFlag';
 
@@ -33,6 +35,7 @@ interface SettingsModalProps {
   tracksCount?: number;
   playlistsCount?: number;
   onDataReload?: () => Promise<void> | void;
+  initialTab?: SettingsTab;
 }
 
 const ACCENT_OPTIONS: { id: AccentColor; label: string; colorHex: string }[] = [
@@ -135,8 +138,9 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   settings,
   onChange,
   onDataReload,
+  initialTab,
 }) => {
-  const [activeTab, setActiveTab] = useState<SettingsTab>('appearance');
+  const [activeTab, setActiveTab] = useState<SettingsTab>(initialTab || 'appearance');
   const [binariesStatus, setBinariesStatus] = useState<any>(null);
   const [isUpdatingYtdlp, setIsUpdatingYtdlp] = useState(false);
   const [updateMessage, setUpdateMessage] = useState<{ text: string; type: 'success' | 'error' | 'info' } | null>(null);
@@ -145,6 +149,20 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   const [customFolders, setCustomFolders] = useState<string[]>([]);
   const [isUpdatingLibVlc, setIsUpdatingLibVlc] = useState(false);
   const [libVlcMessage, setLibVlcMessage] = useState<{ text: string; type: 'success' | 'error' | 'info' } | null>(null);
+
+  // App Auto-Update State
+  const [isCheckingUpdate, setIsCheckingUpdate] = useState(false);
+  const [appUpdateInfo, setAppUpdateInfo] = useState<AppUpdateInfo | null>(null);
+  const [isDownloadingAppUpdate, setIsDownloadingAppUpdate] = useState(false);
+  const [appUpdateProgress, setAppUpdateProgress] = useState<AppUpdateProgress | null>(null);
+  const [updateAlertMessage, setUpdateAlertMessage] = useState<{ text: string; type: 'success' | 'error' | 'info' } | null>(null);
+  const [showRestartModal, setShowRestartModal] = useState(false);
+
+  useEffect(() => {
+    if (initialTab) {
+      setActiveTab(initialTab);
+    }
+  }, [initialTab, isOpen]);
 
   // Close on Escape key
   useEffect(() => {
@@ -308,6 +326,105 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
     }
   };
 
+  const handleCheckAppUpdate = async () => {
+    setIsCheckingUpdate(true);
+    setUpdateAlertMessage(null);
+    try {
+      const res = await fetch('/api/app/check-update');
+      if (res.ok) {
+        const data: AppUpdateInfo = await res.json();
+        setAppUpdateInfo(data);
+        if (data.hasUpdate) {
+          setUpdateAlertMessage({
+            text: `Nouvelle version v${data.latestVersion} disponible !`,
+            type: 'success',
+          });
+        } else {
+          setUpdateAlertMessage({
+            text: `FlowLuna est parfaitement à jour (v${data.currentVersion}).`,
+            type: 'info',
+          });
+        }
+      } else {
+        throw new Error('Erreur lors de la vérification de mise à jour');
+      }
+    } catch {
+      setUpdateAlertMessage({
+        text: 'Impossible de joindre le serveur de mise à jour.',
+        type: 'error',
+      });
+    } finally {
+      setIsCheckingUpdate(false);
+    }
+  };
+
+  const handleStartAppUpdateDownload = async () => {
+    setIsDownloadingAppUpdate(true);
+    setUpdateAlertMessage(null);
+    try {
+      const res = await fetch('/api/app/download-update', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          downloadUrl: appUpdateInfo?.downloadUrl,
+          version: appUpdateInfo?.latestVersion,
+        }),
+      });
+
+      if (!res.ok) throw new Error('Erreur de démarrage du téléchargement');
+
+      const pollTimer = setInterval(async () => {
+        try {
+          const progRes = await fetch('/api/app/update-progress');
+          if (progRes.ok) {
+            const prog: AppUpdateProgress = await progRes.json();
+            setAppUpdateProgress(prog);
+
+            if (prog.status === 'ready_to_install') {
+              clearInterval(pollTimer);
+              setIsDownloadingAppUpdate(false);
+              setUpdateAlertMessage({
+                text: 'Mise à jour téléchargée avec succès ! Prête pour l’installation.',
+                type: 'success',
+              });
+            } else if (prog.status === 'error') {
+              clearInterval(pollTimer);
+              setIsDownloadingAppUpdate(false);
+              setUpdateAlertMessage({
+                text: prog.message || 'Erreur lors du téléchargement de la mise à jour',
+                type: 'error',
+              });
+            }
+          }
+        } catch {
+          clearInterval(pollTimer);
+          setIsDownloadingAppUpdate(false);
+        }
+      }, 500);
+    } catch (e: any) {
+      setIsDownloadingAppUpdate(false);
+      setUpdateAlertMessage({
+        text: e.message || 'Erreur lors du téléchargement',
+        type: 'error',
+      });
+    }
+  };
+
+  const handleApplyAppUpdate = async () => {
+    setShowRestartModal(false);
+    try {
+      if (window.electronAPI?.applyUpdate) {
+        await window.electronAPI.applyUpdate(appUpdateProgress?.installerPath);
+      } else {
+        await fetch('/api/app/apply-update', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ installerPath: appUpdateProgress?.installerPath }),
+        });
+      }
+    } catch {}
+  };
+
   if (!isOpen) return null;
 
   const t = getT(settings.language);
@@ -440,89 +557,197 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                 </div>
               </div>
 
-              {/* Effet Pure Glass (Translucidité & Verre Dépoli) */}
-              <div className="flex flex-col gap-3.5 bg-neutral-900/60 p-4.5 rounded-xl border border-neutral-800">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <Layers className="w-4 h-4 text-cyan-400" />
-                    <span className="text-xs font-bold text-neutral-200 uppercase tracking-wider">{t.pureGlassEffect}</span>
-                  </div>
-                  <span className="text-xs font-mono font-bold px-2.5 py-0.5 rounded-full bg-cyan-950/80 text-cyan-400 border border-cyan-500/30">
-                    {(settings.glassIntensity ?? 70)}% {(settings.glassIntensity ?? 70) === 100 ? '✨ Pure Glass' : (settings.glassIntensity ?? 70) === 0 ? 'Opaque' : 'Dépoli'}
-                  </span>
-                </div>
+              {/* Choix du Matériau / Effet Visuel : Pure Glass vs Mica & Acrylic */}
+              <div className="flex flex-col gap-2.5">
+                <label className="text-xs font-bold uppercase tracking-wider text-neutral-300">
+                  {t.visualEffectMode || 'Effet Visuel & Matériau de Fond'}
+                </label>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <button
+                    type="button"
+                    id="effect-glass-btn"
+                    onClick={() => updateSetting('backdropEffect', 'glass')}
+                    className={`p-3.5 rounded-xl border flex items-center justify-between transition-all cursor-pointer ${
+                      (settings.backdropEffect || 'glass') === 'glass'
+                        ? 'border-neutral-500 bg-neutral-800/90 text-white font-bold shadow-md ring-1 ring-neutral-400/30'
+                        : 'border-neutral-800 bg-neutral-900/60 text-neutral-400 hover:text-white hover:border-neutral-700'
+                    }`}
+                  >
+                    <div className="flex items-center gap-3">
+                      <div className="p-2 rounded-lg bg-cyan-500/10 text-cyan-400 border border-cyan-500/20">
+                        <Layers className="w-4 h-4" />
+                      </div>
+                      <div className="text-left">
+                        <span className="text-xs font-semibold block text-white">
+                          {t.visualEffectGlass || 'Pure Glass (Actuel)'}
+                        </span>
+                        <span className="text-[10px] text-neutral-400">
+                          {t.visualEffectGlassDesc || 'Verre dépoli vibrant, halos lumineux & intensité réglable'}
+                        </span>
+                      </div>
+                    </div>
+                    {(settings.backdropEffect || 'glass') === 'glass' && (
+                      <Check className="w-4 h-4 text-emerald-400" />
+                    )}
+                  </button>
 
-                <p className="text-xs text-neutral-400 leading-relaxed">
-                  {t.pureGlassDesc}
-                </p>
-
-                {/* Slider Cursor from 0% to 100% */}
-                <div className="flex flex-col gap-2.5 pt-1">
-                  <div className="flex items-center gap-3">
-                    <span className="text-[11px] font-mono text-neutral-500 font-semibold w-8">0%</span>
-                    <input
-                      type="range"
-                      min="0"
-                      max="100"
-                      step="1"
-                      value={settings.glassIntensity ?? 70}
-                      onChange={(e) => updateSetting('glassIntensity', parseInt(e.target.value, 10))}
-                      className="flex-1 h-2 bg-neutral-800 rounded-lg appearance-none cursor-pointer accent-cyan-400"
-                    />
-                    <span className="text-[11px] font-mono text-cyan-400 font-bold w-10 text-right">100%</span>
-                  </div>
-
-                  {/* Quick Presets */}
-                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 pt-1">
-                    {[
-                      { value: 0, label: t.glassOpaque },
-                      { value: 35, label: t.glassSubtle },
-                      { value: 70, label: t.glassBalanced },
-                      { value: 100, label: t.glassCrystal },
-                    ].map((preset) => {
-                      const isActive = (settings.glassIntensity ?? 70) === preset.value;
-                      return (
-                        <button
-                          key={preset.value}
-                          type="button"
-                          onClick={() => updateSetting('glassIntensity', preset.value)}
-                          className={`py-1.5 px-2 rounded-lg text-[11px] font-medium transition-all text-center cursor-pointer border ${
-                            isActive
-                              ? 'border-cyan-500/60 bg-cyan-500/20 text-cyan-200 font-bold shadow-xs ring-1 ring-cyan-500/30'
-                              : 'border-neutral-800 bg-neutral-900/60 text-neutral-400 hover:text-neutral-200 hover:border-neutral-700'
-                          }`}
-                        >
-                          {preset.label}
-                        </button>
-                      );
-                    })}
-                  </div>
-                </div>
-
-                {/* Live Visual Pure Glass Mini Preview */}
-                <div
-                  className="mt-1 p-3 rounded-xl border border-white/15 relative overflow-hidden flex items-center justify-between transition-all"
-                  style={{
-                    backdropFilter: `blur(${Math.round(((settings.glassIntensity ?? 70) / 100) * 24)}px)`,
-                    WebkitBackdropFilter: `blur(${Math.round(((settings.glassIntensity ?? 70) / 100) * 24)}px)`,
-                    backgroundColor:
-                      settings.theme === 'light'
-                        ? `rgba(255, 255, 255, ${Math.max(0.18, 1 - ((settings.glassIntensity ?? 70) / 100) * 0.65)})`
-                        : `rgba(18, 18, 24, ${Math.max(0.2, 1 - ((settings.glassIntensity ?? 70) / 100) * 0.7)})`,
-                    boxShadow: (settings.glassIntensity ?? 70) > 0 ? `0 8px 32px 0 rgba(0, 0, 0, ${0.12 + ((settings.glassIntensity ?? 70) / 100) * 0.28})` : 'none',
-                  }}
-                >
-                  <div className="flex items-center gap-2.5 z-10">
-                    <span className="w-2.5 h-2.5 rounded-full bg-cyan-400 animate-pulse shadow-[0_0_8px_#22d3ee]" />
-                    <span className="text-xs font-semibold text-neutral-200">
-                      {settings.theme === 'dark' ? 'Verre Dépoli Sombre OLED' : 'Verre Givré Clair Raffiné'}
-                    </span>
-                  </div>
-                  <span className="text-[10px] font-mono text-cyan-300 font-semibold px-2 py-0.5 rounded bg-cyan-950/60 border border-cyan-500/20 z-10">
-                    Flou {Math.round(((settings.glassIntensity ?? 70) / 100) * 28)}px
-                  </span>
+                  <button
+                    type="button"
+                    id="effect-mica-btn"
+                    onClick={() => updateSetting('backdropEffect', 'mica')}
+                    className={`p-3.5 rounded-xl border flex items-center justify-between transition-all cursor-pointer ${
+                      settings.backdropEffect === 'mica'
+                        ? 'border-neutral-500 bg-neutral-800/90 text-white font-bold shadow-md ring-1 ring-neutral-400/30'
+                        : 'border-neutral-800 bg-neutral-900/60 text-neutral-400 hover:text-white hover:border-neutral-700'
+                    }`}
+                  >
+                    <div className="flex items-center gap-3">
+                      <div className="p-2 rounded-lg bg-indigo-500/10 text-indigo-400 border border-indigo-500/20">
+                        <Sparkles className="w-4 h-4" />
+                      </div>
+                      <div className="text-left">
+                        <span className="text-xs font-semibold block text-white">
+                          {t.visualEffectMica || 'Mica & Acrylic (Windows 11)'}
+                        </span>
+                        <span className="text-[10px] text-neutral-400">
+                          {t.visualEffectMicaDesc || 'Design Fluent épuré, surfaces acryliques satinées'}
+                        </span>
+                      </div>
+                    </div>
+                    {settings.backdropEffect === 'mica' && (
+                      <Check className="w-4 h-4 text-emerald-400" />
+                    )}
+                  </button>
                 </div>
               </div>
+
+              {/* Si Pure Glass actif : Paramètres d'intensité */}
+              {(settings.backdropEffect || 'glass') === 'glass' ? (
+                <div className="flex flex-col gap-3.5 bg-neutral-900/60 p-4.5 rounded-xl border border-neutral-800">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <Layers className="w-4 h-4 text-cyan-400" />
+                      <span className="text-xs font-bold text-neutral-200 uppercase tracking-wider">{t.pureGlassEffect}</span>
+                    </div>
+                    <span className="text-xs font-mono font-bold px-2.5 py-0.5 rounded-full bg-cyan-950/80 text-cyan-400 border border-cyan-500/30">
+                      {(settings.glassIntensity ?? 70)}% {(settings.glassIntensity ?? 70) === 100 ? '✨ Pure Glass' : (settings.glassIntensity ?? 70) === 0 ? 'Opaque' : 'Dépoli'}
+                    </span>
+                  </div>
+
+                  <p className="text-xs text-neutral-400 leading-relaxed">
+                    {t.pureGlassDesc}
+                  </p>
+
+                  {/* Slider Cursor from 0% to 100% */}
+                  <div className="flex flex-col gap-2.5 pt-1">
+                    <div className="flex items-center gap-3">
+                      <span className="text-[11px] font-mono text-neutral-500 font-semibold w-8">0%</span>
+                      <input
+                        type="range"
+                        min="0"
+                        max="100"
+                        step="1"
+                        value={settings.glassIntensity ?? 70}
+                        onChange={(e) => updateSetting('glassIntensity', parseInt(e.target.value, 10))}
+                        className="flex-1 h-2 bg-neutral-800 rounded-lg appearance-none cursor-pointer accent-cyan-400"
+                      />
+                      <span className="text-[11px] font-mono text-cyan-400 font-bold w-10 text-right">100%</span>
+                    </div>
+
+                    {/* Quick Presets */}
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 pt-1">
+                      {[
+                        { value: 0, label: t.glassOpaque },
+                        { value: 35, label: t.glassSubtle },
+                        { value: 70, label: t.glassBalanced },
+                        { value: 100, label: t.glassCrystal },
+                      ].map((preset) => {
+                        const isActive = (settings.glassIntensity ?? 70) === preset.value;
+                        return (
+                          <button
+                            key={preset.value}
+                            type="button"
+                            onClick={() => updateSetting('glassIntensity', preset.value)}
+                            className={`py-1.5 px-2 rounded-lg text-[11px] font-medium transition-all text-center cursor-pointer border ${
+                              isActive
+                                ? 'border-cyan-500/60 bg-cyan-500/20 text-cyan-200 font-bold shadow-xs ring-1 ring-cyan-500/30'
+                                : 'border-neutral-800 bg-neutral-900/60 text-neutral-400 hover:text-neutral-200 hover:border-neutral-700'
+                            }`}
+                          >
+                            {preset.label}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  {/* Live Visual Pure Glass Mini Preview */}
+                  <div
+                    className="mt-1 p-3 rounded-xl border border-white/15 relative overflow-hidden flex items-center justify-between transition-all"
+                    style={{
+                      backdropFilter: `blur(${Math.round(((settings.glassIntensity ?? 70) / 100) * 24)}px)`,
+                      WebkitBackdropFilter: `blur(${Math.round(((settings.glassIntensity ?? 70) / 100) * 24)}px)`,
+                      backgroundColor:
+                        settings.theme === 'light'
+                          ? `rgba(255, 255, 255, ${Math.max(0.18, 1 - ((settings.glassIntensity ?? 70) / 100) * 0.65)})`
+                          : `rgba(18, 18, 24, ${Math.max(0.2, 1 - ((settings.glassIntensity ?? 70) / 100) * 0.7)})`,
+                      boxShadow: (settings.glassIntensity ?? 70) > 0 ? `0 8px 32px 0 rgba(0, 0, 0, ${0.12 + ((settings.glassIntensity ?? 70) / 100) * 0.28})` : 'none',
+                    }}
+                  >
+                    <div className="flex items-center gap-2.5 z-10">
+                      <span className="w-2.5 h-2.5 rounded-full bg-cyan-400 animate-pulse shadow-[0_0_8px_#22d3ee]" />
+                      <span className="text-xs font-semibold text-neutral-200">
+                        {settings.theme === 'dark' ? 'Verre Dépoli Sombre OLED' : 'Verre Givré Clair Raffiné'}
+                      </span>
+                    </div>
+                    <span className="text-[10px] font-mono text-cyan-300 font-semibold px-2 py-0.5 rounded bg-cyan-950/60 border border-cyan-500/20 z-10">
+                      Flou {Math.round(((settings.glassIntensity ?? 70) / 100) * 28)}px
+                    </span>
+                  </div>
+                </div>
+              ) : (
+                /* Si Mica & Acrylic actif : Description & Aperçu Fluent */
+                <div className="flex flex-col gap-3.5 bg-neutral-900/60 p-4.5 rounded-xl border border-neutral-800">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <Sparkles className="w-4 h-4 text-indigo-400" />
+                      <span className="text-xs font-bold text-neutral-200 uppercase tracking-wider">
+                        Matériau Mica & Acrylic Fluent
+                      </span>
+                    </div>
+                    <span className="text-xs font-mono font-bold px-2.5 py-0.5 rounded-full bg-indigo-950/80 text-indigo-400 border border-indigo-500/30">
+                      Windows 11 Natif
+                    </span>
+                  </div>
+
+                  <p className="text-xs text-neutral-400 leading-relaxed">
+                    Le mode <strong className="text-white">Mica & Acrylic</strong> adopte l'esthétique officielle de Windows 11 Fluent Design. Il élimine les reflets vifs au profit de textures acryliques satinées à forte absorption, pour un environnement d'écoute sobre, apaisant et élégant.
+                  </p>
+
+                  <div
+                    className="mt-1 p-3.5 rounded-xl border border-white/15 relative overflow-hidden flex items-center justify-between transition-all"
+                    style={{
+                      backdropFilter: 'blur(36px) saturate(130%)',
+                      WebkitBackdropFilter: 'blur(36px) saturate(130%)',
+                      backgroundColor:
+                        settings.theme === 'light'
+                          ? 'rgba(255, 255, 255, 0.92)'
+                          : 'rgba(26, 26, 34, 0.9)',
+                      boxShadow: '0 8px 30px rgba(0, 0, 0, 0.25)',
+                    }}
+                  >
+                    <div className="flex items-center gap-2.5 z-10">
+                      <span className="w-2.5 h-2.5 rounded-full bg-indigo-400 shadow-[0_0_8px_#818cf8]" />
+                      <span className="text-xs font-semibold text-neutral-200">
+                        {settings.theme === 'dark' ? 'Surface Acrylique Sombre Fluent' : 'Surface Acrylique Claire Satinée'}
+                      </span>
+                    </div>
+                    <span className="text-[10px] font-mono text-indigo-300 font-semibold px-2 py-0.5 rounded bg-indigo-950/60 border border-indigo-500/20 z-10">
+                      DWM Mica / Acrylic
+                    </span>
+                  </div>
+                </div>
+              )}
 
               {/* Couleur d'Accentuation */}
               <div className="flex flex-col gap-2.5">
@@ -823,6 +1048,136 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
           {/* TAB 4: MOTEURS & FICHIERS */}
           {activeTab === 'system' && (
             <div className="flex flex-col gap-5 animate-in fade-in duration-150">
+              {/* Mises à jour du Logiciel FlowLuna */}
+              <div className="flex flex-col gap-3.5 bg-neutral-900/60 p-4.5 rounded-xl border border-neutral-800">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <ArrowUpCircle className="w-4 h-4 text-cyan-400" />
+                    <span className="text-xs uppercase tracking-wider text-neutral-300 font-bold">
+                      {t.softwareUpdateTitle || 'Mise à jour du Logiciel FlowLuna'}
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-[11px] font-mono px-2.5 py-1 rounded-full bg-cyan-950/80 text-cyan-300 border border-cyan-500/30 font-semibold">
+                      v{APP_VERSION}
+                    </span>
+                    <button
+                      type="button"
+                      id="check-app-update-btn"
+                      onClick={handleCheckAppUpdate}
+                      disabled={isCheckingUpdate || isDownloadingAppUpdate}
+                      className="px-3 py-1.5 rounded-xl text-xs font-semibold bg-cyan-950/80 hover:bg-cyan-900 text-cyan-200 border border-cyan-500/30 flex items-center gap-2 transition-all cursor-pointer disabled:opacity-50 shadow-xs"
+                    >
+                      <RefreshCw className={`w-3.5 h-3.5 ${isCheckingUpdate ? 'animate-spin text-cyan-300' : 'text-cyan-400'}`} />
+                      <span>{isCheckingUpdate ? (t.checkingUpdate || 'Vérification...') : (t.checkUpdateBtn || 'Rechercher une mise à jour')}</span>
+                    </button>
+                  </div>
+                </div>
+
+                <p className="text-xs text-neutral-400 leading-relaxed">
+                  {t.softwareUpdateDesc || 'Téléchargez et installez directement les dernières versions officielles avec correctifs et nouveautés.'}
+                </p>
+
+                {/* Feedback alert */}
+                {updateAlertMessage && (
+                  <div
+                    className={`p-3 rounded-xl border text-xs flex items-center gap-2.5 animate-in fade-in ${
+                      updateAlertMessage.type === 'success'
+                        ? 'bg-emerald-950/60 border-emerald-500/40 text-emerald-200'
+                        : updateAlertMessage.type === 'info'
+                        ? 'bg-cyan-950/60 border-cyan-500/40 text-cyan-200'
+                        : 'bg-rose-950/60 border-rose-500/40 text-rose-200'
+                    }`}
+                  >
+                    {updateAlertMessage.type === 'success' ? (
+                      <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+                    ) : updateAlertMessage.type === 'info' ? (
+                      <CheckCircle2 className="w-4 h-4 text-cyan-400 shrink-0" />
+                    ) : (
+                      <AlertCircle className="w-4 h-4 text-rose-400 shrink-0" />
+                    )}
+                    <span>{updateAlertMessage.text}</span>
+                  </div>
+                )}
+
+                {/* Update available panel */}
+                {appUpdateInfo?.hasUpdate && (
+                  <div className="p-4 rounded-xl bg-cyan-950/30 border border-cyan-500/30 flex flex-col gap-3 animate-in fade-in">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs font-bold text-white">
+                          FlowLuna v{appUpdateInfo.latestVersion}
+                        </span>
+                        <span className="text-[10px] uppercase font-mono px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-300 font-semibold border border-emerald-500/30">
+                          {t.updateAvailable || 'Nouvelle version !'}
+                        </span>
+                      </div>
+                      {appUpdateProgress?.status === 'ready_to_install' ? (
+                        <button
+                          type="button"
+                          id="install-app-update-btn"
+                          onClick={() => setShowRestartModal(true)}
+                          className="px-3.5 py-1.5 rounded-xl text-xs font-semibold bg-emerald-600 hover:bg-emerald-500 text-white flex items-center gap-2 shadow-lg shadow-emerald-950/50 transition-all cursor-pointer active:scale-95"
+                        >
+                          <ArrowUpCircle className="w-3.5 h-3.5" />
+                          <span>{t.restartToUpdateBtn || 'Redémarrer et Installer'}</span>
+                        </button>
+                      ) : !isDownloadingAppUpdate ? (
+                        <button
+                          type="button"
+                          id="download-app-update-btn"
+                          onClick={handleStartAppUpdateDownload}
+                          className="px-3.5 py-1.5 rounded-xl text-xs font-semibold bg-cyan-600 hover:bg-cyan-500 text-white flex items-center gap-2 shadow-lg shadow-cyan-950/50 transition-all cursor-pointer active:scale-95"
+                        >
+                          <Download className="w-3.5 h-3.5" />
+                          <span>{t.downloadUpdateBtn || 'Télécharger la mise à jour'}</span>
+                        </button>
+                      ) : null}
+                    </div>
+
+                    {appUpdateInfo.releaseNotes && (
+                      <p className="text-[11px] text-neutral-300 bg-neutral-900/80 p-2.5 rounded-lg border border-neutral-800 line-clamp-3">
+                        {appUpdateInfo.releaseNotes}
+                      </p>
+                    )}
+
+                    {/* Download Progress Bar */}
+                    {(isDownloadingAppUpdate || appUpdateProgress?.status === 'downloading') && (
+                      <div className="flex flex-col gap-2 pt-1">
+                        <div className="flex items-center justify-between text-xs">
+                          <span className="text-neutral-300 font-medium flex items-center gap-2">
+                            <RefreshCw className="w-3 h-3 animate-spin text-cyan-400" />
+                            <span>{t.downloadingUpdate || 'Téléchargement de la mise à jour...'}</span>
+                          </span>
+                          <span className="font-mono text-cyan-300 font-bold">
+                            {(appUpdateProgress?.percent || 0).toFixed(0)}%
+                          </span>
+                        </div>
+                        <div className="w-full h-2 rounded-full bg-neutral-800 overflow-hidden border border-neutral-700">
+                          <div
+                            className="h-full bg-gradient-to-r from-cyan-500 to-emerald-400 transition-all duration-300"
+                            style={{ width: `${Math.min(100, Math.max(0, appUpdateProgress?.percent || 0))}%` }}
+                          />
+                        </div>
+                        <div className="flex items-center justify-between text-[11px] text-neutral-400 font-mono">
+                          <span>
+                            {(appUpdateProgress?.downloadedBytes
+                              ? (appUpdateProgress.downloadedBytes / (1024 * 1024)).toFixed(1)
+                              : appUpdateProgress?.downloadedMb?.toFixed(1) || '0')}{' '}
+                            / {(appUpdateProgress?.totalBytes
+                              ? (appUpdateProgress.totalBytes / (1024 * 1024)).toFixed(1)
+                              : appUpdateProgress?.totalMb?.toFixed(1) || '?')} Mo
+                          </span>
+                          <span>
+                            {appUpdateProgress?.speed || (appUpdateProgress?.speedMbS ? `${appUpdateProgress.speedMbS.toFixed(1)} Mo/s` : '')}
+                          </span>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+
               {/* Bibliothèque Locale & Détection Musicale PC */}
               <div className="flex flex-col gap-3.5 bg-neutral-900/60 p-4.5 rounded-xl border border-neutral-800">
                 <div className="flex items-center justify-between">
@@ -1105,6 +1460,56 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
           </button>
         </div>
       </div>
+
+      {/* Modal Confirmation de Redémarrage pour Mise à jour */}
+      {showRestartModal && (
+        <div
+          className="fixed inset-0 z-[60] flex items-center justify-center bg-black/75 backdrop-blur-md p-4 animate-in fade-in"
+          onClick={(e) => {
+            e.stopPropagation();
+            setShowRestartModal(false);
+          }}
+        >
+          <div
+            className="w-full max-w-md rounded-2xl border border-neutral-700 bg-[#161622] p-6 shadow-2xl text-neutral-100 flex flex-col gap-4 animate-in zoom-in-95 duration-150"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center gap-3">
+              <div className="p-3 rounded-xl bg-cyan-500/10 text-cyan-400 border border-cyan-500/20">
+                <ArrowUpCircle className="w-6 h-6 text-cyan-400" />
+              </div>
+              <div>
+                <h4 className="text-sm font-bold text-white">Redémarrer FlowLuna ?</h4>
+                <p className="text-xs text-neutral-400 mt-0.5">
+                  Installation de FlowLuna v{appUpdateInfo?.latestVersion || 'nouvelle'}
+                </p>
+              </div>
+            </div>
+            <p className="text-xs text-neutral-300 leading-relaxed">
+              {t.updateReadyPrompt ||
+                'La mise à jour a été téléchargée avec succès. Redémarrer FlowLuna maintenant pour l’installer ?'}
+            </p>
+            <div className="flex items-center justify-end gap-2.5 pt-2">
+              <button
+                type="button"
+                onClick={() => setShowRestartModal(false)}
+                className="px-4 py-2 rounded-xl text-xs font-semibold bg-neutral-800 hover:bg-neutral-700 text-neutral-300 transition-colors cursor-pointer"
+              >
+                Annuler
+              </button>
+              <button
+                type="button"
+                id="confirm-restart-install-btn"
+                onClick={handleApplyAppUpdate}
+                className="px-4 py-2 rounded-xl text-xs font-semibold bg-emerald-600 hover:bg-emerald-500 text-white shadow-lg shadow-emerald-950/50 flex items-center gap-2 transition-all cursor-pointer active:scale-95"
+              >
+                <ArrowUpCircle className="w-4 h-4" />
+                <span>{t.restartToUpdateBtn || 'Redémarrer et Installer'}</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

@@ -847,4 +847,221 @@ html.light .glass-modal {
   box-shadow: inset 0 1px 2px 0 rgba(255, 255, 255, 0.95), 0 25px 60px -15px rgba(15, 23, 42, 0.12) !important;
 }
 
+/* =========================================================================
+   16. COMPREHENSIVE LIGHT THEME HARMONIZATION ACROSS ALL MODALS & MENUS
+   Harmonizes every dialog to match the Equalizer modal standard (Image 1):
+   Pristine light cards, soft borders (#e2e8f0), dark text, elegant pills.
+   ========================================================================= */
+
+[data-theme="light"] #settings-modal-content,
+[data-theme="light"] #audio-merger-content,
+[data-theme="light"] #duplicate-finder-content,
+[data-theme="light"] #audio-trimmer-modal-content,
+[data-theme="light"] #track-tag-editor-content,
+[data-theme="light"] #command-palette-content,
+[data-theme="light"] #listening-stats-content,
+[data-theme="light"] #manage-sidebar-playlists-card,
+[data-theme="light"] #create-playlist-modal-card,
+[data-theme="light"] #edit-playlist-modal-card,
+[data-theme="light"] #add-to-playlist-modal-card {
+  background-color: #ffffff !important;
+  border-color: #e2e8f0 !important;
+  color: #0f172a !important;
+  box-shadow: 0 25px 50px -12px rgba(15, 23, 42, 0.12), 0 0 0 1px rgba(15, 23, 42, 0.05) !important;
+}
+
+/* Modal Headers & Footers in Light Mode */
+[data-theme="light"] #settings-modal-content .border-b,
+[data-theme="light"] #settings-modal-content .border-t,
+[data-theme="light"] #audio-merger-content .border-b,
+[data-theme="light"] #duplicate-finder-content .border-b,
+[data-theme="light"] #audio-trimmer-modal-content .border-b,
+[data-theme="light"] #track-tag-editor-content .border-b,
+[data-theme="light"] #command-palette-content .border-b,
+[data-theme="light"] #listening-stats-content .border-b {
+  background-color: #f8fafc !important;
+  border-color: #e2e8f0 !important;
+}
+
+/* Inner Sections, Cards, and Inputs inside all Modals */
+[data-theme="light"] #settings-modal-content .bg-neutral-900\/60,
+[data-theme="light"] #settings-modal-content .bg-neutral-950\/60,
+[data-theme="light"] #audio-merger-content .bg-neutral-950\/60,
+[data-theme="light"] #duplicate-finder-content .bg-neutral-950\/60,
+[data-theme="light"] #track-tag-editor-content .bg-neutral-950\/60,
+[data-theme="light"] #listening-stats-content .bg-neutral-950\/60 {
+  background-color: #f8fafc !important;
+  border-color: #e2e8f0 !important;
+}
+
+/* Headings and primary text in Modals */
+[data-theme="light"] #settings-modal-content h1,
+[data-theme="light"] #settings-modal-content h2,
+[data-theme="light"] #settings-modal-content h3,
+[data-theme="light"] #settings-modal-content h4,
+[data-theme="light"] #audio-merger-content h2,
+[data-theme="light"] #duplicate-finder-content h2,
+[data-theme="light"] #audio-trimmer-modal-content h2,
+[data-theme="light"] #track-tag-editor-content h2,
+[data-theme="light"] #listening-stats-content h2 {
+  color: #0f172a !important;
+}
+
+/* Secondary descriptions */
+[data-theme="light"] #settings-modal-content p,
+[data-theme="light"] #audio-merger-content p,
+[data-theme="light"] #duplicate-finder-content p,
+[data-theme="light"] #audio-trimmer-modal-content p,
+[data-theme="light"] #track-tag-editor-content p,
+[data-theme="light"] #listening-stats-content p {
+  color: #64748b !important;
+}
+
+/* Inputs and textareas inside Modals */
+[data-theme="light"] #settings-modal-content input,
+[data-theme="light"] #settings-modal-content textarea,
+[data-theme="light"] #audio-merger-content input,
+[data-theme="light"] #duplicate-finder-content input,
+[data-theme="light"] #track-tag-editor-content input,
+[data-theme="light"] #track-tag-editor-content textarea,
+[data-theme="light"] #command-palette-content input {
+  background-color: #ffffff !important;
+  border-color: #cbd5e1 !important;
+  color: #0f172a !important;
+}
+
+[data-theme="light"] #command-palette-content input::placeholder {
+  color: #94a3b8 !important;
+}
+
+/* Toggle Switches & Badges */
+[data-theme="light"] [role="switch"] {
+  background-color: #e2e8f0 !important;
+  border-color: #cbd5e1 !important;
+}
+
+[data-theme="light"] [role="switch"][aria-checked="true"] {
+  border-color: transparent !important;
+}
+
+/* =========================================================================
+   17. WINDOWS 11 MICA & ACRYLIC DESIGN SYSTEM ([data-effect="mica"])
+   Subtle frosted acrylic texture, soft ambient tint, zero harsh glow blobs.
+   Seamlessly adapts to both Dark mode and Light mode.
+   ========================================================================= */
+
+/* Dark Mode Mica & Acrylic */
+[data-effect="mica"]:not([data-theme="light"]) #app-root-container,
+[data-effect="mica"][data-theme="dark"] #app-root-container {
+  background-color: rgba(14, 14, 22, 0.90) !important;
+}
+
+[data-effect="mica"]:not([data-theme="light"]) .glass-sidebar,
+[data-effect="mica"][data-theme="dark"] .glass-sidebar {
+  background-color: rgba(18, 18, 26, 0.85) !important;
+  backdrop-filter: blur(32px) saturate(140%) !important;
+  -webkit-backdrop-filter: blur(32px) saturate(140%) !important;
+  border-right-color: rgba(255, 255, 255, 0.08) !important;
+  box-shadow: inset -1px 0 0 0 rgba(255, 255, 255, 0.04);
+}
+
+[data-effect="mica"]:not([data-theme="light"]) .glass-player,
+[data-effect="mica"][data-theme="dark"] .glass-player {
+  background-color: rgba(22, 22, 32, 0.90) !important;
+  backdrop-filter: blur(32px) saturate(140%) !important;
+  -webkit-backdrop-filter: blur(32px) saturate(140%) !important;
+  border-top-color: rgba(255, 255, 255, 0.08) !important;
+  box-shadow: 0 -8px 24px rgba(0, 0, 0, 0.35) !important;
+}
+
+[data-effect="mica"]:not([data-theme="light"]) .glass-main,
+[data-effect="mica"][data-theme="dark"] .glass-main {
+  background-color: rgba(14, 14, 20, 0.82) !important;
+  backdrop-filter: blur(24px) saturate(130%) !important;
+  -webkit-backdrop-filter: blur(24px) saturate(130%) !important;
+}
+
+[data-effect="mica"]:not([data-theme="light"]) .glass-card,
+[data-effect="mica"][data-theme="dark"] .glass-card {
+  background-color: rgba(26, 26, 38, 0.70) !important;
+  backdrop-filter: blur(24px) saturate(140%) !important;
+  -webkit-backdrop-filter: blur(24px) saturate(140%) !important;
+  border-color: rgba(255, 255, 255, 0.08) !important;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.25) !important;
+}
+
+[data-effect="mica"]:not([data-theme="light"]) .glass-modal,
+[data-effect="mica"][data-theme="dark"] .glass-modal,
+[data-effect="mica"]:not([data-theme="light"]) #settings-modal-content,
+[data-effect="mica"]:not([data-theme="light"]) #equalizer-modal-content,
+[data-effect="mica"]:not([data-theme="light"]) #audio-merger-content,
+[data-effect="mica"]:not([data-theme="light"]) #duplicate-finder-content,
+[data-effect="mica"]:not([data-theme="light"]) #command-palette-content,
+[data-effect="mica"]:not([data-theme="light"]) #listening-stats-content,
+[data-effect="mica"]:not([data-theme="light"]) #track-tag-editor-content,
+[data-effect="mica"]:not([data-theme="light"]) #audio-trimmer-modal-content {
+  background-color: rgba(22, 22, 32, 0.94) !important;
+  backdrop-filter: blur(40px) saturate(150%) !important;
+  -webkit-backdrop-filter: blur(40px) saturate(150%) !important;
+  border-color: rgba(255, 255, 255, 0.10) !important;
+  box-shadow: 0 25px 60px rgba(0, 0, 0, 0.6) !important;
+}
+
+/* Light Mode Mica & Acrylic */
+[data-effect="mica"][data-theme="light"] #app-root-container,
+[data-effect="mica"].light #app-root-container {
+  background-color: rgba(243, 244, 246, 0.92) !important;
+}
+
+[data-effect="mica"][data-theme="light"] .glass-sidebar,
+[data-effect="mica"].light .glass-sidebar {
+  background-color: rgba(249, 250, 251, 0.88) !important;
+  backdrop-filter: blur(32px) saturate(140%) !important;
+  -webkit-backdrop-filter: blur(32px) saturate(140%) !important;
+  border-right-color: rgba(0, 0, 0, 0.07) !important;
+  box-shadow: inset -1px 0 0 0 rgba(255, 255, 255, 0.8), 2px 0 16px rgba(0, 0, 0, 0.02) !important;
+}
+
+[data-effect="mica"][data-theme="light"] .glass-player,
+[data-effect="mica"].light .glass-player {
+  background-color: rgba(255, 255, 255, 0.92) !important;
+  backdrop-filter: blur(32px) saturate(140%) !important;
+  -webkit-backdrop-filter: blur(32px) saturate(140%) !important;
+  border-top-color: rgba(0, 0, 0, 0.07) !important;
+  box-shadow: 0 -8px 24px rgba(15, 23, 42, 0.04) !important;
+}
+
+[data-effect="mica"][data-theme="light"] .glass-main,
+[data-effect="mica"].light .glass-main {
+  background-color: rgba(243, 244, 246, 0.80) !important;
+  backdrop-filter: blur(24px) saturate(130%) !important;
+  -webkit-backdrop-filter: blur(24px) saturate(130%) !important;
+}
+
+[data-effect="mica"][data-theme="light"] .glass-card,
+[data-effect="mica"].light .glass-card {
+  background-color: rgba(255, 255, 255, 0.82) !important;
+  backdrop-filter: blur(24px) saturate(140%) !important;
+  -webkit-backdrop-filter: blur(24px) saturate(140%) !important;
+  border-color: rgba(226, 232, 240, 0.9) !important;
+  box-shadow: 0 4px 16px rgba(15, 23, 42, 0.04) !important;
+}
+
+[data-effect="mica"][data-theme="light"] .glass-modal,
+[data-effect="mica"].light .glass-modal,
+[data-effect="mica"][data-theme="light"] #settings-modal-content,
+[data-effect="mica"][data-theme="light"] #equalizer-modal-content,
+[data-effect="mica"][data-theme="light"] #audio-merger-content,
+[data-effect="mica"][data-theme="light"] #duplicate-finder-content,
+[data-effect="mica"][data-theme="light"] #command-palette-content,
+[data-effect="mica"][data-theme="light"] #listening-stats-content,
+[data-effect="mica"][data-theme="light"] #track-tag-editor-content,
+[data-effect="mica"][data-theme="light"] #audio-trimmer-modal-content {
+  background-color: rgba(255, 255, 255, 0.94) !important;
+  backdrop-filter: blur(40px) saturate(160%) !important;
+  -webkit-backdrop-filter: blur(40px) saturate(160%) !important;
+  border-color: rgba(0, 0, 0, 0.08) !important;
+  box-shadow: 0 25px 60px -10px rgba(15, 23, 42, 0.12) !important;
+}
+
 

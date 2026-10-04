@@ -124,6 +124,20 @@ public partial class MainWindow : Window
                         const handler = (e) => callback(e.detail);
                         window.addEventListener('media-control', handler);
                         return () => window.removeEventListener('media-control', handler);
+                    },
+                    applyUpdate: (installerPath) => {
+                        try {
+                            if (window.chrome?.webview?.hostObjects?.nativeHost) {
+                                window.chrome.webview.hostObjects.nativeHost.ApplyUpdate(installerPath);
+                            } else {
+                                window.chrome.webview.postMessage({ action: 'apply-update', installerPath });
+                            }
+                        } catch {}
+                    },
+                    setBackdrop: (effect, theme) => {
+                        try {
+                            window.chrome.webview.postMessage({ action: 'set-backdrop', effect, theme });
+                        } catch {}
                     }
                 };
             })();
@@ -246,7 +260,7 @@ public partial class MainWindow : Window
         }
     }
 
-    private void ApplyWindows11Backdrop()
+    private void ApplyWindows11Backdrop(string effect = "glass", string theme = "dark")
     {
         try
         {
@@ -254,15 +268,15 @@ public partial class MainWindow : Window
             if (hwnd == IntPtr.Zero) return;
 
             // DWMWA_USE_IMMERSIVE_DARK_MODE = 20
-            int darkMode = 1;
+            int darkMode = theme == "light" ? 0 : 1;
             DwmSetWindowAttribute(hwnd, 20, ref darkMode, sizeof(int));
 
             // DWMWA_WINDOW_CORNER_PREFERENCE = 33 (2 = DWMWCP_ROUND)
             int cornerPref = 2;
             DwmSetWindowAttribute(hwnd, 33, ref cornerPref, sizeof(int));
 
-            // DWMWA_SYSTEMBACKDROP_TYPE = 38 (3 = Acrylic, 2 = Mica)
-            int backdrop = 3;
+            // DWMWA_SYSTEMBACKDROP_TYPE = 38 (2 = Mica, 3 = Acrylic, 4 = MicaAlt)
+            int backdrop = (effect == "mica") ? 2 : 3;
             DwmSetWindowAttribute(hwnd, 38, ref backdrop, sizeof(int));
         }
         catch { }
@@ -296,6 +310,15 @@ public partial class MainWindow : Window
                         double w = doc.RootElement.TryGetProperty("width", out var wp) ? wp.GetDouble() : 360;
                         double h = doc.RootElement.TryGetProperty("height", out var hp) ? hp.GetDouble() : 240;
                         _nativeBridge?.SetCompactMode(enabled, w, h);
+                        break;
+                    case "set-backdrop":
+                        string? eff = doc.RootElement.TryGetProperty("effect", out var ep2) ? ep2.GetString() : "glass";
+                        string? thm = doc.RootElement.TryGetProperty("theme", out var tp) ? tp.GetString() : "dark";
+                        ApplyWindows11Backdrop(eff ?? "glass", thm ?? "dark");
+                        break;
+                    case "apply-update":
+                        string? ip = doc.RootElement.TryGetProperty("installerPath", out var ipp) ? ipp.GetString() : null;
+                        _nativeBridge?.ApplyUpdate(ip ?? "");
                         break;
                 }
             }

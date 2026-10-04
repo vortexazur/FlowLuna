@@ -32,6 +32,8 @@ export interface ElectronAPIType {
   setCompactMode?: (enabled: boolean, width?: number, height?: number) => void;
   selectMusicFolder: () => Promise<string | null>;
   selectMusicFiles: () => Promise<string[]>;
+  setBackdrop?: (effect: string, theme: string) => void;
+  applyUpdate?: (installerPath?: string) => Promise<any> | void;
 }
 
 declare global {

@@ -391,6 +391,14 @@ function setupIpcHandlers(): void {
     if (result.canceled) return [];
     return result.filePaths;
   });
+
+  ipcMain.handle('window-set-backdrop', (_event, effect: string, _theme: string) => {
+    if (mainWindow && process.platform === 'win32') {
+      try {
+        mainWindow.setBackgroundMaterial(effect === 'mica' ? 'mica' : 'acrylic');
+      } catch {}
+    }
+  });
 }
 
 // App lifecycle

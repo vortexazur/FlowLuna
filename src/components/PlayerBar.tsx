@@ -13,7 +13,6 @@ import {
   Heart,
   ListMusic,
   Maximize2,
-  CheckCircle2,
   Activity,
   FileText,
   PictureInPicture2,
@@ -192,15 +191,6 @@ export const PlayerBar: React.FC<PlayerBarProps> = ({
                 }`}>
                   {currentTrack.isVideo ? `🎥 ${currentTrack.format}` : currentTrack.format}
                 </span>
-                {currentTrack.isCachedOffline && (
-                  <span
-                    className="text-[9px] text-emerald-400 flex items-center gap-0.5 font-medium"
-                    title="Stocké dans le cache hors-ligne"
-                  >
-                    <CheckCircle2 className="w-2.5 h-2.5" />
-                    Hors-ligne
-                  </span>
-                )}
                 {isPlaying && (
                   <span className="text-[9px] text-neutral-400 flex items-center gap-1 font-mono">
                     <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />

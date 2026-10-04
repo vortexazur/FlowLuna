@@ -1,4 +1,4 @@
-export const APP_VERSION = '1.1.3';
+export const APP_VERSION = '1.1.5';
 
 export type MediaFormat =
   | 'mp3'
@@ -101,12 +101,39 @@ export type AccentColor =
 
 export type CompactPlayerDock = 'bottom' | 'top' | 'floating';
 
+export type BackdropEffect = 'glass' | 'mica';
+
 export type LanguageCode = 'fr' | 'en' | 'es' | 'de' | 'it' | 'pt' | 'ja' | 'zh' | 'ru';
+
+export interface AppUpdateInfo {
+  currentVersion: string;
+  latestVersion: string;
+  hasUpdate: boolean;
+  releaseName?: string;
+  releaseNotes?: string;
+  downloadUrl?: string;
+  assetName?: string;
+  publishedAt?: string;
+}
+
+export interface AppUpdateProgress {
+  status: 'idle' | 'checking' | 'available' | 'downloading' | 'ready_to_install' | 'error';
+  percent: number;
+  downloadedBytes: number;
+  totalBytes: number;
+  speed: string;
+  downloadedMb?: number;
+  totalMb?: number;
+  speedMbS?: number;
+  message?: string;
+  installerPath?: string;
+}
 
 export interface PlayerSettings {
   language?: LanguageCode;
   theme: ThemeMode;
   accent: AccentColor;
+  backdropEffect?: BackdropEffect; // 'glass' (Pure Glass / Verre dépoli) or 'mica' (Mica & Acrylic Fluent)
   glassIntensity?: number; // 0 (opaque) to 100% (pure crystal frosted glass)
   visualizerStyle: 'bars' | 'wave' | 'circle' | 'minimal' | 'pillars';
   crossfadeDuration: number; // seconds (0 to 12)

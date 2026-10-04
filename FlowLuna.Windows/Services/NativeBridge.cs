@@ -119,4 +119,9 @@ public class NativeBridge
             return "[]";
         });
     }
+
+    public void ApplyUpdate(string installerPath)
+    {
+        BinaryManager.ApplyAppUpdate(installerPath);
+    }
 }

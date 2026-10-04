@@ -19,8 +19,53 @@ export const SUPPORTED_LANGUAGES: LanguageOption[] = [
   { code: 'ru', name: 'Russe', nativeName: 'Русский', flag: '🇷🇺' },
 ];
 
+const extraTranslationsFr = {
+  visualEffectMode: 'Effet Visuel & Matériau de Fond',
+  visualEffectGlass: 'Pure Glass (Actuel)',
+  visualEffectGlassDesc: 'Verre dépoli vibrant, halos de lumière et intensité dynamique',
+  visualEffectMica: 'Mica & Acrylic (Windows 11)',
+  visualEffectMicaDesc: 'Esthétique sobre Windows 11 Fluent Design, textures acryliques satinées',
+  softwareUpdateTitle: 'Mise à jour du Logiciel FlowLuna',
+  softwareUpdateDesc: 'Téléchargez et installez directement les dernières versions officielles avec correctifs et nouveautés.',
+  checkUpdateBtn: 'Rechercher une mise à jour',
+  checkingUpdate: 'Vérification...',
+  updateAvailable: 'Nouvelle version disponible !',
+  updateUpToDate: 'FlowLuna est parfaitement à jour',
+  downloadUpdateBtn: 'Télécharger la mise à jour',
+  downloadingUpdate: 'Téléchargement de la mise à jour...',
+  restartToUpdateBtn: 'Redémarrer et Installer',
+  updateReadyPrompt: 'La mise à jour a été téléchargée avec succès. Redémarrer FlowLuna maintenant pour l’installer ?',
+  updateNotificationTitle: 'Mise à jour FlowLuna disponible',
+  updateNotificationText: 'Une nouvelle version est prête avec des améliorations visuelles et de performances.',
+  updateLaterBtn: 'Plus tard',
+  updateNowBtn: 'Mettre à jour',
+};
+
+const extraTranslationsEn = {
+  visualEffectMode: 'Visual Effect & Background Material',
+  visualEffectGlass: 'Pure Glass (Current)',
+  visualEffectGlassDesc: 'Vibrant frosted glass, dynamic light aura, and customizable blur',
+  visualEffectMica: 'Mica & Acrylic (Windows 11)',
+  visualEffectMicaDesc: 'Clean Windows 11 Fluent Design aesthetic, subtle acrylic satin textures',
+  softwareUpdateTitle: 'FlowLuna Software Update',
+  softwareUpdateDesc: 'Download and install the latest official releases with new features and fixes.',
+  checkUpdateBtn: 'Check for updates',
+  checkingUpdate: 'Checking...',
+  updateAvailable: 'New version available!',
+  updateUpToDate: 'FlowLuna is up to date',
+  downloadUpdateBtn: 'Download update',
+  downloadingUpdate: 'Downloading update...',
+  restartToUpdateBtn: 'Restart and Install',
+  updateReadyPrompt: 'Update downloaded successfully. Restart FlowLuna now to install it?',
+  updateNotificationTitle: 'FlowLuna Update Available',
+  updateNotificationText: 'A new version is ready with visual improvements and bug fixes.',
+  updateLaterBtn: 'Later',
+  updateNowBtn: 'Update',
+};
+
 export const translations = {
   fr: {
+    ...extraTranslationsFr,
     // Settings
     settingsTitle: 'Paramètres & Personnalisation',
     settingsSubtitle: "Configurez votre environnement d'écoute, langue et thèmes",
@@ -184,6 +229,7 @@ export const translations = {
   },
 
   en: {
+    ...extraTranslationsEn,
     // Settings
     settingsTitle: 'Settings & Customization',
     settingsSubtitle: 'Configure your listening environment, language, and visual themes',
@@ -347,6 +393,7 @@ export const translations = {
   },
 
   es: {
+    ...extraTranslationsFr,
     settingsTitle: 'Ajustes y Personalización',
     settingsSubtitle: 'Configura tu entorno de audio, idioma y temas visuales',
     languageSection: 'Idioma y Región',
@@ -503,6 +550,7 @@ export const translations = {
   },
 
   de: {
+    ...extraTranslationsFr,
     settingsTitle: 'Einstellungen & Personalisierung',
     settingsSubtitle: 'Konfigurieren Sie Hörumgebung, Sprache und Designs',
     languageSection: 'Sprache & Region',
@@ -659,6 +707,7 @@ export const translations = {
   },
 
   it: {
+    ...extraTranslationsFr,
     settingsTitle: 'Impostazioni & Personalizzazione',
     settingsSubtitle: "Configura l'ambiente di ascolto, lingua e temi",
     languageSection: 'Lingua & Regione',
@@ -815,6 +864,7 @@ export const translations = {
   },
 
   pt: {
+    ...extraTranslationsFr,
     settingsTitle: 'Definições & Personalização',
     settingsSubtitle: 'Configure o seu ambiente de áudio, idioma e temas',
     languageSection: 'Idioma & Região',
@@ -971,6 +1021,7 @@ export const translations = {
   },
 
   ja: {
+    ...extraTranslationsFr,
     settingsTitle: '設定とカスタマイズ',
     settingsSubtitle: '再生環境、言語、テーマを設定します',
     languageSection: '言語と地域',
@@ -1127,6 +1178,7 @@ export const translations = {
   },
 
   zh: {
+    ...extraTranslationsFr,
     settingsTitle: '设置与个性化',
     settingsSubtitle: '配置音频环境、语言与界面主题',
     languageSection: '语言与地区',
@@ -1283,6 +1335,7 @@ export const translations = {
   },
 
   ru: {
+    ...extraTranslationsFr,
     settingsTitle: 'Настройки и персонализация',
     settingsSubtitle: 'Настройте звуковое окружение, язык и темы оформления',
     languageSection: 'Язык и регион',
