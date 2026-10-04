@@ -452,25 +452,25 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
     >
       <div
         id="settings-modal-content"
-        className="w-full max-w-3xl max-h-[88vh] rounded-2xl border border-neutral-700/80 bg-[#13131c] text-neutral-100 shadow-2xl flex flex-col overflow-hidden animate-in zoom-in-95 duration-150"
+        className="w-full max-w-3xl max-h-[88vh] rounded-2xl border border-white/10 dark:border-white/10 glass-modal text-neutral-900 dark:text-neutral-100 shadow-2xl flex flex-col overflow-hidden animate-in zoom-in-95 duration-150 backdrop-blur-2xl"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
-        <div className="flex items-center justify-between px-6 py-4.5 border-b border-neutral-800 bg-[#0e0e16]">
+        <div className="flex items-center justify-between px-6 py-4.5 border-b border-white/10 bg-white/[0.04] dark:bg-black/[0.20] backdrop-blur-md">
           <div className="flex items-center gap-3">
-            <div className="p-2.5 rounded-xl bg-neutral-800 text-white border border-neutral-700/60 shadow-xs">
-              <Settings className="w-5 h-5 text-neutral-200" />
+            <div className="p-2.5 rounded-xl bg-white/10 dark:bg-white/5 text-neutral-800 dark:text-white border border-white/10 shadow-xs">
+              <Settings className="w-5 h-5 text-neutral-300" />
             </div>
             <div>
-              <h2 className="text-lg font-bold tracking-tight text-white">{t.settingsTitle}</h2>
-              <p className="text-xs text-neutral-400">{t.settingsSubtitle}</p>
+              <h2 className="text-lg font-bold tracking-tight text-neutral-900 dark:text-white">{t.settingsTitle}</h2>
+              <p className="text-xs text-neutral-500 dark:text-neutral-400">{t.settingsSubtitle}</p>
             </div>
           </div>
 
           <button
             type="button"
             onClick={onClose}
-            className="p-2 rounded-xl text-neutral-400 hover:text-white hover:bg-neutral-800 transition-colors cursor-pointer"
+            className="p-2 rounded-xl text-neutral-400 hover:text-neutral-900 dark:hover:text-white hover:bg-white/10 transition-colors cursor-pointer"
             title="Fermer"
           >
             <X className="w-5 h-5" />
@@ -478,7 +478,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
         </div>
 
         {/* Tab Navigation Bar */}
-        <div className="flex items-center gap-1.5 px-6 py-2.5 border-b border-neutral-800 bg-[#0e0e16] overflow-x-auto scrollbar-none flex-shrink-0">
+        <div className="flex items-center gap-1.5 px-6 py-2.5 border-b border-white/10 bg-white/[0.02] dark:bg-black/[0.12] overflow-x-auto scrollbar-none flex-shrink-0 backdrop-blur-md">
           {TABS.map((tab) => {
             const Icon = tab.icon;
             const isActive = activeTab === tab.id;
@@ -501,7 +501,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
         </div>
 
         {/* Tab Content Body */}
-        <div className="flex-1 overflow-y-auto p-6 flex flex-col gap-5 bg-[#13131c]">
+        <div className="flex-1 overflow-y-auto p-6 flex flex-col gap-5 bg-transparent">
           {/* TAB 1: APPARENCE */}
           {activeTab === 'appearance' && (
             <div className="flex flex-col gap-5 animate-in fade-in duration-150">
@@ -1447,14 +1447,14 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
         </div>
 
         {/* Footer */}
-        <div className="px-6 py-3.5 border-t border-neutral-800 bg-[#0e0e16] flex items-center justify-between">
+        <div className="px-6 py-3.5 border-t border-white/10 bg-white/[0.04] dark:bg-black/[0.20] flex items-center justify-between backdrop-blur-md">
           <span className="text-[11px] text-neutral-500 font-mono">
             FlowLuna v{APP_VERSION} • Tous les réglages sont sauvegardés automatiquement
           </span>
           <button
             type="button"
             onClick={onClose}
-            className="px-5 py-2 rounded-xl text-xs font-semibold bg-neutral-800 hover:bg-neutral-700 text-white transition-all cursor-pointer active:scale-95 border border-neutral-700/60"
+            className="px-5 py-2 rounded-xl text-xs font-semibold bg-white/10 hover:bg-white/20 text-neutral-900 dark:text-white transition-all cursor-pointer active:scale-95 border border-white/10"
           >
             Fermer
           </button>

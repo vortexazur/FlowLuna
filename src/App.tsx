@@ -1334,11 +1334,11 @@ export default function App() {
         '--glass-factor': '1',
         '--glass-blur': '28px',
         '--glass-border': isDark ? 'rgba(255, 255, 255, 0.08)' : 'rgba(0, 0, 0, 0.08)',
-        '--glass-sidebar-bg': isDark ? 'rgba(18, 18, 26, 0.82)' : 'rgba(248, 250, 252, 0.88)',
-        '--glass-main-bg': isDark ? 'rgba(14, 14, 20, 0.78)' : 'rgba(241, 245, 249, 0.85)',
-        '--glass-player-bg': isDark ? 'rgba(22, 22, 32, 0.88)' : 'rgba(255, 255, 255, 0.92)',
-        '--glass-card-bg': isDark ? 'rgba(26, 26, 38, 0.70)' : 'rgba(255, 255, 255, 0.82)',
-        '--glass-modal-bg': isDark ? 'rgba(22, 22, 32, 0.94)' : 'rgba(255, 255, 255, 0.95)',
+        '--glass-sidebar-bg': isDark ? 'rgba(16, 16, 24, 0.45)' : 'rgba(255, 255, 255, 0.50)',
+        '--glass-main-bg': isDark ? 'rgba(10, 10, 16, 0.25)' : 'rgba(245, 247, 250, 0.30)',
+        '--glass-player-bg': isDark ? 'rgba(18, 18, 28, 0.50)' : 'rgba(255, 255, 255, 0.60)',
+        '--glass-card-bg': isDark ? 'rgba(26, 26, 38, 0.35)' : 'rgba(255, 255, 255, 0.55)',
+        '--glass-modal-bg': isDark ? 'rgba(18, 18, 28, 0.70)' : 'rgba(255, 255, 255, 0.75)',
       } as React.CSSProperties;
     }
 
@@ -1382,8 +1382,8 @@ export default function App() {
       style={glassStyle}
       className={`w-screen h-screen flex flex-col overflow-hidden transition-colors duration-200 relative ${
         playerSettings.theme === 'light'
-          ? 'light bg-slate-100/90 text-slate-900'
-          : 'dark bg-neutral-950 text-neutral-100'
+          ? (backdropEffect === 'mica' ? 'light text-slate-900' : 'light bg-slate-100/90 text-slate-900')
+          : (backdropEffect === 'mica' ? 'dark text-neutral-100' : 'dark bg-neutral-950 text-neutral-100')
       }`}
     >
       {/* Pure Glass Ambient Glow & Refraction Layer (muted in Mica mode) */}
@@ -1560,7 +1560,7 @@ export default function App() {
             />
 
             {/* Scrollable Center Content View */}
-            <main id="main-content-scroll" className="flex-1 overflow-y-auto bg-neutral-950/90 glass-main relative z-10">
+            <main id="main-content-scroll" className="flex-1 overflow-y-auto glass-main relative z-10">
               {renderMainContent()}
             </main>
           </div>

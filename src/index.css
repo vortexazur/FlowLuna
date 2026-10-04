@@ -946,48 +946,48 @@ html.light .glass-modal {
 
 /* =========================================================================
    17. WINDOWS 11 MICA & ACRYLIC DESIGN SYSTEM ([data-effect="mica"])
-   Subtle frosted acrylic texture, soft ambient tint, zero harsh glow blobs.
+   Subtle frosted acrylic texture, soft ambient tint, genuine translucency.
    Seamlessly adapts to both Dark mode and Light mode.
    ========================================================================= */
 
 /* Dark Mode Mica & Acrylic */
 [data-effect="mica"]:not([data-theme="light"]) #app-root-container,
 [data-effect="mica"][data-theme="dark"] #app-root-container {
-  background-color: rgba(14, 14, 22, 0.90) !important;
+  background-color: rgba(10, 10, 16, 0.30) !important;
 }
 
 [data-effect="mica"]:not([data-theme="light"]) .glass-sidebar,
 [data-effect="mica"][data-theme="dark"] .glass-sidebar {
-  background-color: rgba(18, 18, 26, 0.85) !important;
-  backdrop-filter: blur(32px) saturate(140%) !important;
-  -webkit-backdrop-filter: blur(32px) saturate(140%) !important;
+  background-color: rgba(16, 16, 24, 0.45) !important;
+  backdrop-filter: blur(28px) saturate(140%) !important;
+  -webkit-backdrop-filter: blur(28px) saturate(140%) !important;
   border-right-color: rgba(255, 255, 255, 0.08) !important;
   box-shadow: inset -1px 0 0 0 rgba(255, 255, 255, 0.04);
 }
 
 [data-effect="mica"]:not([data-theme="light"]) .glass-player,
 [data-effect="mica"][data-theme="dark"] .glass-player {
-  background-color: rgba(22, 22, 32, 0.90) !important;
-  backdrop-filter: blur(32px) saturate(140%) !important;
-  -webkit-backdrop-filter: blur(32px) saturate(140%) !important;
+  background-color: rgba(18, 18, 28, 0.50) !important;
+  backdrop-filter: blur(28px) saturate(140%) !important;
+  -webkit-backdrop-filter: blur(28px) saturate(140%) !important;
   border-top-color: rgba(255, 255, 255, 0.08) !important;
-  box-shadow: 0 -8px 24px rgba(0, 0, 0, 0.35) !important;
+  box-shadow: 0 -8px 24px rgba(0, 0, 0, 0.25) !important;
 }
 
 [data-effect="mica"]:not([data-theme="light"]) .glass-main,
 [data-effect="mica"][data-theme="dark"] .glass-main {
-  background-color: rgba(14, 14, 20, 0.82) !important;
+  background-color: rgba(10, 10, 16, 0.25) !important;
   backdrop-filter: blur(24px) saturate(130%) !important;
   -webkit-backdrop-filter: blur(24px) saturate(130%) !important;
 }
 
 [data-effect="mica"]:not([data-theme="light"]) .glass-card,
 [data-effect="mica"][data-theme="dark"] .glass-card {
-  background-color: rgba(26, 26, 38, 0.70) !important;
-  backdrop-filter: blur(24px) saturate(140%) !important;
-  -webkit-backdrop-filter: blur(24px) saturate(140%) !important;
+  background-color: rgba(26, 26, 38, 0.35) !important;
+  backdrop-filter: blur(20px) saturate(140%) !important;
+  -webkit-backdrop-filter: blur(20px) saturate(140%) !important;
   border-color: rgba(255, 255, 255, 0.08) !important;
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.25) !important;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.20) !important;
 }
 
 [data-effect="mica"]:not([data-theme="light"]) .glass-modal,
@@ -1000,50 +1000,62 @@ html.light .glass-modal {
 [data-effect="mica"]:not([data-theme="light"]) #listening-stats-content,
 [data-effect="mica"]:not([data-theme="light"]) #track-tag-editor-content,
 [data-effect="mica"]:not([data-theme="light"]) #audio-trimmer-modal-content {
-  background-color: rgba(22, 22, 32, 0.94) !important;
-  backdrop-filter: blur(40px) saturate(150%) !important;
-  -webkit-backdrop-filter: blur(40px) saturate(150%) !important;
-  border-color: rgba(255, 255, 255, 0.10) !important;
-  box-shadow: 0 25px 60px rgba(0, 0, 0, 0.6) !important;
+  background-color: rgba(18, 18, 28, 0.65) !important;
+  backdrop-filter: blur(36px) saturate(150%) !important;
+  -webkit-backdrop-filter: blur(36px) saturate(150%) !important;
+  border-color: rgba(255, 255, 255, 0.12) !important;
+  box-shadow: 0 25px 60px rgba(0, 0, 0, 0.5) !important;
+}
+
+[data-effect="mica"]:not([data-theme="light"]) #settings-modal-content .bg-neutral-900\/60,
+[data-effect="mica"]:not([data-theme="light"]) #settings-modal-content .bg-neutral-900\/80,
+[data-effect="mica"]:not([data-theme="light"]) #settings-modal-content .bg-neutral-950\/60,
+[data-effect="mica"][data-theme="dark"] #settings-modal-content .bg-neutral-900\/60,
+[data-effect="mica"][data-theme="dark"] #settings-modal-content .bg-neutral-900\/80,
+[data-effect="mica"][data-theme="dark"] #settings-modal-content .bg-neutral-950\/60 {
+  background-color: rgba(255, 255, 255, 0.04) !important;
+  border-color: rgba(255, 255, 255, 0.08) !important;
+  backdrop-filter: blur(16px) !important;
+  -webkit-backdrop-filter: blur(16px) !important;
 }
 
 /* Light Mode Mica & Acrylic */
 [data-effect="mica"][data-theme="light"] #app-root-container,
 [data-effect="mica"].light #app-root-container {
-  background-color: rgba(243, 244, 246, 0.92) !important;
+  background-color: rgba(245, 247, 250, 0.35) !important;
 }
 
 [data-effect="mica"][data-theme="light"] .glass-sidebar,
 [data-effect="mica"].light .glass-sidebar {
-  background-color: rgba(249, 250, 251, 0.88) !important;
-  backdrop-filter: blur(32px) saturate(140%) !important;
-  -webkit-backdrop-filter: blur(32px) saturate(140%) !important;
+  background-color: rgba(255, 255, 255, 0.45) !important;
+  backdrop-filter: blur(28px) saturate(140%) !important;
+  -webkit-backdrop-filter: blur(28px) saturate(140%) !important;
   border-right-color: rgba(0, 0, 0, 0.07) !important;
   box-shadow: inset -1px 0 0 0 rgba(255, 255, 255, 0.8), 2px 0 16px rgba(0, 0, 0, 0.02) !important;
 }
 
 [data-effect="mica"][data-theme="light"] .glass-player,
 [data-effect="mica"].light .glass-player {
-  background-color: rgba(255, 255, 255, 0.92) !important;
-  backdrop-filter: blur(32px) saturate(140%) !important;
-  -webkit-backdrop-filter: blur(32px) saturate(140%) !important;
+  background-color: rgba(255, 255, 255, 0.55) !important;
+  backdrop-filter: blur(28px) saturate(140%) !important;
+  -webkit-backdrop-filter: blur(28px) saturate(140%) !important;
   border-top-color: rgba(0, 0, 0, 0.07) !important;
   box-shadow: 0 -8px 24px rgba(15, 23, 42, 0.04) !important;
 }
 
 [data-effect="mica"][data-theme="light"] .glass-main,
 [data-effect="mica"].light .glass-main {
-  background-color: rgba(243, 244, 246, 0.80) !important;
+  background-color: rgba(245, 247, 250, 0.30) !important;
   backdrop-filter: blur(24px) saturate(130%) !important;
   -webkit-backdrop-filter: blur(24px) saturate(130%) !important;
 }
 
 [data-effect="mica"][data-theme="light"] .glass-card,
 [data-effect="mica"].light .glass-card {
-  background-color: rgba(255, 255, 255, 0.82) !important;
-  backdrop-filter: blur(24px) saturate(140%) !important;
-  -webkit-backdrop-filter: blur(24px) saturate(140%) !important;
-  border-color: rgba(226, 232, 240, 0.9) !important;
+  background-color: rgba(255, 255, 255, 0.50) !important;
+  backdrop-filter: blur(20px) saturate(140%) !important;
+  -webkit-backdrop-filter: blur(20px) saturate(140%) !important;
+  border-color: rgba(226, 232, 240, 0.8) !important;
   box-shadow: 0 4px 16px rgba(15, 23, 42, 0.04) !important;
 }
 
@@ -1057,11 +1069,70 @@ html.light .glass-modal {
 [data-effect="mica"][data-theme="light"] #listening-stats-content,
 [data-effect="mica"][data-theme="light"] #track-tag-editor-content,
 [data-effect="mica"][data-theme="light"] #audio-trimmer-modal-content {
-  background-color: rgba(255, 255, 255, 0.94) !important;
-  backdrop-filter: blur(40px) saturate(160%) !important;
-  -webkit-backdrop-filter: blur(40px) saturate(160%) !important;
+  background-color: rgba(255, 255, 255, 0.70) !important;
+  backdrop-filter: blur(36px) saturate(160%) !important;
+  -webkit-backdrop-filter: blur(36px) saturate(160%) !important;
   border-color: rgba(0, 0, 0, 0.08) !important;
   box-shadow: 0 25px 60px -10px rgba(15, 23, 42, 0.12) !important;
+}
+
+[data-effect="mica"][data-theme="light"] #settings-modal-content .bg-neutral-900\/60,
+[data-effect="mica"][data-theme="light"] #settings-modal-content .bg-neutral-900\/80,
+[data-effect="mica"][data-theme="light"] #settings-modal-content .bg-neutral-950\/60,
+[data-effect="mica"].light #settings-modal-content .bg-neutral-900\/60,
+[data-effect="mica"].light #settings-modal-content .bg-neutral-900\/80,
+[data-effect="mica"].light #settings-modal-content .bg-neutral-950\/60 {
+  background-color: rgba(255, 255, 255, 0.65) !important;
+  border-color: rgba(226, 232, 240, 0.8) !important;
+  backdrop-filter: blur(16px) !important;
+  -webkit-backdrop-filter: blur(16px) !important;
+}
+
+/* Common Harmonization for Settings Modal & Videos View */
+#settings-modal-content .bg-neutral-900\/60,
+#settings-modal-content .bg-neutral-900\/80,
+#settings-modal-content .bg-neutral-950\/60 {
+  background-color: var(--glass-card-bg, rgba(20, 20, 30, 0.4)) !important;
+  border-color: var(--glass-border, rgba(255, 255, 255, 0.08)) !important;
+  backdrop-filter: blur(14px) !important;
+  -webkit-backdrop-filter: blur(14px) !important;
+}
+
+[data-theme="light"] #settings-modal-content .bg-neutral-900\/60,
+[data-theme="light"] #settings-modal-content .bg-neutral-900\/80,
+[data-theme="light"] #settings-modal-content .bg-neutral-950\/60,
+html.light #settings-modal-content .bg-neutral-900\/60,
+html.light #settings-modal-content .bg-neutral-900\/80,
+html.light #settings-modal-content .bg-neutral-950\/60 {
+  background-color: rgba(255, 255, 255, 0.65) !important;
+  border-color: rgba(226, 232, 240, 0.8) !important;
+}
+
+#videos-view {
+  background: transparent !important;
+}
+
+#flowluna-titlebar {
+  background-color: rgba(10, 10, 16, 0.40) !important;
+  backdrop-filter: blur(20px) !important;
+  -webkit-backdrop-filter: blur(20px) !important;
+}
+
+[data-theme="light"] #flowluna-titlebar,
+html.light #flowluna-titlebar {
+  background-color: rgba(255, 255, 255, 0.50) !important;
+  border-bottom-color: rgba(0, 0, 0, 0.06) !important;
+  color: #1e293b !important;
+}
+
+[data-effect="mica"]:not([data-theme="light"]) #flowluna-titlebar,
+[data-effect="mica"][data-theme="dark"] #flowluna-titlebar {
+  background-color: rgba(10, 10, 16, 0.20) !important;
+}
+
+[data-effect="mica"][data-theme="light"] #flowluna-titlebar,
+[data-effect="mica"].light #flowluna-titlebar {
+  background-color: rgba(255, 255, 255, 0.35) !important;
 }
 
 

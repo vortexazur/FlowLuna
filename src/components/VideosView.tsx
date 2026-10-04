@@ -62,7 +62,7 @@ export const VideosView: React.FC<VideosViewProps> = ({
   };
 
   return (
-    <div className="flex-1 h-full overflow-y-auto p-6 md:p-8 flex flex-col gap-6 select-none bg-neutral-950">
+    <div id="videos-view" className="flex-1 h-full overflow-y-auto p-6 md:p-8 flex flex-col gap-6 select-none">
       {/* Hidden file input for videos */}
       <input
         ref={fileInputRef}
@@ -74,19 +74,19 @@ export const VideosView: React.FC<VideosViewProps> = ({
       />
 
       {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-neutral-800/80 pb-6">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-white/10 pb-6">
         <div className="flex items-center gap-3.5">
-          <div className="p-3 rounded-2xl bg-sky-950/80 border border-sky-500/30 text-sky-400 shadow-sm">
+          <div className="p-3 rounded-2xl bg-sky-500/15 border border-sky-500/30 text-sky-400 shadow-sm backdrop-blur-md">
             <Film className="w-6 h-6" />
           </div>
           <div>
-            <h1 className="text-2xl font-black text-white tracking-tight flex items-center gap-2.5">
+            <h1 className="text-2xl font-black text-neutral-900 dark:text-white tracking-tight flex items-center gap-2.5">
               <span>Lecteur Vidéo</span>
-              <span className="text-xs font-mono font-semibold px-2 py-0.5 rounded-full bg-sky-950 border border-sky-500/30 text-sky-400">
+              <span className="text-xs font-mono font-semibold px-2 py-0.5 rounded-full bg-sky-500/15 border border-sky-500/30 text-sky-400">
                 {videoTracks.length} {videoTracks.length > 1 ? 'vidéos' : 'vidéo'}
               </span>
             </h1>
-            <p className="text-xs text-neutral-400 mt-0.5">
+            <p className="text-xs text-neutral-500 dark:text-neutral-400 mt-0.5">
               Lecture fluide MP4, WebM, MKV, MOV avec son Hi-Fi et égaliseur matériel
             </p>
           </div>
@@ -107,9 +107,9 @@ export const VideosView: React.FC<VideosViewProps> = ({
 
       {/* Currently Playing Banner (if a video is active) */}
       {currentVideo && (
-        <div className="relative rounded-2xl border border-sky-500/30 bg-gradient-to-r from-sky-950/50 via-neutral-900/80 to-neutral-900/60 p-4 md:p-5 flex flex-col md:flex-row items-center justify-between gap-4 shadow-xl overflow-hidden group">
+        <div className="relative rounded-2xl glass-card border border-sky-500/30 bg-sky-500/10 p-4 md:p-5 flex flex-col md:flex-row items-center justify-between gap-4 shadow-xl overflow-hidden group backdrop-blur-xl">
           <div className="flex items-center gap-4 min-w-0 w-full md:w-auto">
-            <div className="relative w-24 h-16 md:w-32 md:h-20 rounded-xl overflow-hidden bg-neutral-900 border border-neutral-700/60 shrink-0">
+            <div className="relative w-24 h-16 md:w-32 md:h-20 rounded-xl overflow-hidden bg-black/40 border border-white/10 shrink-0">
               <img
                 src={currentVideo.coverUrl}
                 alt={currentVideo.title}
@@ -127,10 +127,10 @@ export const VideosView: React.FC<VideosViewProps> = ({
                 <span className="w-2 h-2 rounded-full bg-sky-400 animate-ping" />
                 En cours de lecture
               </span>
-              <h3 className="text-white font-bold text-sm md:text-base truncate mt-0.5">
+              <h3 className="text-neutral-900 dark:text-white font-bold text-sm md:text-base truncate mt-0.5">
                 {currentVideo.title}
               </h3>
-              <p className="text-xs text-neutral-400 truncate">
+              <p className="text-xs text-neutral-500 dark:text-neutral-300 truncate">
                 {currentVideo.artist} • {formatDuration(currentVideo.duration)}
               </p>
             </div>
@@ -149,12 +149,12 @@ export const VideosView: React.FC<VideosViewProps> = ({
 
       {/* Videos List / Grid */}
       {videoTracks.length === 0 ? (
-        <div className="flex-1 flex flex-col items-center justify-center p-12 text-center border-2 border-dashed border-neutral-800 rounded-3xl bg-neutral-900/20 my-auto">
-          <div className="w-16 h-16 rounded-2xl bg-neutral-900 border border-neutral-800 flex items-center justify-center text-sky-400 mb-4 shadow-inner">
+        <div className="flex-1 flex flex-col items-center justify-center p-12 text-center border-2 border-dashed border-white/15 rounded-3xl glass-card my-auto">
+          <div className="w-16 h-16 rounded-2xl bg-white/5 border border-white/10 flex items-center justify-center text-sky-400 mb-4 shadow-inner backdrop-blur-md">
             <Film className="w-8 h-8" />
           </div>
-          <h2 className="text-lg font-bold text-white mb-1.5">Aucune vidéo importée</h2>
-          <p className="text-xs text-neutral-400 max-w-md mb-6 leading-relaxed">
+          <h2 className="text-lg font-bold text-neutral-900 dark:text-white mb-1.5">Aucune vidéo importée</h2>
+          <p className="text-xs text-neutral-500 dark:text-neutral-400 max-w-md mb-6 leading-relaxed">
             Glissez-déposez vos fichiers vidéo (MP4, WebM, MKV, MOV, AVI) ou cliquez sur le bouton ci-dessous pour lancer la lecture avec accélération et audio enrichi.
           </p>
           <button
@@ -175,14 +175,14 @@ export const VideosView: React.FC<VideosViewProps> = ({
               <div
                 key={track.id}
                 onClick={() => onPlayTrack(track, videoTracks)}
-                className={`group relative rounded-2xl bg-neutral-900/60 hover:bg-neutral-850/80 border transition-all duration-200 p-3 flex flex-col gap-3 cursor-pointer shadow-sm hover:shadow-xl ${
+                className={`group relative rounded-2xl glass-card border transition-all duration-200 p-3 flex flex-col gap-3 cursor-pointer shadow-sm hover:shadow-xl ${
                   isCurrent
-                    ? 'border-sky-500/50 bg-sky-950/20 ring-1 ring-sky-500/30'
-                    : 'border-neutral-800/80 hover:border-neutral-700'
+                    ? 'border-sky-500/60 ring-2 ring-sky-500/40 bg-sky-500/15'
+                    : 'border-white/10 hover:border-white/20'
                 }`}
               >
                 {/* Video Thumbnail */}
-                <div className="relative aspect-video w-full rounded-xl overflow-hidden bg-black border border-neutral-800 flex items-center justify-center">
+                <div className="relative aspect-video w-full rounded-xl overflow-hidden bg-black/60 border border-white/10 flex items-center justify-center">
                   <img
                     src={track.coverUrl}
                     alt={track.title}
@@ -215,10 +215,10 @@ export const VideosView: React.FC<VideosViewProps> = ({
                 {/* Info & Options */}
                 <div className="flex items-start justify-between gap-2">
                   <div className="flex flex-col min-w-0">
-                    <h3 className="text-xs font-bold text-neutral-100 group-hover:text-white truncate">
+                    <h3 className="text-xs font-bold text-neutral-800 dark:text-neutral-100 group-hover:text-black dark:group-hover:text-white truncate">
                       {track.title}
                     </h3>
-                    <p className="text-[11px] text-neutral-400 truncate mt-0.5">
+                    <p className="text-[11px] text-neutral-500 dark:text-neutral-400 truncate mt-0.5">
                       {track.artist}
                     </p>
                   </div>

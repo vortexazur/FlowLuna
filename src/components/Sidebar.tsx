@@ -128,7 +128,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
   return (
     <aside
       id="app-sidebar"
-      className="w-64 h-full bg-neutral-950/80 glass-sidebar border-r border-neutral-800/80 flex flex-col justify-between select-none flex-shrink-0 z-10"
+      className="w-64 h-full glass-sidebar border-r border-white/10 dark:border-white/10 flex flex-col justify-between select-none flex-shrink-0 z-10"
     >
       <div className="flex flex-col gap-2.5 p-2.5 overflow-y-auto scrollbar-none">
         {/* App Title & Status */}
@@ -347,7 +347,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
       </div>
 
       {/* Bottom Actions & Hardware Tools */}
-      <div className="p-3 border-t border-neutral-800/80 flex flex-col gap-2 bg-neutral-950/80">
+      <div className="p-3 border-t border-white/10 dark:border-white/10 flex flex-col gap-2 bg-transparent">
         {/* Screenbox Fluent "Ouvrir un fichier" / "Ouvrir un dossier" */}
         <OpenFileDropdown
           onOpenFiles={onImportFiles}
@@ -363,7 +363,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
             type="button"
             id="sidebar-equalizer-btn"
             onClick={onOpenEqualizer}
-            className="flex items-center justify-center gap-1.5 px-2 py-1.5 rounded-xl text-xs font-semibold bg-neutral-900/90 hover:bg-neutral-800 text-neutral-300 hover:text-white border border-neutral-800/80 transition-all shadow-xs whitespace-nowrap cursor-pointer"
+            className="flex items-center justify-center gap-1.5 px-2 py-1.5 rounded-xl text-xs font-semibold bg-white/5 hover:bg-white/10 text-neutral-700 dark:text-neutral-200 hover:text-black dark:hover:text-white border border-white/10 dark:border-white/10 transition-all shadow-xs backdrop-blur-md whitespace-nowrap cursor-pointer"
           >
             <Sliders className="w-3.5 h-3.5 text-purple-400 shrink-0" />
             <span className="truncate">{t.equalizer}</span>
@@ -373,7 +373,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
             type="button"
             id="sidebar-settings-btn"
             onClick={onOpenSettings}
-            className="flex items-center justify-center gap-1.5 px-2 py-1.5 rounded-xl text-xs font-semibold bg-neutral-900/90 hover:bg-neutral-800 text-neutral-300 hover:text-white border border-neutral-800/80 transition-all shadow-xs whitespace-nowrap cursor-pointer"
+            className="flex items-center justify-center gap-1.5 px-2 py-1.5 rounded-xl text-xs font-semibold bg-white/5 hover:bg-white/10 text-neutral-700 dark:text-neutral-200 hover:text-black dark:hover:text-white border border-white/10 dark:border-white/10 transition-all shadow-xs backdrop-blur-md whitespace-nowrap cursor-pointer"
           >
             <Settings className="w-3.5 h-3.5 text-sky-400 shrink-0" />
             <span className="truncate">{t.openSettings}</span>
