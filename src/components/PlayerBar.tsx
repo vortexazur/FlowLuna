@@ -70,12 +70,12 @@ const ACCENT_BG: Record<AccentColor, string> = {
 };
 
 const ACCENT_TEXT: Record<AccentColor, string> = {
-  emerald: 'text-emerald-400',
-  violet: 'text-violet-400',
-  blue: 'text-blue-400',
-  amber: 'text-amber-400',
-  rose: 'text-rose-400',
-  cyan: 'text-cyan-400',
+  emerald: 'text-emerald-600 dark:text-emerald-400',
+  violet: 'text-violet-600 dark:text-violet-400',
+  blue: 'text-blue-600 dark:text-blue-400',
+  amber: 'text-amber-600 dark:text-amber-400',
+  rose: 'text-rose-600 dark:text-rose-400',
+  cyan: 'text-cyan-600 dark:text-cyan-400',
 };
 
 const ACCENT_RANGE: Record<AccentColor, string> = {
@@ -177,23 +177,23 @@ export const PlayerBar: React.FC<PlayerBarProps> = ({
             <div className="flex-1 min-w-0">
               <div className="flex items-center gap-1.5">
                 <span
-                  className="text-xs font-bold text-neutral-100 truncate hover:underline cursor-pointer"
+                  className="text-xs font-bold text-neutral-900 dark:text-neutral-100 truncate hover:underline cursor-pointer"
                   onClick={currentTrack.isVideo && onToggleVideo ? onToggleVideo : onToggleFullscreen}
                 >
                   {currentTrack.title}
                 </span>
               </div>
-              <p className="text-[11px] text-neutral-400 truncate">{currentTrack.artist}</p>
+              <p className="text-[11px] text-neutral-600 dark:text-neutral-400 truncate">{currentTrack.artist}</p>
 
               <div className="flex items-center gap-2 mt-1">
                 <span className={`text-[9px] font-mono uppercase font-bold px-1.5 py-0.2 rounded ${
-                  currentTrack.isVideo ? 'bg-sky-950 text-sky-300 border border-sky-500/30' : 'bg-neutral-800 text-neutral-300'
+                  currentTrack.isVideo ? 'bg-sky-950 text-sky-300 border border-sky-500/30' : 'bg-slate-200/80 dark:bg-neutral-800 text-slate-700 dark:text-neutral-300'
                 }`}>
                   {currentTrack.isVideo ? `🎥 ${currentTrack.format}` : currentTrack.format}
                 </span>
                 {isPlaying && (
-                  <span className="text-[9px] text-neutral-400 flex items-center gap-1 font-mono">
-                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                  <span className="text-[9px] text-neutral-500 dark:text-neutral-400 flex items-center gap-1 font-mono">
+                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
                     Audio Réel
                   </span>
                 )}
@@ -211,7 +211,7 @@ export const PlayerBar: React.FC<PlayerBarProps> = ({
                 className={`p-2 rounded-full transition-all duration-200 active:scale-90 hover:scale-110 ${
                   isFavorite
                     ? 'text-rose-500 hover:text-rose-400 bg-rose-500/15'
-                    : 'text-neutral-400 hover:text-white hover:bg-neutral-800/60'
+                    : 'text-neutral-500 dark:text-neutral-400 hover:text-neutral-900 dark:hover:text-white hover:bg-slate-200/60 dark:hover:bg-neutral-800/60'
                 }`}
                 title={isFavorite ? 'Retirer des favoris (L)' : 'Ajouter aux favoris (L)'}
                 aria-label={isFavorite ? 'Retirer des favoris' : 'Ajouter aux favoris'}

@@ -46,21 +46,21 @@ interface SidebarProps {
 }
 
 const ACCENT_ACTIVE: Record<AccentColor, string> = {
-  emerald: 'bg-emerald-500/15 text-emerald-400 font-bold border-r-2 border-emerald-500',
-  violet: 'bg-violet-500/15 text-violet-400 font-bold border-r-2 border-violet-500',
-  blue: 'bg-blue-500/15 text-blue-400 font-bold border-r-2 border-blue-500',
-  amber: 'bg-amber-500/15 text-amber-400 font-bold border-r-2 border-amber-500',
-  rose: 'bg-rose-500/15 text-rose-400 font-bold border-r-2 border-rose-500',
-  cyan: 'bg-cyan-500/15 text-cyan-400 font-bold border-r-2 border-cyan-500',
+  emerald: 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 font-bold border-r-2 border-emerald-500',
+  violet: 'bg-violet-500/15 text-violet-600 dark:text-violet-400 font-bold border-r-2 border-violet-500',
+  blue: 'bg-blue-500/15 text-blue-600 dark:text-blue-400 font-bold border-r-2 border-blue-500',
+  amber: 'bg-amber-500/15 text-amber-600 dark:text-amber-400 font-bold border-r-2 border-amber-500',
+  rose: 'bg-rose-500/15 text-rose-600 dark:text-rose-400 font-bold border-r-2 border-rose-500',
+  cyan: 'bg-cyan-500/15 text-cyan-600 dark:text-cyan-400 font-bold border-r-2 border-cyan-500',
 };
 
 const ACCENT_TEXT: Record<AccentColor, string> = {
-  emerald: 'text-emerald-400',
-  violet: 'text-violet-400',
-  blue: 'text-blue-400',
-  amber: 'text-amber-400',
-  rose: 'text-rose-400',
-  cyan: 'text-cyan-400',
+  emerald: 'text-emerald-600 dark:text-emerald-400',
+  violet: 'text-violet-600 dark:text-violet-400',
+  blue: 'text-blue-600 dark:text-blue-400',
+  amber: 'text-amber-600 dark:text-amber-400',
+  rose: 'text-rose-600 dark:text-rose-400',
+  cyan: 'text-cyan-600 dark:text-cyan-400',
 };
 
 export const Sidebar: React.FC<SidebarProps> = ({
@@ -141,7 +141,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 className="w-full h-full object-cover"
               />
             </div>
-            <span className="font-extrabold text-base tracking-tight text-white">
+            <span className="font-extrabold text-base tracking-tight text-neutral-900 dark:text-white">
               FlowLuna
             </span>
           </div>

@@ -71,12 +71,12 @@ const ACCENT_TEXT: Record<AccentColor, string> = {
 };
 
 const ACCENT_BORDER_L: Record<AccentColor, string> = {
-  emerald: 'border-l-4 border-l-emerald-400 bg-emerald-950/25',
-  violet: 'border-l-4 border-l-violet-400 bg-violet-950/25',
-  blue: 'border-l-4 border-l-blue-400 bg-blue-950/25',
-  amber: 'border-l-4 border-l-amber-400 bg-amber-950/25',
-  rose: 'border-l-4 border-l-rose-400 bg-rose-950/25',
-  cyan: 'border-l-4 border-l-cyan-400 bg-cyan-950/25',
+  emerald: 'border-l-4 border-l-emerald-500 bg-emerald-500/10 dark:bg-emerald-950/25',
+  violet: 'border-l-4 border-l-violet-500 bg-violet-500/10 dark:bg-violet-950/25',
+  blue: 'border-l-4 border-l-blue-500 bg-blue-500/10 dark:bg-blue-950/25',
+  amber: 'border-l-4 border-l-amber-500 bg-amber-500/10 dark:bg-amber-950/25',
+  rose: 'border-l-4 border-l-rose-500 bg-rose-500/10 dark:bg-rose-950/25',
+  cyan: 'border-l-4 border-l-cyan-500 bg-cyan-500/10 dark:bg-cyan-950/25',
 };
 
 export const PlaylistView: React.FC<PlaylistViewProps> = ({

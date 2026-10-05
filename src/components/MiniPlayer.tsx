@@ -453,6 +453,7 @@ export const MiniPlayer: React.FC<MiniPlayerProps> = ({
 
               {isPlaylistMenuOpen && (
                 <div
+                  id="miniplayer-playlist-menu"
                   className="absolute right-0 top-full mt-2 z-50 w-64 max-w-[calc(100vw-24px)] bg-neutral-900/95 backdrop-blur-xl border border-neutral-700/80 rounded-xl shadow-2xl p-2 flex flex-col gap-1.5 text-left animate-in fade-in slide-in-from-top-1 duration-150"
                   onClick={(e) => e.stopPropagation()}
                 >

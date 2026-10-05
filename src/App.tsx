@@ -307,6 +307,7 @@ export default function App() {
         : (playerSettings.backdropEffect || 'glass');
     root.setAttribute('data-theme', currentTheme);
     root.setAttribute('data-effect', effect);
+    root.setAttribute('data-accent', playerSettings.accent || 'emerald');
     if (currentTheme === 'light') {
       root.classList.add('light');
       root.classList.remove('dark');
@@ -318,7 +319,7 @@ export default function App() {
     if (window.electronAPI?.setBackdrop) {
       window.electronAPI.setBackdrop(effect, currentTheme);
     }
-  }, [playerSettings.theme, playerSettings.backdropEffect]);
+  }, [playerSettings.theme, playerSettings.backdropEffect, playerSettings.accent]);
 
   // Check for app updates in the background after boot
   useEffect(() => {
@@ -1371,34 +1372,64 @@ export default function App() {
 
   // Dynamic CSS variables for Pure Glass vs Desktop Acrylic Fluent effect
   const glassStyle = useMemo(() => {
+    const activeAccent = playerSettings.accent || 'emerald';
+    const lightAccentTokens: Record<AccentColor, { primary: string; hover: string }> = {
+      emerald: { primary: '#059669', hover: '#047857' },
+      violet: { primary: '#7c3aed', hover: '#6d28d9' },
+      blue: { primary: '#2563eb', hover: '#1d4ed8' },
+      amber: { primary: '#d97706', hover: '#b45309' },
+      rose: { primary: '#e11d48', hover: '#be123c' },
+      cyan: { primary: '#0891b2', hover: '#0e7490' },
+    };
+    const activeLightAccent = lightAccentTokens[activeAccent] || lightAccentTokens.emerald;
+
+    const lightTokens = !isDark
+      ? {
+          '--bg-app': '#f8fafc',
+          '--bg-surface': '#ffffff',
+          '--bg-surface-hover': '#f1f5f9',
+          '--border-subtle': '#e2e8f0',
+          '--border-strong': '#cbd5e1',
+          '--text-primary': '#0f172a',
+          '--text-secondary': '#475569',
+          '--text-muted': '#94a3b8',
+          '--primary': activeLightAccent.primary,
+          '--primary-hover': activeLightAccent.hover,
+          '--primary-contrast': '#ffffff',
+          '--shadow-sm': '0 1px 2px 0 rgb(0 0 0 / 0.05)',
+          '--shadow-md': '0 4px 6px -1px rgb(0 0 0 / 0.07)',
+        }
+      : {};
+
     if (isAcrylic) {
       const acrylicSidebarBg = isDark
         ? `rgba(16, 16, 24, ${Math.min(0.95, Math.max(0.08, 0.40 * acrylicFactor)).toFixed(3)})`
-        : `rgba(255, 255, 255, ${Math.min(0.95, Math.max(0.08, 0.40 * acrylicFactor)).toFixed(3)})`;
+        : `rgba(255, 255, 255, ${Math.min(0.95, Math.max(0.25, 0.60 * acrylicFactor)).toFixed(3)})`;
       const acrylicMainBg = isDark
         ? `rgba(10, 10, 16, ${Math.min(0.95, Math.max(0.04, 0.20 * acrylicFactor)).toFixed(3)})`
-        : `rgba(245, 247, 250, ${Math.min(0.95, Math.max(0.05, 0.25 * acrylicFactor)).toFixed(3)})`;
+        : `rgba(248, 250, 252, ${Math.min(0.95, Math.max(0.15, 0.35 * acrylicFactor)).toFixed(3)})`;
       const acrylicPlayerBg = isDark
         ? `rgba(18, 18, 28, ${Math.min(0.95, Math.max(0.10, 0.45 * acrylicFactor)).toFixed(3)})`
-        : `rgba(255, 255, 255, ${Math.min(0.95, Math.max(0.10, 0.50 * acrylicFactor)).toFixed(3)})`;
+        : `rgba(255, 255, 255, ${Math.min(0.95, Math.max(0.30, 0.70 * acrylicFactor)).toFixed(3)})`;
       const acrylicCardBg = isDark
         ? `rgba(26, 26, 38, ${Math.min(0.95, Math.max(0.06, 0.30 * acrylicFactor)).toFixed(3)})`
-        : `rgba(255, 255, 255, ${Math.min(0.95, Math.max(0.08, 0.45 * acrylicFactor)).toFixed(3)})`;
+        : `rgba(255, 255, 255, ${Math.min(0.95, Math.max(0.25, 0.65 * acrylicFactor)).toFixed(3)})`;
       const acrylicModalBg = isDark
         ? `rgba(18, 18, 28, ${Math.min(0.98, Math.max(0.15, 0.60 * acrylicFactor)).toFixed(3)})`
-        : `rgba(255, 255, 255, ${Math.min(0.98, Math.max(0.15, 0.65 * acrylicFactor)).toFixed(3)})`;
+        : `rgba(255, 255, 255, ${Math.min(0.98, Math.max(0.40, 0.88 * acrylicFactor)).toFixed(3)})`;
       const acrylicRootBg = isDark
         ? `rgba(10, 10, 16, ${Math.min(0.95, Math.max(0.04, 0.25 * acrylicFactor)).toFixed(3)})`
-        : `rgba(245, 247, 250, ${Math.min(0.95, Math.max(0.05, 0.30 * acrylicFactor)).toFixed(3)})`;
+        : `rgba(248, 250, 252, ${Math.min(0.95, Math.max(0.15, 0.40 * acrylicFactor)).toFixed(3)})`;
       const acrylicSubCardBg = isDark
         ? `rgba(255, 255, 255, ${Math.min(0.20, Math.max(0.02, 0.04 * acrylicFactor)).toFixed(3)})`
-        : `rgba(255, 255, 255, ${Math.min(0.90, Math.max(0.20, 0.60 * acrylicFactor)).toFixed(3)})`;
+        : `rgba(255, 255, 255, ${Math.min(0.95, Math.max(0.35, 0.75 * acrylicFactor)).toFixed(3)})`;
       const acrylicBlur = `${Math.round(Math.min(48, Math.max(8, 28 * blurScale)))}px`;
       const acrylicBlurMain = `${Math.round(Math.min(40, Math.max(6, 24 * blurScale)))}px`;
       const acrylicBlurCard = `${Math.round(Math.min(36, Math.max(6, 20 * blurScale)))}px`;
       const acrylicBlurModal = `${Math.round(Math.min(54, Math.max(12, 36 * blurScale)))}px`;
 
       return {
+        ...lightTokens,
         '--acrylic-intensity': `${acrylicIntensity}%`,
         '--acrylic-root-bg': acrylicRootBg,
         '--acrylic-sidebar-bg': acrylicSidebarBg,
@@ -1424,29 +1455,30 @@ export default function App() {
     }
 
     return {
+      ...lightTokens,
       '--glass-intensity': `${glassIntensity}%`,
       '--glass-factor': `${glassFactor}`,
       '--glass-blur': `${Math.round(14 + glassFactor * 26)}px`,
       '--glass-border': isDark
         ? `rgba(255, 255, 255, ${0.06 + glassFactor * 0.14})`
-        : `rgba(203, 213, 225, ${0.45 + glassFactor * 0.35})`,
+        : `rgba(203, 213, 225, ${0.50 + glassFactor * 0.30})`,
       '--glass-sidebar-bg': isDark
         ? `rgba(10, 10, 15, ${Math.max(0.18, 0.95 - glassFactor * 0.77)})`
-        : `rgba(255, 255, 255, ${Math.max(0.42, 0.92 - glassFactor * 0.50)})`,
+        : `rgba(255, 255, 255, ${Math.max(0.60, 0.95 - glassFactor * 0.35)})`,
       '--glass-main-bg': isDark
         ? `rgba(6, 6, 10, ${Math.max(0.12, 0.92 - glassFactor * 0.8)})`
-        : `rgba(248, 250, 252, ${Math.max(0.35, 0.90 - glassFactor * 0.55)})`,
+        : `rgba(248, 250, 252, ${Math.max(0.50, 0.92 - glassFactor * 0.42)})`,
       '--glass-player-bg': isDark
         ? `rgba(12, 12, 18, ${Math.max(0.22, 0.95 - glassFactor * 0.73)})`
-        : `rgba(255, 255, 255, ${Math.max(0.50, 0.95 - glassFactor * 0.45)})`,
+        : `rgba(255, 255, 255, ${Math.max(0.70, 0.96 - glassFactor * 0.26)})`,
       '--glass-card-bg': isDark
         ? `rgba(20, 20, 28, ${Math.max(0.16, 0.9 - glassFactor * 0.74)})`
-        : `rgba(255, 255, 255, ${Math.max(0.45, 0.92 - glassFactor * 0.47)})`,
+        : `rgba(255, 255, 255, ${Math.max(0.65, 0.95 - glassFactor * 0.30)})`,
       '--glass-modal-bg': isDark
         ? `rgba(14, 14, 22, ${Math.max(0.45, 0.95 - glassFactor * 0.5)})`
-        : `rgba(255, 255, 255, ${Math.max(0.72, 0.96 - glassFactor * 0.24)})`,
+        : `rgba(255, 255, 255, ${Math.max(0.85, 0.98 - glassFactor * 0.13)})`,
     } as React.CSSProperties;
-  }, [isAcrylic, acrylicIntensity, acrylicFactor, blurScale, glassIntensity, glassFactor, isDark]);
+  }, [isAcrylic, acrylicIntensity, acrylicFactor, blurScale, glassIntensity, glassFactor, isDark, playerSettings.accent]);
 
   // Check if fullscreen video or UI is active to prevent any foreground toast popup
   const isFullscreenActive = useMemo(() => {
@@ -1460,10 +1492,11 @@ export default function App() {
       id="app-root-container"
       data-theme={playerSettings.theme || 'dark'}
       data-effect={backdropEffect}
+      data-accent={playerSettings.accent || 'emerald'}
       style={glassStyle}
       className={`w-screen h-screen flex flex-col overflow-hidden transition-colors duration-200 relative ${
         playerSettings.theme === 'light'
-          ? (isAcrylic ? 'light text-slate-900' : 'light bg-slate-100/90 text-slate-900')
+          ? (isAcrylic ? 'light text-slate-900' : 'light bg-slate-50/90 text-slate-900')
           : (isAcrylic ? 'dark text-neutral-100' : 'dark bg-neutral-950 text-neutral-100')
       }`}
     >
@@ -1576,7 +1609,7 @@ export default function App() {
 
       {/* Exclusive Floating Widget Mode: when active, the player becomes ONLY the floating widget */}
       {isMiniPlayer ? (
-        <div className={`w-full h-full relative select-none ${isAcrylic ? 'bg-transparent' : 'bg-neutral-950'}`}>
+        <div className={`w-full h-full relative select-none ${isAcrylic ? 'bg-transparent' : (playerSettings.theme === 'light' ? 'bg-slate-100' : 'bg-neutral-950')}`}>
           <MiniPlayer
             currentTrack={currentPlayingTrack}
             isPlaying={isPlaying}
