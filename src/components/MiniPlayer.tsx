@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect, useCallback } from 'react';
+import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import {
   Play,
   Pause,
@@ -20,6 +20,7 @@ import {
   EyeOff,
   X,
   Layers,
+  Search,
 } from 'lucide-react';
 import { Track, Playlist, AccentColor, PlayerSettings } from '../types';
 import { AudioVisualizer } from './AudioVisualizer';
@@ -151,6 +152,7 @@ export const MiniPlayer: React.FC<MiniPlayerProps> = ({
 
   // Playlist menu dropdown
   const [isPlaylistMenuOpen, setIsPlaylistMenuOpen] = useState(false);
+  const [playlistSearch, setPlaylistSearch] = useState('');
   const [feedbackMessage, setFeedbackMessage] = useState<string | null>(null);
   const menuRef = useRef<HTMLDivElement>(null);
 
@@ -229,6 +231,29 @@ export const MiniPlayer: React.FC<MiniPlayerProps> = ({
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, [isPlaylistMenuOpen]);
 
+  // Dynamically expand mini-player window in standalone/compact mode when playlist menu is open
+  useEffect(() => {
+    if (isStandalone) {
+      if (isPlaylistMenuOpen) {
+        window.electronAPI?.setCompactMode?.(true, 360, 420);
+      } else {
+        window.electronAPI?.setCompactMode?.(true, 360, 240);
+        setPlaylistSearch('');
+      }
+    } else if (!isPlaylistMenuOpen) {
+      setPlaylistSearch('');
+    }
+  }, [isPlaylistMenuOpen, isStandalone]);
+
+  // Safety cleanup: reset back to default compact height on unmount if menu was still open
+  useEffect(() => {
+    return () => {
+      if (isStandalone && isPlaylistMenuOpen) {
+        window.electronAPI?.setCompactMode?.(true, 360, 240);
+      }
+    };
+  }, [isStandalone, isPlaylistMenuOpen]);
+
   const handleToggleTrack = (playlistId: string, playlistTitle: string, isPresent: boolean) => {
     if (!currentTrack) return;
     if (isPresent) {
@@ -246,6 +271,12 @@ export const MiniPlayer: React.FC<MiniPlayerProps> = ({
   };
 
   const customPlaylists = playlists.filter((p) => !p.isSmart);
+
+  const filteredPlaylists = useMemo(() => {
+    if (!playlistSearch.trim()) return customPlaylists;
+    const q = playlistSearch.toLowerCase();
+    return customPlaylists.filter((pl) => pl.title.toLowerCase().includes(q));
+  }, [customPlaylists, playlistSearch]);
 
   // Click on progress bar to seek
   const handleProgressClick = (e: React.MouseEvent<HTMLDivElement>) => {
@@ -276,7 +307,9 @@ export const MiniPlayer: React.FC<MiniPlayerProps> = ({
       }}
       className={`${
         isStandalone ? 'relative w-full h-full rounded-2xl' : 'fixed z-[100] w-84 rounded-2xl'
-      } border border-neutral-800/80 bg-neutral-950/95 backdrop-blur-md shadow-2xl p-3 flex flex-col justify-between select-none transition-opacity duration-200 overflow-hidden ${
+      } border border-neutral-800/80 bg-neutral-950/95 backdrop-blur-md shadow-2xl p-3 flex flex-col justify-between select-none transition-opacity duration-200 ${
+        isPlaylistMenuOpen ? 'overflow-visible' : 'overflow-hidden'
+      } ${
         isGhostMode ? 'opacity-70 hover:opacity-100' : 'opacity-100'
       } ${!isStandalone && isDragging ? 'cursor-grabbing shadow-emerald-500/20 ring-1 ring-emerald-500/40' : !isStandalone ? 'cursor-grab' : ''}`}
     >
@@ -420,27 +453,48 @@ export const MiniPlayer: React.FC<MiniPlayerProps> = ({
 
               {isPlaylistMenuOpen && (
                 <div
-                  className="absolute right-0 top-full mt-1.5 z-50 w-56 bg-neutral-900/95 backdrop-blur-xl border border-neutral-700/80 rounded-xl shadow-2xl p-1.5 flex flex-col gap-1 text-left animate-in fade-in slide-in-from-top-1 duration-150"
+                  className="absolute right-0 top-full mt-2 z-50 w-64 max-w-[calc(100vw-24px)] bg-neutral-900/95 backdrop-blur-xl border border-neutral-700/80 rounded-xl shadow-2xl p-2 flex flex-col gap-1.5 text-left animate-in fade-in slide-in-from-top-1 duration-150"
                   onClick={(e) => e.stopPropagation()}
                 >
-                  <div className="flex items-center justify-between px-2.5 py-1 text-[10px] font-mono font-bold uppercase tracking-wider text-neutral-400 border-b border-neutral-800">
-                    <span>Playlists</span>
+                  <div className="flex items-center justify-between px-2 py-1 text-[10px] font-mono font-bold uppercase tracking-wider text-neutral-400 border-b border-neutral-800">
+                    <span className="flex items-center gap-1.5">
+                      <ListPlus className="w-3.5 h-3.5 text-emerald-400" />
+                      <span>Playlists ({customPlaylists.length})</span>
+                    </span>
                     <button
                       type="button"
                       onClick={() => setIsPlaylistMenuOpen(false)}
-                      className="text-neutral-500 hover:text-white transition-colors cursor-pointer"
+                      className="p-1 rounded text-neutral-500 hover:text-white hover:bg-neutral-800 transition-colors cursor-pointer"
                       title="Fermer"
                     >
-                      <X className="w-3 h-3" />
+                      <X className="w-3.5 h-3.5" />
                     </button>
                   </div>
+
+                  {customPlaylists.length >= 4 && (
+                    <div className="relative px-0.5 pt-0.5">
+                      <Search className="w-3.5 h-3.5 text-neutral-500 absolute left-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+                      <input
+                        type="text"
+                        placeholder="Filtrer les playlists..."
+                        value={playlistSearch}
+                        onChange={(e) => setPlaylistSearch(e.target.value)}
+                        className="w-full pl-7 pr-2.5 py-1 text-[11px] bg-neutral-950/80 border border-neutral-800 rounded-lg text-neutral-200 placeholder:text-neutral-500 focus:outline-none focus:border-emerald-500/50"
+                      />
+                    </div>
+                  )}
+
                   {customPlaylists.length === 0 ? (
-                    <div className="px-3 py-2 text-xs text-neutral-400 text-center">
+                    <div className="px-3 py-3 text-xs text-neutral-400 text-center">
                       Aucune playlist disponible
                     </div>
+                  ) : filteredPlaylists.length === 0 ? (
+                    <div className="px-3 py-3 text-xs text-neutral-400 text-center">
+                      Aucune playlist trouvée
+                    </div>
                   ) : (
-                    <div className="max-h-36 overflow-y-auto flex flex-col gap-0.5 pr-0.5">
-                      {customPlaylists.map((pl) => {
+                    <div className="max-h-60 overflow-y-auto flex flex-col gap-1 pr-0.5 scrollbar-thin">
+                      {filteredPlaylists.map((pl) => {
                         const isPresent = pl.trackIds.includes(currentTrack.id);
                         return (
                           <button
@@ -466,6 +520,22 @@ export const MiniPlayer: React.FC<MiniPlayerProps> = ({
                           </button>
                         );
                       })}
+                    </div>
+                  )}
+
+                  {onCreatePlaylist && (
+                    <div className="pt-1 border-t border-neutral-800">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setIsPlaylistMenuOpen(false);
+                          onCreatePlaylist();
+                        }}
+                        className="w-full px-2.5 py-1.5 rounded-lg text-[11px] font-semibold text-emerald-400 bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/20 flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
+                      >
+                        <Plus className="w-3.5 h-3.5" />
+                        <span>Créer une playlist</span>
+                      </button>
                     </div>
                   )}
                 </div>

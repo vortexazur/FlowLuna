@@ -333,16 +333,25 @@ function setupIpcHandlers(): void {
     return mainWindow?.isMaximized() ?? false;
   });
 
+  let isElectronCompact = false;
+  let savedElectronBounds = { width: 1280, height: 820 };
+
   ipcMain.handle('window-set-compact-mode', (_event, enabled: boolean, width = 360, height = 240) => {
     if (!mainWindow) return;
     if (enabled) {
+      if (!isElectronCompact) {
+        const bounds = mainWindow.getBounds();
+        savedElectronBounds = { width: bounds.width, height: bounds.height };
+        isElectronCompact = true;
+      }
       mainWindow.setAlwaysOnTop(true, 'screen-saver');
       mainWindow.setMinimumSize(320, 180);
       mainWindow.setSize(width, height);
     } else {
+      isElectronCompact = false;
       mainWindow.setAlwaysOnTop(false);
       mainWindow.setMinimumSize(960, 640);
-      mainWindow.setSize(1280, 820);
+      mainWindow.setSize(savedElectronBounds.width || 1280, savedElectronBounds.height || 820);
     }
   });
 

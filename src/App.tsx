@@ -1576,7 +1576,7 @@ export default function App() {
 
       {/* Exclusive Floating Widget Mode: when active, the player becomes ONLY the floating widget */}
       {isMiniPlayer ? (
-        <div className="w-full h-full relative overflow-hidden select-none bg-neutral-950">
+        <div className={`w-full h-full relative select-none ${isAcrylic ? 'bg-transparent' : 'bg-neutral-950'}`}>
           <MiniPlayer
             currentTrack={currentPlayingTrack}
             isPlaying={isPlaying}

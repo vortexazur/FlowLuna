@@ -68,6 +68,7 @@ public class NativeBridge
     private double _savedWidth = 1280;
     private double _savedHeight = 820;
     private WindowState _savedState = WindowState.Normal;
+    private bool _isCompact = false;
 
     public void SetCompactMode(bool enabled, double width = 360, double height = 240)
     {
@@ -75,11 +76,12 @@ public class NativeBridge
         {
             if (enabled)
             {
-                if (_window.WindowState != WindowState.Minimized)
+                if (!_isCompact && _window.WindowState != WindowState.Minimized)
                 {
                     _savedState = _window.WindowState;
                     _savedWidth = _window.ActualWidth > 360 ? _window.ActualWidth : 1280;
                     _savedHeight = _window.ActualHeight > 240 ? _window.ActualHeight : 820;
+                    _isCompact = true;
                 }
 
                 _window.WindowState = WindowState.Normal;
@@ -91,6 +93,7 @@ public class NativeBridge
             }
             else
             {
+                _isCompact = false;
                 _window.Topmost = false;
                 _window.MinWidth = 960;
                 _window.MinHeight = 640;
