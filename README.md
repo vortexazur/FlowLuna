@@ -1,23 +1,29 @@
 # 🎵 FlowLuna — Lecteur Audio Hi-Fi & Downloader Natif Windows
 
 <div align="center">
-<img src="public/logo.jpg" alt="FlowLuna Logo" width="160" style="border-radius: 20px; margin-bottom: 12px;" />
-<br />
-<br />
-[![Version](https://img.shields.io/badge/version-1.1.8-emerald.svg?style=for-the-badge)](https://github.com/vortexazur/FlowLuna/releases)
-[![Platform](https://img.shields.io/badge/platform-Windows%2010%20%7C%2011%20x64-blue.svg?style=for-the-badge&logo=windows)](https://github.com/vortexazur/FlowLuna)
-[![.NET 9](https://img.shields.io/badge/.NET-9.0-512BD4.svg?style=for-the-badge&logo=dotnet)](https://dotnet.microsoft.com/)
-[![WebView2](https://img.shields.io/badge/WebView2-Evergreen-0078D7.svg?style=for-the-badge&logo=microsoftedge)](https://developer.microsoft.com/microsoft-edge/webview2/)
-[![LibVLCSharp](https://img.shields.io/badge/LibVLCSharp-VideoLAN-orange.svg?style=for-the-badge&logo=vlc)](https://github.com/videolan/libvlcsharp)
-[![License](https://img.shields.io/badge/licence-GPLv3-blue.svg?style=for-the-badge)](LICENSE)
-[![Build Status](https://img.shields.io/badge/CI-GitHub%20Actions-brightgreen.svg?style=for-the-badge&logo=githubactions)](https://github.com/vortexazur/FlowLuna/actions)
+  <img src="public/logo.jpg" alt="FlowLuna Logo" width="160" style="border-radius: 20px; margin-bottom: 12px;" />
 
-<p align="center">
-  <strong>Lecteur multimédia audiophile haute fidélité pour Windows avec interface Pure Glass XAML, moteur audio LibVLCSharp, égaliseur 10 bandes, visualiseur réactif, architecture native C# .NET 9 + WebView2 et extraction avancée yt-dlp & FFmpeg.</strong>
-</p>
+  <p>
+    <a href="https://github.com/vortexazur/FlowLuna/releases"><img src="https://img.shields.io/badge/version-1.1.8-emerald.svg?style=for-the-badge" alt="Version" /></a>
+    <a href="https://github.com/vortexazur/FlowLuna"><img src="https://img.shields.io/badge/platform-Windows%2010%20%7C%2011%20x64-blue.svg?style=for-the-badge&logo=windows" alt="Platform" /></a>
+    <a href="https://dotnet.microsoft.com/"><img src="https://img.shields.io/badge/.NET-9.0-512BD4.svg?style=for-the-badge&logo=dotnet" alt=".NET 9" /></a>
+    <a href="https://developer.microsoft.com/microsoft-edge/webview2/"><img src="https://img.shields.io/badge/WebView2-Evergreen-0078D7.svg?style=for-the-badge&logo=microsoftedge" alt="WebView2" /></a>
+    <a href="https://github.com/videolan/libvlcsharp"><img src="https://img.shields.io/badge/LibVLCSharp-VideoLAN-orange.svg?style=for-the-badge&logo=vlc" alt="LibVLCSharp" /></a>
+    <a href="LICENSE"><img src="https://img.shields.io/badge/licence-GPLv3-blue.svg?style=for-the-badge" alt="License" /></a>
+    <a href="https://github.com/vortexazur/FlowLuna/actions"><img src="https://img.shields.io/badge/CI-GitHub%20Actions-brightgreen.svg?style=for-the-badge&logo=githubactions" alt="Build Status" /></a>
+  </p>
 
-[Télécharger la Dernière Version](https://github.com/vortexazur/FlowLuna/releases) • [Fonctionnalités Clés](#-fonctionnalités-clés) • [Installation](#-installation) • [Raccourcis Clavier](#-raccourcis-clavier) • [Architecture](#-architecture-technique)
+  <p>
+    <strong>Lecteur multimédia audiophile haute fidélité pour Windows avec interface Pure Glass XAML, moteur audio LibVLCSharp, égaliseur 10 bandes, visualiseur réactif, architecture native C# .NET 9 + WebView2 et extraction avancée yt-dlp & FFmpeg.</strong>
+  </p>
 
+  <p>
+    <a href="https://github.com/vortexazur/FlowLuna/releases">Télécharger la Dernière Version</a> • 
+    <a href="#-fonctionnalités-clés">Fonctionnalités Clés</a> • 
+    <a href="#-installation">Installation</a> • 
+    <a href="#-raccourcis-clavier">Raccourcis Clavier</a> • 
+    <a href="#-architecture-technique">Architecture</a>
+  </p>
 </div>
 
 ---
