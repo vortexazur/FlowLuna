@@ -29,31 +29,6 @@ const MIME_TYPES = {
   '.ttf': 'font/ttf',
 };
 
-const server = http.createServer((req, res) => {
-  let reqPath = req.url.split('?')[0];
-  if (reqPath === '/' || reqPath === '') reqPath = '/index.html';
-  
-  let filePath = path.join(distDir, reqPath);
-  if (!fs.existsSync(filePath)) {
-    filePath = path.join(distDir, 'index.html');
-  }
-
-  const ext = path.extname(filePath).toLowerCase();
-  const contentType = MIME_TYPES[ext] || 'application/octet-stream';
-
-  fs.readFile(filePath, (err, data) => {
-    if (err) {
-      res.writeHead(404, { 'Content-Type': 'text/plain' });
-      res.end('File Not Found');
-      return;
-    }
-    res.writeHead(200, { 'Content-Type': contentType });
-    res.end(data);
-  });
-});
-
-const PORT = 4173;
-
 function makeSvgCover(title, artist, color1, color2) {
   const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="500" height="500" viewBox="0 0 500 500">
     <defs>
@@ -367,61 +342,65 @@ const DEMO_DOWNLOAD_HISTORY = [
   },
 ];
 
-async function main() {
-  console.log('[Capture] Démarrage du serveur local...');
-  await new Promise((resolve) => server.listen(PORT, '127.0.0.1', resolve));
-  console.log(`[Capture] Serveur actif sur http://127.0.0.1:${PORT}`);
+const server = http.createServer((req, res) => {
+  let reqPath = req.url.split('?')[0];
 
-  const chromePath = 'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe';
-  const browser = await puppeteer.launch({
-    executablePath: chromePath,
-    headless: 'new',
-    args: [
-      '--no-sandbox',
-      '--disable-setuid-sandbox',
-      '--disable-dev-shm-usage',
-      '--force-device-scale-factor=1.5',
-      '--window-size=1440,900',
-    ],
+  // Mock API inspect for Downloader
+  if (reqPath.startsWith('/api/downloader/inspect')) {
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({
+      success: true,
+      id: 'kXYiU_JCYtU',
+      title: 'Linkin Park — Numb (Official Music Video 4K Remaster)',
+      artist: 'Linkin Park',
+      duration: 187,
+      durationStr: '03:07',
+      thumbnail: coverNightcall,
+      description: 'Official 4K Remastered Music Video for Numb by Linkin Park from the album Meteora.',
+      extractor: 'YouTube',
+      webpageUrl: 'https://www.youtube.com/watch?v=kXYiU_JCYtU',
+      viewCount: '2.4B',
+      hasVideo: true,
+      hasAudio: true,
+      videoResolutions: [2160, 1440, 1080, 720],
+      audioFormats: [
+        { format: 'flac', label: 'FLAC (Sans perte)', bitrates: ['1411'], defaultBitrate: '1411' },
+        { format: 'mp3', label: 'MP3 (Haute Définition)', bitrates: ['320', '256', '192', '128'], defaultBitrate: '320' },
+        { format: 'wav', label: 'WAV Studio', bitrates: ['1411'], defaultBitrate: '1411' },
+        { format: 'opus', label: 'Opus Audiophile', bitrates: ['160', '128'], defaultBitrate: '160' },
+      ],
+      videoFormats: [
+        { format: 'mp4', label: 'MP4 (Recommandé)' },
+        { format: 'mkv', label: 'MKV Matroska' },
+      ],
+    }));
+    return;
+  }
+
+  if (reqPath === '/' || reqPath === '') reqPath = '/index.html';
+  
+  let filePath = path.join(distDir, reqPath);
+  if (!fs.existsSync(filePath)) {
+    filePath = path.join(distDir, 'index.html');
+  }
+
+  const ext = path.extname(filePath).toLowerCase();
+  const contentType = MIME_TYPES[ext] || 'application/octet-stream';
+
+  fs.readFile(filePath, (err, data) => {
+    if (err) {
+      res.writeHead(404, { 'Content-Type': 'text/plain' });
+      res.end('File Not Found');
+      return;
+    }
+    res.writeHead(200, { 'Content-Type': contentType });
+    res.end(data);
   });
+});
 
-  const page = await browser.newPage();
-  await page.setViewport({ width: 1440, height: 900, deviceScaleFactor: 1.5 });
+const PORT = 4173;
 
-  await page.evaluateOnNewDocument(() => {
-    window.electronAPI = {
-      minimize: () => {},
-      maximize: () => {},
-      close: () => {},
-      isMaximized: async () => false,
-      onMaximizedChange: () => () => {},
-      setCompactMode: () => {},
-      updateTrayTrack: () => {},
-      onMediaControl: () => () => {},
-      onOpenFiles: () => () => {},
-      selectMusicFolder: async () => null,
-      selectMusicFiles: async () => [],
-      getBinariesStatus: async () => ({
-        ytdlp: { available: true, version: '2025.01.26', source: 'local' },
-        ffmpeg: { available: true, version: '7.1', source: 'local' },
-      }),
-      setBackdrop: () => {},
-    };
-
-    AnalyserNode.prototype.getByteFrequencyData = function (array) {
-      const len = array.length;
-      for (let i = 0; i < len; i++) {
-        const factor = Math.exp(-i / (len * 0.35));
-        const wave = Math.sin(i * 0.45) * 45;
-        const randomPeak = (i % 2 === 0 ? 30 : -10);
-        array[i] = Math.min(255, Math.max(30, Math.floor(155 * factor + wave + randomPeak)));
-      }
-    };
-  });
-
-  await page.goto(`http://127.0.0.1:${PORT}`, { waitUntil: 'networkidle0' });
-
-  // Inject IndexedDB & localStorage
+async function setupPageData(page) {
   await page.evaluate(
     ({ tracks, playlists, dlHistory }) => {
       localStorage.setItem('flowluna_dl_history', JSON.stringify(dlHistory));
@@ -479,12 +458,71 @@ async function main() {
     },
     { tracks: DEMO_TRACKS, playlists: DEMO_PLAYLISTS, dlHistory: DEMO_DOWNLOAD_HISTORY }
   );
+}
 
+async function main() {
+  console.log('[Capture] Démarrage du serveur local...');
+  await new Promise((resolve) => server.listen(PORT, '127.0.0.1', resolve));
+  console.log(`[Capture] Serveur actif sur http://127.0.0.1:${PORT}`);
+
+  const chromePath = 'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe';
+  const browser = await puppeteer.launch({
+    executablePath: chromePath,
+    headless: 'new',
+    args: [
+      '--no-sandbox',
+      '--disable-setuid-sandbox',
+      '--disable-dev-shm-usage',
+      '--force-device-scale-factor=1.5',
+      '--window-size=1440,900',
+    ],
+  });
+
+  const page = await browser.newPage();
+  await page.setViewport({ width: 1440, height: 900, deviceScaleFactor: 1.5 });
+
+  await page.evaluateOnNewDocument(() => {
+    window.electronAPI = {
+      minimize: () => {},
+      maximize: () => {},
+      close: () => {},
+      isMaximized: async () => false,
+      onMaximizedChange: () => () => {},
+      setCompactMode: () => {},
+      updateTrayTrack: () => {},
+      onMediaControl: () => () => {},
+      onOpenFiles: () => () => {},
+      selectMusicFolder: async () => null,
+      selectMusicFiles: async () => [],
+      getBinariesStatus: async () => ({
+        ytdlp: { available: true, version: '2025.01.26', source: 'local' },
+        ffmpeg: { available: true, version: '7.1', source: 'local' },
+      }),
+      setBackdrop: () => {},
+    };
+
+    AnalyserNode.prototype.getByteFrequencyData = function (array) {
+      const len = array.length;
+      for (let i = 0; i < len; i++) {
+        const factor = Math.exp(-i / (len * 0.35));
+        const wave = Math.sin(i * 0.45) * 45;
+        const randomPeak = (i % 2 === 0 ? 30 : -10);
+        array[i] = Math.min(255, Math.max(30, Math.floor(155 * factor + wave + randomPeak)));
+      }
+    };
+  });
+
+  // Load and inject initial data
   await page.goto(`http://127.0.0.1:${PORT}`, { waitUntil: 'networkidle0' });
-  await new Promise((r) => setTimeout(r, 1200));
+  await setupPageData(page);
 
-  // --- 1. CAPTURE : Lecteur principal & Bibliothèque en Pure Glass ---
+  // =========================================================================
+  // 1. CAPTURE : Lecteur principal & Bibliothèque en Pure Glass
+  // =========================================================================
   console.log('[Capture 1/5] Lecteur principal & Bibliothèque en Pure Glass...');
+  await page.goto(`http://127.0.0.1:${PORT}`, { waitUntil: 'networkidle0' });
+  await new Promise((r) => setTimeout(r, 1000));
+
   await page.evaluate(() => {
     const rows = Array.from(document.querySelectorAll('tbody tr'));
     const targetRow = rows.find(r => r.innerText && r.innerText.includes('Midnight City')) || rows[0];
@@ -496,7 +534,9 @@ async function main() {
   await page.screenshot({ path: screenshot1Path });
   console.log(`[OK] Enregistré : ${screenshot1Path}`);
 
-  // --- 2. CAPTURE : Mode Plein Écran & Paroles Synchronisées ---
+  // =========================================================================
+  // 2. CAPTURE : Mode Plein Écran & Paroles Synchronisées
+  // =========================================================================
   console.log('[Capture 2/5] Mode Plein Écran & Paroles Synchronisées...');
   await page.evaluate(() => {
     const lyricsBtn = document.getElementById('player-lyrics-btn');
@@ -504,7 +544,6 @@ async function main() {
   });
   await new Promise((r) => setTimeout(r, 1500));
 
-  // Advance time to 65s so active lyric "The city is my church" is highlighted
   await page.evaluate(() => {
     const audio = document.querySelector('audio');
     if (audio) {
@@ -518,28 +557,26 @@ async function main() {
   await page.screenshot({ path: screenshot2Path });
   console.log(`[OK] Enregistré : ${screenshot2Path}`);
 
-  // Close lyrics view using its close button
-  await page.evaluate(() => {
-    const closeBtn = document.getElementById('fullscreen-close-btn');
-    if (closeBtn) closeBtn.click();
-  });
-  await new Promise((r) => setTimeout(r, 1000));
-
-  // --- 3. CAPTURE : Lecteur Vidéo & Mode Cinéma ---
+  // =========================================================================
+  // 3. CAPTURE : Lecteur Vidéo & Mode Cinéma (4K / 1080p)
+  // =========================================================================
   console.log('[Capture 3/5] Lecteur Vidéo & Mode Cinéma...');
-  // Click on "Lecteur Vidéo" in sidebar
+  // Fresh page load for video
+  await page.goto(`http://127.0.0.1:${PORT}`, { waitUntil: 'networkidle0' });
+  await new Promise((r) => setTimeout(r, 800));
+
   await page.evaluate(() => {
     const vidNav = document.getElementById('nav-videos-btn');
     if (vidNav) vidNav.click();
   });
-  await new Promise((r) => setTimeout(r, 1200));
+  await new Promise((r) => setTimeout(r, 1000));
 
-  // Play video track (Interstella 5555)
+  // Play video track
   await page.evaluate(() => {
     const card = document.querySelector('div.grid > div') || document.querySelector('div[class*="group relative rounded-2xl"]');
     if (card) card.click();
   });
-  await new Promise((r) => setTimeout(r, 1200));
+  await new Promise((r) => setTimeout(r, 1000));
 
   // Open Cinema / Theater mode
   await page.evaluate((posterUrl) => {
@@ -557,45 +594,73 @@ async function main() {
   await page.screenshot({ path: screenshot3Path });
   console.log(`[OK] Enregistré : ${screenshot3Path}`);
 
-  // Exit video mode if open (press Escape)
-  await page.keyboard.press('Escape');
+  // =========================================================================
+  // 4. CAPTURE : Téléchargeur Universel (yt-dlp & FFmpeg)
+  // =========================================================================
+  console.log('[Capture 4/5] Téléchargeur Universel (Downloader)...');
+  // Fresh reload to make sure NO theater mode / video is active!
+  await page.goto(`http://127.0.0.1:${PORT}`, { waitUntil: 'networkidle0' });
   await new Promise((r) => setTimeout(r, 800));
 
-  // --- 4. CAPTURE : Téléchargeur (Downloader) avec Historique & Média ---
-  console.log('[Capture 4/5] Téléchargeur Universel (Downloader)...');
   await page.evaluate(() => {
     const dlNav = document.getElementById('nav-downloader-btn');
     if (dlNav) dlNav.click();
   });
   await new Promise((r) => setTimeout(r, 1000));
 
-  // Click on "Historique (3)" tab to showcase past downloads with badges
+  // Fill URL and trigger analysis to display inspected card with format pills
+  await page.evaluate(() => {
+    const input = document.querySelector('input[placeholder*="youtube"], input[placeholder*="http"], input[placeholder*="Lien"], input[placeholder*="URL"]');
+    if (input) {
+      const nativeSetter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value')?.set;
+      if (nativeSetter) {
+        nativeSetter.call(input, 'https://www.youtube.com/watch?v=kXYiU_JCYtU');
+      } else {
+        input.value = 'https://www.youtube.com/watch?v=kXYiU_JCYtU';
+      }
+      input.dispatchEvent(new Event('input', { bubbles: true }));
+      input.dispatchEvent(new Event('change', { bubbles: true }));
+    }
+  });
+  await new Promise((r) => setTimeout(r, 600));
+
+  // Click "Analyser le média"
   await page.evaluate(() => {
     const buttons = Array.from(document.querySelectorAll('button'));
-    const histBtn = buttons.find(b => b.innerText && b.innerText.includes('Historique'));
-    if (histBtn) histBtn.click();
+    const inspectBtn = buttons.find(b => b.innerText && b.innerText.includes('Analyser le média'));
+    if (inspectBtn) inspectBtn.click();
   });
-  await new Promise((r) => setTimeout(r, 1200));
+  // Wait for inspected card to appear
+  await page.waitForSelector('.glass-card', { timeout: 4000 }).catch(() => {});
+  await new Promise((r) => setTimeout(r, 1500));
 
   const screenshot4Path = path.join(outputDir, '04-telechargeur.png');
   await page.screenshot({ path: screenshot4Path });
   console.log(`[OK] Enregistré : ${screenshot4Path}`);
 
-  // --- 5. CAPTURE : Mini-Lecteur Flottant (Widget) ---
+  // =========================================================================
+  // 5. CAPTURE : Mini-Lecteur Flottant (Widget Always-on-Top)
+  // =========================================================================
   console.log('[Capture 5/5] Mini-Lecteur Flottant (Widget)...');
-  // Back to library
-  await page.evaluate(() => {
-    const libNav = document.getElementById('nav-library-btn');
-    if (libNav) libNav.click();
-  });
+  // Fresh reload for clean music widget
+  await page.goto(`http://127.0.0.1:${PORT}`, { waitUntil: 'networkidle0' });
   await new Promise((r) => setTimeout(r, 800));
+
+  // Play audio track (Get Lucky)
+  await page.evaluate(() => {
+    const rows = Array.from(document.querySelectorAll('tbody tr'));
+    const targetRow = rows.find(r => r.innerText && r.innerText.includes('Get Lucky')) || rows[0];
+    if (targetRow) (targetRow.querySelector('td:nth-child(2)') || targetRow).click();
+  });
+  await new Promise((r) => setTimeout(r, 1000));
 
   // Open mini-player via PIP button
   await page.evaluate(() => {
     const pipBtn = document.getElementById('player-pip-btn');
     if (pipBtn) pipBtn.click();
   });
-  await new Promise((r) => setTimeout(r, 2200)); // wait for toast to fade
+  // Wait 3.5 seconds so that the toast notification completely fades out
+  await new Promise((r) => setTimeout(r, 3500));
 
   await page.setViewport({ width: 360, height: 240, deviceScaleFactor: 2.0 });
   await new Promise((r) => setTimeout(r, 1000));
@@ -604,7 +669,7 @@ async function main() {
   await page.screenshot({ path: screenshot5Path });
   console.log(`[OK] Enregistré : ${screenshot5Path}`);
 
-  console.log('[Capture] Succès complet de toutes les captures !');
+  console.log('[Capture] Toutes les 5 captures sont finalisées avec succès !');
   await browser.close();
   server.close();
 }

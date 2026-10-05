@@ -1,9 +1,9 @@
 # 🎵 FlowLuna — Lecteur Audio Hi-Fi & Downloader Natif Windows
 
 <div align="center">
-
-![FlowLuna Banner](public/logo.jpg)
-
+<img src="public/logo.jpg" alt="FlowLuna Logo" width="160" style="border-radius: 20px; margin-bottom: 12px;" />
+<br />
+<br />
 [![Version](https://img.shields.io/badge/version-1.1.8-emerald.svg?style=for-the-badge)](https://github.com/vortexazur/FlowLuna/releases)
 [![Platform](https://img.shields.io/badge/platform-Windows%2010%20%7C%2011%20x64-blue.svg?style=for-the-badge&logo=windows)](https://github.com/vortexazur/FlowLuna)
 [![.NET 9](https://img.shields.io/badge/.NET-9.0-512BD4.svg?style=for-the-badge&logo=dotnet)](https://dotnet.microsoft.com/)
