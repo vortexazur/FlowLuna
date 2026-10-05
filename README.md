@@ -11,10 +11,15 @@
     <a href="https://github.com/videolan/libvlcsharp"><img src="https://img.shields.io/badge/LibVLCSharp-VideoLAN-orange.svg?style=for-the-badge&logo=vlc" alt="LibVLCSharp" /></a>
     <a href="LICENSE"><img src="https://img.shields.io/badge/licence-GPLv3-blue.svg?style=for-the-badge" alt="License" /></a>
     <a href="https://github.com/vortexazur/FlowLuna/actions"><img src="https://img.shields.io/badge/CI-GitHub%20Actions-brightgreen.svg?style=for-the-badge&logo=githubactions" alt="Build Status" /></a>
+    <a href="https://github.com/vortexazur/FlowLuna"><img src="https://img.shields.io/badge/D%C3%A9velopp%C3%A9%20avec-IA-8b5cf6.svg?style=for-the-badge" alt="Développé avec IA" /></a>
   </p>
 
   <p>
     <strong>Lecteur multimédia audiophile haute fidélité pour Windows avec interface Pure Glass XAML, moteur audio LibVLCSharp, égaliseur 10 bandes, visualiseur réactif, architecture native C# .NET 9 + WebView2 et extraction avancée yt-dlp & FFmpeg.</strong>
+  </p>
+
+  <p>
+    <em>🤖 Logiciel conçu et développé avec l'Intelligence Artificielle (IA)</em>
   </p>
 
   <p>
@@ -29,6 +34,10 @@
 ---
 
 ## ✨ Présentation
+
+> [!NOTE]
+> **Projet conçu & développé par Intelligence Artificielle (IA) :**  
+> FlowLuna est une application développée de bout en bout avec l'assistance de l'Intelligence Artificielle (IA). L'architecture logicielle, le code source (C# .NET 9, React 19, TypeScript), les intégrations multimédias et le design de l'interface utilisateur ont été entièrement programmés et itérés en pair-programming assisté par IA.
 
 **FlowLuna** est une application de bureau conçue pour offrir une expérience d'écoute sans compromis sous Windows. Propulsée par **C# .NET 9**, **Microsoft Edge WebView2**, **LibVLCSharp (VideoLAN)**, **React 19**, **Vite** et un serveur in-process ultra-rapide **ASP.NET Core Kestrel**, elle réunit le meilleur du traitement audio numérique, de la lecture locale ultra-fluide et de l'extraction multimédia haute performance avec une empreinte mémoire et disque réduite à seulement ~70 Mo.
 
