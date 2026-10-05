@@ -62,6 +62,7 @@ const DEFAULT_PLAYER_SETTINGS: PlayerSettings = {
   accent: 'emerald',
   backdropEffect: 'glass',
   glassIntensity: 70,
+  acrylicIntensity: 30,
   visualizerStyle: 'bars',
   crossfadeDuration: 2,
   gaplessPlayback: true,
@@ -275,8 +276,13 @@ export default function App() {
       setPlaylists(loadedPlaylists);
 
       const savedSettings = await getSetting<PlayerSettings>('player_settings', DEFAULT_PLAYER_SETTINGS);
-      setPlayerSettings(savedSettings);
-      audioEngine.setVolumeNormalization(savedSettings.volumeNormalization, savedSettings.normalizationTarget ?? 'streaming');
+      const mergedSettings: PlayerSettings = {
+        ...DEFAULT_PLAYER_SETTINGS,
+        ...savedSettings,
+        acrylicIntensity: savedSettings?.acrylicIntensity ?? DEFAULT_PLAYER_SETTINGS.acrylicIntensity ?? 30,
+      };
+      setPlayerSettings(mergedSettings);
+      audioEngine.setVolumeNormalization(mergedSettings.volumeNormalization, mergedSettings.normalizationTarget ?? 'streaming');
 
       const savedEq = await getSetting<EqualizerSettings>('equalizer_settings', DEFAULT_EQ_SETTINGS);
       setEqualizerSettings(savedEq);
@@ -1357,22 +1363,63 @@ export default function App() {
   const isAcrylic = playerSettings.backdropEffect === 'acrylic' || playerSettings.backdropEffect === 'mica';
   const backdropEffect: BackdropEffect = isAcrylic ? 'acrylic' : (playerSettings.backdropEffect || 'glass');
   const glassIntensity = playerSettings.glassIntensity ?? 70;
+  const acrylicIntensity = playerSettings.acrylicIntensity ?? 30;
   const glassFactor = glassIntensity / 100;
+  const acrylicFactor = acrylicIntensity / 30; // At 30%, exactly 1.0 (maintains existing baseline)
+  const blurScale = Math.sqrt(Math.max(0.1, acrylicIntensity / 30));
   const isDark = playerSettings.theme !== 'light';
 
   // Dynamic CSS variables for Pure Glass vs Desktop Acrylic Fluent effect
   const glassStyle = useMemo(() => {
     if (isAcrylic) {
+      const acrylicSidebarBg = isDark
+        ? `rgba(16, 16, 24, ${Math.min(0.95, Math.max(0.08, 0.40 * acrylicFactor)).toFixed(3)})`
+        : `rgba(255, 255, 255, ${Math.min(0.95, Math.max(0.08, 0.40 * acrylicFactor)).toFixed(3)})`;
+      const acrylicMainBg = isDark
+        ? `rgba(10, 10, 16, ${Math.min(0.95, Math.max(0.04, 0.20 * acrylicFactor)).toFixed(3)})`
+        : `rgba(245, 247, 250, ${Math.min(0.95, Math.max(0.05, 0.25 * acrylicFactor)).toFixed(3)})`;
+      const acrylicPlayerBg = isDark
+        ? `rgba(18, 18, 28, ${Math.min(0.95, Math.max(0.10, 0.45 * acrylicFactor)).toFixed(3)})`
+        : `rgba(255, 255, 255, ${Math.min(0.95, Math.max(0.10, 0.50 * acrylicFactor)).toFixed(3)})`;
+      const acrylicCardBg = isDark
+        ? `rgba(26, 26, 38, ${Math.min(0.95, Math.max(0.06, 0.30 * acrylicFactor)).toFixed(3)})`
+        : `rgba(255, 255, 255, ${Math.min(0.95, Math.max(0.08, 0.45 * acrylicFactor)).toFixed(3)})`;
+      const acrylicModalBg = isDark
+        ? `rgba(18, 18, 28, ${Math.min(0.98, Math.max(0.15, 0.60 * acrylicFactor)).toFixed(3)})`
+        : `rgba(255, 255, 255, ${Math.min(0.98, Math.max(0.15, 0.65 * acrylicFactor)).toFixed(3)})`;
+      const acrylicRootBg = isDark
+        ? `rgba(10, 10, 16, ${Math.min(0.95, Math.max(0.04, 0.25 * acrylicFactor)).toFixed(3)})`
+        : `rgba(245, 247, 250, ${Math.min(0.95, Math.max(0.05, 0.30 * acrylicFactor)).toFixed(3)})`;
+      const acrylicSubCardBg = isDark
+        ? `rgba(255, 255, 255, ${Math.min(0.20, Math.max(0.02, 0.04 * acrylicFactor)).toFixed(3)})`
+        : `rgba(255, 255, 255, ${Math.min(0.90, Math.max(0.20, 0.60 * acrylicFactor)).toFixed(3)})`;
+      const acrylicBlur = `${Math.round(Math.min(48, Math.max(8, 28 * blurScale)))}px`;
+      const acrylicBlurMain = `${Math.round(Math.min(40, Math.max(6, 24 * blurScale)))}px`;
+      const acrylicBlurCard = `${Math.round(Math.min(36, Math.max(6, 20 * blurScale)))}px`;
+      const acrylicBlurModal = `${Math.round(Math.min(54, Math.max(12, 36 * blurScale)))}px`;
+
       return {
-        '--glass-intensity': '100%',
-        '--glass-factor': '1',
-        '--glass-blur': '28px',
+        '--acrylic-intensity': `${acrylicIntensity}%`,
+        '--acrylic-root-bg': acrylicRootBg,
+        '--acrylic-sidebar-bg': acrylicSidebarBg,
+        '--acrylic-player-bg': acrylicPlayerBg,
+        '--acrylic-main-bg': acrylicMainBg,
+        '--acrylic-card-bg': acrylicCardBg,
+        '--acrylic-modal-bg': acrylicModalBg,
+        '--acrylic-sub-card-bg': acrylicSubCardBg,
+        '--acrylic-blur': acrylicBlur,
+        '--acrylic-blur-main': acrylicBlurMain,
+        '--acrylic-blur-card': acrylicBlurCard,
+        '--acrylic-blur-modal': acrylicBlurModal,
+        '--glass-intensity': `${acrylicIntensity}%`,
+        '--glass-factor': `${(acrylicIntensity / 100).toFixed(2)}`,
+        '--glass-blur': acrylicBlur,
         '--glass-border': isDark ? 'rgba(255, 255, 255, 0.08)' : 'rgba(0, 0, 0, 0.08)',
-        '--glass-sidebar-bg': isDark ? 'rgba(16, 16, 24, 0.40)' : 'rgba(255, 255, 255, 0.45)',
-        '--glass-main-bg': isDark ? 'rgba(10, 10, 16, 0.20)' : 'rgba(245, 247, 250, 0.25)',
-        '--glass-player-bg': isDark ? 'rgba(18, 18, 28, 0.45)' : 'rgba(255, 255, 255, 0.55)',
-        '--glass-card-bg': isDark ? 'rgba(26, 26, 38, 0.30)' : 'rgba(255, 255, 255, 0.50)',
-        '--glass-modal-bg': isDark ? 'rgba(18, 18, 28, 0.60)' : 'rgba(255, 255, 255, 0.70)',
+        '--glass-sidebar-bg': acrylicSidebarBg,
+        '--glass-main-bg': acrylicMainBg,
+        '--glass-player-bg': acrylicPlayerBg,
+        '--glass-card-bg': acrylicCardBg,
+        '--glass-modal-bg': acrylicModalBg,
       } as React.CSSProperties;
     }
 
@@ -1399,7 +1446,7 @@ export default function App() {
         ? `rgba(14, 14, 22, ${Math.max(0.45, 0.95 - glassFactor * 0.5)})`
         : `rgba(255, 255, 255, ${Math.max(0.72, 0.96 - glassFactor * 0.24)})`,
     } as React.CSSProperties;
-  }, [isAcrylic, glassIntensity, glassFactor, isDark]);
+  }, [isAcrylic, acrylicIntensity, acrylicFactor, blurScale, glassIntensity, glassFactor, isDark]);
 
   // Check if fullscreen video or UI is active to prevent any foreground toast popup
   const isFullscreenActive = useMemo(() => {

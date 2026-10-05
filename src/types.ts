@@ -136,6 +136,7 @@ export interface PlayerSettings {
   accent: AccentColor;
   backdropEffect?: BackdropEffect; // 'glass' (Pure Glass / Verre dépoli) or 'acrylic' (Desktop Acrylic transparent)
   glassIntensity?: number; // 0 (opaque) to 100% (pure crystal frosted glass)
+  acrylicIntensity?: number; // 0 to 100% (Desktop Acrylic material intensity, default 30%)
   visualizerStyle: 'bars' | 'wave' | 'circle' | 'minimal' | 'pillars';
   crossfadeDuration: number; // seconds (0 to 12)
   gaplessPlayback?: boolean; // Enchaînement sans aucun blanc ni silence

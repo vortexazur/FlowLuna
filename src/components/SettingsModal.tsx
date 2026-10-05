@@ -707,7 +707,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                   </div>
                 </div>
               ) : (
-                /* Si Acrylic actif : Description & Aperçu Fluent */
+                /* Si Acrylic actif : Description, Réglage d'Intensité & Aperçu Fluent */
                 <div className="flex flex-col gap-3.5 bg-neutral-900/60 p-4.5 rounded-xl border border-neutral-800">
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-2">
@@ -717,23 +717,71 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                       </span>
                     </div>
                     <span className="text-xs font-mono font-bold px-2.5 py-0.5 rounded-full bg-indigo-950/80 text-indigo-400 border border-indigo-500/30">
-                      Windows 11 Natif
+                      {(settings.acrylicIntensity ?? 30)}% {(settings.acrylicIntensity ?? 30) === 30 ? 'Par défaut' : (settings.acrylicIntensity ?? 30) < 30 ? 'Ultra Clair' : (settings.acrylicIntensity ?? 30) >= 80 ? 'Opaque' : 'Équilibré'}
                     </span>
                   </div>
 
                   <p className="text-xs text-neutral-400 leading-relaxed">
-                    Le mode <strong className="text-white">Desktop Acrylic</strong> applique la transparence dépolie officielle de Windows 11. Grâce au flou d'arrière-plan DWM translucide, les fenêtres d'arrière-plan et le bureau apparaissent en transparence sous FlowLuna avec un flou matériel élégant.
+                    Le mode <strong className="text-white">Desktop Acrylic</strong> applique la transparence dépolie officielle de Windows 11. Grâce au flou d'arrière-plan DWM translucide, les fenêtres d'arrière-plan et le bureau apparaissent en transparence sous FlowLuna. Ajustez la translucidité ci-dessous.
                   </p>
 
+                  {/* Slider de réglage de l'intensité acrylique (0% à 100%, par défaut 30%) */}
+                  <div className="flex flex-col gap-2.5 pt-1">
+                    <div className="flex items-center justify-between text-xs text-neutral-300">
+                      <span className="font-semibold">Transparence & Profondeur Acrylique</span>
+                      <span className="font-mono text-indigo-400 font-bold">{(settings.acrylicIntensity ?? 30)}%</span>
+                    </div>
+                    <div className="flex items-center gap-3">
+                      <span className="text-[11px] font-mono text-neutral-500 font-semibold w-8">0%</span>
+                      <input
+                        type="range"
+                        min="0"
+                        max="100"
+                        step="1"
+                        value={settings.acrylicIntensity ?? 30}
+                        onChange={(e) => updateSetting('acrylicIntensity', parseInt(e.target.value, 10))}
+                        className="flex-1 h-2 bg-neutral-800 rounded-lg appearance-none cursor-pointer accent-indigo-400"
+                      />
+                      <span className="text-[11px] font-mono text-indigo-400 font-bold w-10 text-right">100%</span>
+                    </div>
+
+                    {/* Raccourcis / Préréglages rapides */}
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 pt-1">
+                      {[
+                        { value: 10, label: '10% Ultra Clair' },
+                        { value: 30, label: '30% Par défaut' },
+                        { value: 55, label: '55% Équilibré' },
+                        { value: 85, label: '85% Opaque' },
+                      ].map((preset) => {
+                        const isActive = (settings.acrylicIntensity ?? 30) === preset.value;
+                        return (
+                          <button
+                            key={preset.value}
+                            type="button"
+                            onClick={() => updateSetting('acrylicIntensity', preset.value)}
+                            className={`py-1.5 px-2 rounded-lg text-[11px] font-medium transition-all text-center cursor-pointer border ${
+                              isActive
+                                ? 'border-indigo-500/60 bg-indigo-500/20 text-indigo-200 font-bold shadow-xs ring-1 ring-indigo-500/30'
+                                : 'border-neutral-800 bg-neutral-900/60 text-neutral-400 hover:text-neutral-200 hover:border-neutral-700'
+                            }`}
+                          >
+                            {preset.label}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  {/* Live Visual Desktop Acrylic Preview */}
                   <div
                     className="mt-1 p-3.5 rounded-xl border border-white/15 relative overflow-hidden flex items-center justify-between transition-all"
                     style={{
-                      backdropFilter: 'blur(36px) saturate(140%)',
-                      WebkitBackdropFilter: 'blur(36px) saturate(140%)',
+                      backdropFilter: `blur(${Math.round(Math.min(50, Math.max(8, 16 + ((settings.acrylicIntensity ?? 30) / 100) * 32)))}px) saturate(140%)`,
+                      WebkitBackdropFilter: `blur(${Math.round(Math.min(50, Math.max(8, 16 + ((settings.acrylicIntensity ?? 30) / 100) * 32)))}px) saturate(140%)`,
                       backgroundColor:
                         settings.theme === 'light'
-                          ? 'rgba(255, 255, 255, 0.45)'
-                          : 'rgba(18, 18, 28, 0.45)',
+                          ? `rgba(255, 255, 255, ${Math.min(0.95, Math.max(0.08, 0.45 * ((settings.acrylicIntensity ?? 30) / 30))).toFixed(3)})`
+                          : `rgba(18, 18, 28, ${Math.min(0.95, Math.max(0.08, 0.45 * ((settings.acrylicIntensity ?? 30) / 30))).toFixed(3)})`,
                       boxShadow: '0 8px 30px rgba(0, 0, 0, 0.25)',
                     }}
                   >
@@ -744,7 +792,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                       </span>
                     </div>
                     <span className="text-[10px] font-mono text-indigo-300 font-semibold px-2 py-0.5 rounded bg-indigo-950/60 border border-indigo-500/20 z-10">
-                      DWM Desktop Acrylic
+                      DWM Desktop Acrylic ({(settings.acrylicIntensity ?? 30)}%)
                     </span>
                   </div>
                 </div>

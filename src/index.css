@@ -953,39 +953,39 @@ html.light .glass-modal {
 /* Dark Mode Desktop Acrylic */
 :is([data-effect="acrylic"], [data-effect="mica"]):not([data-theme="light"]) #app-root-container,
 :is([data-effect="acrylic"], [data-effect="mica"])[data-theme="dark"] #app-root-container {
-  background-color: rgba(10, 10, 16, 0.25) !important;
+  background-color: var(--acrylic-root-bg, rgba(10, 10, 16, 0.25)) !important;
 }
 
 :is([data-effect="acrylic"], [data-effect="mica"]):not([data-theme="light"]) .glass-sidebar,
 :is([data-effect="acrylic"], [data-effect="mica"])[data-theme="dark"] .glass-sidebar {
-  background-color: rgba(16, 16, 24, 0.40) !important;
-  backdrop-filter: blur(28px) saturate(140%) !important;
-  -webkit-backdrop-filter: blur(28px) saturate(140%) !important;
+  background-color: var(--acrylic-sidebar-bg, rgba(16, 16, 24, 0.40)) !important;
+  backdrop-filter: blur(var(--acrylic-blur, 28px)) saturate(140%) !important;
+  -webkit-backdrop-filter: blur(var(--acrylic-blur, 28px)) saturate(140%) !important;
   border-right-color: rgba(255, 255, 255, 0.08) !important;
   box-shadow: inset -1px 0 0 0 rgba(255, 255, 255, 0.04);
 }
 
 :is([data-effect="acrylic"], [data-effect="mica"]):not([data-theme="light"]) .glass-player,
 :is([data-effect="acrylic"], [data-effect="mica"])[data-theme="dark"] .glass-player {
-  background-color: rgba(18, 18, 28, 0.45) !important;
-  backdrop-filter: blur(28px) saturate(140%) !important;
-  -webkit-backdrop-filter: blur(28px) saturate(140%) !important;
+  background-color: var(--acrylic-player-bg, rgba(18, 18, 28, 0.45)) !important;
+  backdrop-filter: blur(var(--acrylic-blur, 28px)) saturate(140%) !important;
+  -webkit-backdrop-filter: blur(var(--acrylic-blur, 28px)) saturate(140%) !important;
   border-top-color: rgba(255, 255, 255, 0.08) !important;
   box-shadow: 0 -8px 24px rgba(0, 0, 0, 0.25) !important;
 }
 
 :is([data-effect="acrylic"], [data-effect="mica"]):not([data-theme="light"]) .glass-main,
 :is([data-effect="acrylic"], [data-effect="mica"])[data-theme="dark"] .glass-main {
-  background-color: rgba(10, 10, 16, 0.20) !important;
-  backdrop-filter: blur(24px) saturate(130%) !important;
-  -webkit-backdrop-filter: blur(24px) saturate(130%) !important;
+  background-color: var(--acrylic-main-bg, rgba(10, 10, 16, 0.20)) !important;
+  backdrop-filter: blur(var(--acrylic-blur-main, 24px)) saturate(130%) !important;
+  -webkit-backdrop-filter: blur(var(--acrylic-blur-main, 24px)) saturate(130%) !important;
 }
 
 :is([data-effect="acrylic"], [data-effect="mica"]):not([data-theme="light"]) .glass-card,
 :is([data-effect="acrylic"], [data-effect="mica"])[data-theme="dark"] .glass-card {
-  background-color: rgba(26, 26, 38, 0.30) !important;
-  backdrop-filter: blur(20px) saturate(140%) !important;
-  -webkit-backdrop-filter: blur(20px) saturate(140%) !important;
+  background-color: var(--acrylic-card-bg, rgba(26, 26, 38, 0.30)) !important;
+  backdrop-filter: blur(var(--acrylic-blur-card, 20px)) saturate(140%) !important;
+  -webkit-backdrop-filter: blur(var(--acrylic-blur-card, 20px)) saturate(140%) !important;
   border-color: rgba(255, 255, 255, 0.08) !important;
   box-shadow: 0 4px 16px rgba(0, 0, 0, 0.20) !important;
 }
@@ -1000,9 +1000,9 @@ html.light .glass-modal {
 :is([data-effect="acrylic"], [data-effect="mica"]):not([data-theme="light"]) #listening-stats-content,
 :is([data-effect="acrylic"], [data-effect="mica"]):not([data-theme="light"]) #track-tag-editor-content,
 :is([data-effect="acrylic"], [data-effect="mica"]):not([data-theme="light"]) #audio-trimmer-modal-content {
-  background-color: rgba(18, 18, 28, 0.60) !important;
-  backdrop-filter: blur(36px) saturate(150%) !important;
-  -webkit-backdrop-filter: blur(36px) saturate(150%) !important;
+  background-color: var(--acrylic-modal-bg, rgba(18, 18, 28, 0.60)) !important;
+  backdrop-filter: blur(var(--acrylic-blur-modal, 36px)) saturate(150%) !important;
+  -webkit-backdrop-filter: blur(var(--acrylic-blur-modal, 36px)) saturate(150%) !important;
   border-color: rgba(255, 255, 255, 0.12) !important;
   box-shadow: 0 25px 60px rgba(0, 0, 0, 0.5) !important;
 }
@@ -1013,7 +1013,7 @@ html.light .glass-modal {
 :is([data-effect="acrylic"], [data-effect="mica"])[data-theme="dark"] #settings-modal-content .bg-neutral-900\/60,
 :is([data-effect="acrylic"], [data-effect="mica"])[data-theme="dark"] #settings-modal-content .bg-neutral-900\/80,
 :is([data-effect="acrylic"], [data-effect="mica"])[data-theme="dark"] #settings-modal-content .bg-neutral-950\/60 {
-  background-color: rgba(255, 255, 255, 0.04) !important;
+  background-color: var(--acrylic-sub-card-bg, rgba(255, 255, 255, 0.04)) !important;
   border-color: rgba(255, 255, 255, 0.08) !important;
   backdrop-filter: blur(16px) !important;
   -webkit-backdrop-filter: blur(16px) !important;
@@ -1022,39 +1022,39 @@ html.light .glass-modal {
 /* Light Mode Desktop Acrylic */
 :is([data-effect="acrylic"], [data-effect="mica"])[data-theme="light"] #app-root-container,
 :is([data-effect="acrylic"], [data-effect="mica"]).light #app-root-container {
-  background-color: rgba(245, 247, 250, 0.30) !important;
+  background-color: var(--acrylic-root-bg, rgba(245, 247, 250, 0.30)) !important;
 }
 
 :is([data-effect="acrylic"], [data-effect="mica"])[data-theme="light"] .glass-sidebar,
 :is([data-effect="acrylic"], [data-effect="mica"]).light .glass-sidebar {
-  background-color: rgba(255, 255, 255, 0.40) !important;
-  backdrop-filter: blur(28px) saturate(140%) !important;
-  -webkit-backdrop-filter: blur(28px) saturate(140%) !important;
+  background-color: var(--acrylic-sidebar-bg, rgba(255, 255, 255, 0.40)) !important;
+  backdrop-filter: blur(var(--acrylic-blur, 28px)) saturate(140%) !important;
+  -webkit-backdrop-filter: blur(var(--acrylic-blur, 28px)) saturate(140%) !important;
   border-right-color: rgba(0, 0, 0, 0.07) !important;
   box-shadow: inset -1px 0 0 0 rgba(255, 255, 255, 0.8), 2px 0 16px rgba(0, 0, 0, 0.02) !important;
 }
 
 :is([data-effect="acrylic"], [data-effect="mica"])[data-theme="light"] .glass-player,
 :is([data-effect="acrylic"], [data-effect="mica"]).light .glass-player {
-  background-color: rgba(255, 255, 255, 0.50) !important;
-  backdrop-filter: blur(28px) saturate(140%) !important;
-  -webkit-backdrop-filter: blur(28px) saturate(140%) !important;
+  background-color: var(--acrylic-player-bg, rgba(255, 255, 255, 0.50)) !important;
+  backdrop-filter: blur(var(--acrylic-blur, 28px)) saturate(140%) !important;
+  -webkit-backdrop-filter: blur(var(--acrylic-blur, 28px)) saturate(140%) !important;
   border-top-color: rgba(0, 0, 0, 0.07) !important;
   box-shadow: 0 -8px 24px rgba(15, 23, 42, 0.04) !important;
 }
 
 :is([data-effect="acrylic"], [data-effect="mica"])[data-theme="light"] .glass-main,
 :is([data-effect="acrylic"], [data-effect="mica"]).light .glass-main {
-  background-color: rgba(245, 247, 250, 0.25) !important;
-  backdrop-filter: blur(24px) saturate(130%) !important;
-  -webkit-backdrop-filter: blur(24px) saturate(130%) !important;
+  background-color: var(--acrylic-main-bg, rgba(245, 247, 250, 0.25)) !important;
+  backdrop-filter: blur(var(--acrylic-blur-main, 24px)) saturate(130%) !important;
+  -webkit-backdrop-filter: blur(var(--acrylic-blur-main, 24px)) saturate(130%) !important;
 }
 
 :is([data-effect="acrylic"], [data-effect="mica"])[data-theme="light"] .glass-card,
 :is([data-effect="acrylic"], [data-effect="mica"]).light .glass-card {
-  background-color: rgba(255, 255, 255, 0.45) !important;
-  backdrop-filter: blur(20px) saturate(140%) !important;
-  -webkit-backdrop-filter: blur(20px) saturate(140%) !important;
+  background-color: var(--acrylic-card-bg, rgba(255, 255, 255, 0.45)) !important;
+  backdrop-filter: blur(var(--acrylic-blur-card, 20px)) saturate(140%) !important;
+  -webkit-backdrop-filter: blur(var(--acrylic-blur-card, 20px)) saturate(140%) !important;
   border-color: rgba(226, 232, 240, 0.8) !important;
   box-shadow: 0 4px 16px rgba(15, 23, 42, 0.04) !important;
 }
@@ -1069,9 +1069,9 @@ html.light .glass-modal {
 :is([data-effect="acrylic"], [data-effect="mica"])[data-theme="light"] #listening-stats-content,
 :is([data-effect="acrylic"], [data-effect="mica"])[data-theme="light"] #track-tag-editor-content,
 :is([data-effect="acrylic"], [data-effect="mica"])[data-theme="light"] #audio-trimmer-modal-content {
-  background-color: rgba(255, 255, 255, 0.65) !important;
-  backdrop-filter: blur(36px) saturate(160%) !important;
-  -webkit-backdrop-filter: blur(36px) saturate(160%) !important;
+  background-color: var(--acrylic-modal-bg, rgba(255, 255, 255, 0.65)) !important;
+  backdrop-filter: blur(var(--acrylic-blur-modal, 36px)) saturate(160%) !important;
+  -webkit-backdrop-filter: blur(var(--acrylic-blur-modal, 36px)) saturate(160%) !important;
   border-color: rgba(0, 0, 0, 0.08) !important;
   box-shadow: 0 25px 60px -10px rgba(15, 23, 42, 0.12) !important;
 }
@@ -1082,7 +1082,7 @@ html.light .glass-modal {
 :is([data-effect="acrylic"], [data-effect="mica"]).light #settings-modal-content .bg-neutral-900\/60,
 :is([data-effect="acrylic"], [data-effect="mica"]).light #settings-modal-content .bg-neutral-900\/80,
 :is([data-effect="acrylic"], [data-effect="mica"]).light #settings-modal-content .bg-neutral-950\/60 {
-  background-color: rgba(255, 255, 255, 0.60) !important;
+  background-color: var(--acrylic-sub-card-bg, rgba(255, 255, 255, 0.60)) !important;
   border-color: rgba(226, 232, 240, 0.8) !important;
   backdrop-filter: blur(16px) !important;
   -webkit-backdrop-filter: blur(16px) !important;
