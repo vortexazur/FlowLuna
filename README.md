@@ -30,11 +30,51 @@
 
 ## 🚀 Fonctionnalités Clés
 
-### 🎬 Moteur Multimédia LibVLCSharp (VideoLAN) & Audio Hi-Fi
-FlowLuna utilise le moteur multimédia **LibVLCSharp** ([VideoLAN](https://github.com/videolan/libvlcsharp)) comme cœur de traitement audio et vidéo :
+### 🎬 Moteur Multimédia LibVLCSharp (VideoLAN) & Interface Pure Glass
+FlowLuna réunit la puissance du moteur multimédia **LibVLCSharp** ([VideoLAN](https://github.com/videolan/libvlcsharp)) et une interface fluide **Pure Glass & Acrylic** accélérée par DWM :
 - **Décodage universel matériel :** Prise en charge native de tous les codecs audio et conteneurs vidéo (*FLAC, ALAC, MP3, WAV, AAC, Opus, Ogg Vorbis, MKV, MP4, WebM*).
 - **Égaliseur graphique LibVLC 10 bandes :** Calibré selon les fréquences ISO standard VLC (31 Hz à 16 kHz) avec pré-amplification et presets audiophiles officiels.
-- **Auto-mise à jour en 1 clic :** Détection automatique des nouvelles versions stables du moteur LibVLCSharp directement depuis l'onglet Paramètres.
+- **Translucidité Pure Glass personnalisable :** Effet de profondeur dépoli moderne avec gestion dynamique de l'opacité et accentuation des couleurs.
+
+<p align="center">
+  <img src="docs/screenshots/01-lecteur-pure-glass.png" alt="Lecteur principal & Bibliothèque en Pure Glass" width="100%">
+</p>
+
+### 🎤 Mode Plein Écran & Paroles Synchronisées (Karaoké)
+- **Synchronisation dynamique en direct :** Défilement automatique fluide avec surlignage lumineux de la phrase en cours d'écoute.
+- **Visualiseur audio 100% réactif :** Analyse spectrale en temps réel au bas de l'écran avec sélecteur de styles visuels (*Barres*, *Onde*, *Piliers*, *Radar*, *LEDs Micro*).
+- **Gestion des intros instrumentales & calage manuel :** Détection automatique des pauses instrumentales et micro-ajustement fin (`-0.5s` / `+0.5s`) sauvegardé par morceau.
+
+<p align="center">
+  <img src="docs/screenshots/02-paroles-plein-ecran.png" alt="Mode Plein Écran & Paroles Synchronisées" width="100%">
+</p>
+
+### 📺 Lecteur Vidéo Haute Définition & Mode Cinéma (4K / 1080p)
+- **Lecture vidéo fluide accélérée :** Prise en charge native des fichiers MP4, WebM, MKV et MOV avec décodage matériel GPU sans saccades.
+- **Mode Cinéma immersif :** Affichage grand écran avec commandes escamotables automatiques, sélecteur de ratio (*Contain / Cover / 16:9*), vitesse réglable (0.5x à 2x) et badge de résolution dynamique.
+- **Mode Picture-in-Picture (PiP) :** Basculez en un clic vers la fenêtre flottante au-dessus de vos autres applications.
+
+<p align="center">
+  <img src="docs/screenshots/03-lecteur-video.png" alt="Lecteur Vidéo & Mode Cinéma" width="100%">
+</p>
+
+### ⚡ Downloader Universel Haute Performance (yt-dlp & FFmpeg)
+- **Binaires natifs Windows 64-bit :** `yt-dlp.exe` et `ffmpeg.exe` intégrés hors ASAR pour un accès direct et des vitesses d'exécution optimales.
+- **Suivi temps réel & Historique :** Progression en direct avec jauge, vitesse en Mo/s, panneau d'historique dédié et intégration directe dans la bibliothèque.
+- **Formats audio sans perte & vidéo HD :** Téléchargement en *FLAC, MP3 (320 kbps HD), WAV, AAC, Opus* ou vidéos jusqu'en *4K UHD / 1080p*.
+- **Compatibilité multi-plateformes :** Extraction depuis YouTube, SoundCloud, TikTok, Instagram, X/Twitter, etc.
+
+<p align="center">
+  <img src="docs/screenshots/04-telechargeur.png" alt="Téléchargeur Universel Média" width="100%">
+</p>
+
+### 🖼️ Mode Widget Flottant Exclusif Always-on-Top
+- **Transformation exclusive :** D'un simple clic sur le widget flottant, l'application complète s'efface pour ne laisser **QUE** le widget flottant ultra-compact sur votre bureau.
+- **Mode Always-on-Top natif :** Fenêtre Windows compacte (360x240) épinglée au premier plan au-dessus de vos jeux et applications, avec barre de déplacement, spectre temps réel et menu de sélection de playlists dynamique.
+
+<p align="center">
+  <img src="docs/screenshots/05-mini-lecteur.png" alt="Mini-Lecteur Flottant Always-on-Top" width="420">
+</p>
 
 ### 🎛️ Traitements DSP & Normalisation Sonore EBU R128
 - Égaliseur paramétrique 10 bandes avec contrôle indépendant du gain (±12 dB).
@@ -45,17 +85,6 @@ FlowLuna utilise le moteur multimédia **LibVLCSharp** ([VideoLAN](https://githu
 - Analyseur de fréquences FFT interactif connecté directement au moteur Web Audio.
 - Plusieurs modes de visualisation : Barres spectrales dynamiques, onde oscilloscopique et particules translucides.
 - Animation fluide à 60 FPS avec arrêt intelligent en pause pour préserver le processeur et la mémoire vive (RAM).
-
-### ⚡ Downloader Universel Haute Performance (yt-dlp & FFmpeg)
-- **Binaires natifs Windows 64-bit :** `yt-dlp.exe` et `ffmpeg.exe` intégrés hors ASAR pour un accès direct et des vitesses d'exécution optimales.
-- **Suivi temps réel :** Progression en direct avec jauge de 0 à 100%, vitesse de téléchargement en Mo/s, compte à rebours ETA et taille estimée du flux.
-- **Formats audio sans perte & vidéo HD :** Téléchargement en *FLAC, MP3 (320 kbps HD), WAV, AAC, Opus* ou vidéos jusqu'en *4K UHD / 1080p*.
-- **Compatibilité multi-plateformes :** Extraction depuis YouTube, SoundCloud, TikTok, Instagram, X/Twitter, etc.
-- **Auto-mise à jour sécurisée :** Vérification et mise à jour de `yt-dlp` en un clic depuis les paramètres, avec fallback automatique dans `%APPDATA%/FlowLuna/bin/` pour contourner les verrous de permissions de Windows.
-
-### 🖼️ Mode Widget Flottant Exclusif Always-on-Top
-- **Transformation exclusive :** D'un simple clic sur le widget flottant, l'application complète (barre latérale, bibliothèque, barre de lecture) s'efface pour ne laisser **QUE** le widget flottant ultra-compact sur votre bureau.
-- **Mode Always-on-Top natif :** Fenêtre Windows compacte (360x240) épinglée au premier plan au-dessus de vos jeux et applications, avec barre de déplacement, spectre temps réel et bouton d'agrandissement pour restaurer l'interface complète à tout moment.
 
 ### 🪟 Intégration Native Windows XAML, SMTC & Discord RPC
 - **Hôte XAML WPF / Windows App SDK :** Fenêtre native optimisée pour le Microsoft Store avec effet de fond DWM Mica / Acrylic et consommation de RAM allégée via Workstation GC.

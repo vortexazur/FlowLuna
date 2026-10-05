@@ -22,7 +22,8 @@
     "start": "node dist/server.cjs",
     "preview": "vite preview",
     "clean": "rm -rf dist dist-electron release server.js",
-    "lint": "tsc --noEmit"
+    "lint": "tsc --noEmit",
+    "screenshots": "node scripts/generate-screenshots.mjs"
   },
   "dependencies": {
     "@google/genai": "^2.4.0",
@@ -49,6 +50,7 @@
     "electron": "^44.5.1",
     "electron-builder": "^26.15.3",
     "esbuild": "^0.25.0",
+    "puppeteer-core": "^25.12.0",
     "tailwindcss": "^4.1.14",
     "tsx": "^4.21.0",
     "typescript": "~5.8.2",
