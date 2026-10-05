@@ -1838,6 +1838,13 @@ export default function App() {
         onClose={() => setIsDeduplicatorOpen(false)}
         tracks={tracks}
         onDeleteTrack={(track) => handleDeleteTrack(track.id)}
+        onPlayTrack={(track) => {
+          const idx = tracks.findIndex((t) => t.id === track.id);
+          playTrackAt(idx !== -1 ? idx : 0, tracks);
+        }}
+        currentTrackId={currentPlayingTrack?.id || null}
+        isPlaying={isPlaying}
+        onTogglePlay={handleTogglePlay}
         accent={playerSettings.accent}
       />
 
