@@ -1451,7 +1451,7 @@ export default function App() {
         '--glass-player-bg': acrylicPlayerBg,
         '--glass-card-bg': acrylicCardBg,
         '--glass-modal-bg': acrylicModalBg,
-      } as React.CSSProperties;
+      } as unknown as React.CSSProperties;
     }
 
     return {
@@ -1477,7 +1477,7 @@ export default function App() {
       '--glass-modal-bg': isDark
         ? `rgba(14, 14, 22, ${Math.max(0.45, 0.95 - glassFactor * 0.5)})`
         : `rgba(255, 255, 255, ${Math.max(0.85, 0.98 - glassFactor * 0.13)})`,
-    } as React.CSSProperties;
+    } as unknown as React.CSSProperties;
   }, [isAcrylic, acrylicIntensity, acrylicFactor, blurScale, glassIntensity, glassFactor, isDark, playerSettings.accent]);
 
   // Check if fullscreen video or UI is active to prevent any foreground toast popup
