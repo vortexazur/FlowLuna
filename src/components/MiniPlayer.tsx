@@ -21,6 +21,7 @@ import {
   X,
   Layers,
   Search,
+  ArrowLeft,
 } from 'lucide-react';
 import { Track, Playlist, AccentColor, PlayerSettings } from '../types';
 import { AudioVisualizer } from './AudioVisualizer';
@@ -47,6 +48,7 @@ interface MiniPlayerProps {
   onAddToPlaylist?: (playlistId: string, trackId: string) => void;
   onRemoveFromPlaylist?: (playlistId: string, trackId: string) => void;
   onCreatePlaylist?: () => void;
+  onCreatePlaylistDirect?: (title: string) => Promise<void> | void;
   settings?: PlayerSettings;
   onUpdateSettings?: (newSettings: PlayerSettings) => void;
   isAppMinimized?: boolean;
@@ -61,6 +63,33 @@ const ACCENT_BG: Record<AccentColor, string> = {
   amber: 'bg-amber-500 hover:bg-amber-400 text-neutral-950 font-bold',
   rose: 'bg-rose-500 hover:bg-rose-400 text-white font-bold',
   cyan: 'bg-cyan-500 hover:bg-cyan-400 text-neutral-950 font-bold',
+};
+
+const ACCENT_TEXT: Record<AccentColor, string> = {
+  emerald: 'text-emerald-400',
+  violet: 'text-violet-400',
+  blue: 'text-blue-400',
+  amber: 'text-amber-400',
+  rose: 'text-rose-400',
+  cyan: 'text-cyan-400',
+};
+
+const ACCENT_BG_SUBTLE: Record<AccentColor, string> = {
+  emerald: 'bg-emerald-950/70 border-emerald-500/50 text-emerald-300 hover:bg-emerald-900/80',
+  violet: 'bg-violet-950/70 border-violet-500/50 text-violet-300 hover:bg-violet-900/80',
+  blue: 'bg-blue-950/70 border-blue-500/50 text-blue-300 hover:bg-blue-900/80',
+  amber: 'bg-amber-950/70 border-amber-500/50 text-amber-300 hover:bg-amber-900/80',
+  rose: 'bg-rose-950/70 border-rose-500/50 text-rose-300 hover:bg-rose-900/80',
+  cyan: 'bg-cyan-950/70 border-cyan-500/50 text-cyan-300 hover:bg-cyan-900/80',
+};
+
+const ACCENT_ROW_ACTIVE: Record<AccentColor, string> = {
+  emerald: 'bg-emerald-950/60 border-emerald-500/40 text-emerald-300',
+  violet: 'bg-violet-950/60 border-violet-500/40 text-violet-300',
+  blue: 'bg-blue-950/60 border-blue-500/40 text-blue-300',
+  amber: 'bg-amber-950/60 border-amber-500/40 text-amber-300',
+  rose: 'bg-rose-950/60 border-rose-500/40 text-rose-300',
+  cyan: 'bg-cyan-950/60 border-cyan-500/40 text-cyan-300',
 };
 
 const ACCENT_BORDER: Record<AccentColor, string> = {
@@ -150,11 +179,13 @@ export const MiniPlayer: React.FC<MiniPlayerProps> = ({
     startY: 0,
   });
 
-  // Playlist menu dropdown
+  // Playlist menu / panel
   const [isPlaylistMenuOpen, setIsPlaylistMenuOpen] = useState(false);
   const [playlistSearch, setPlaylistSearch] = useState('');
+  const [isCreatingInline, setIsCreatingInline] = useState(false);
+  const [newPlaylistTitle, setNewPlaylistTitle] = useState('');
   const [feedbackMessage, setFeedbackMessage] = useState<string | null>(null);
-  const menuRef = useRef<HTMLDivElement>(null);
+  const inlineInputRef = useRef<HTMLInputElement>(null);
 
   // Time formatter
   const formatTime = (secs: number) => {
@@ -218,41 +249,47 @@ export const MiniPlayer: React.FC<MiniPlayerProps> = ({
     localStorage.setItem('aurawave_floating_pos', JSON.stringify(floatingPos));
   };
 
-  // Close playlist dropdown on outside click
+  // Close playlist view on Escape key
   useEffect(() => {
-    const handleClickOutside = (e: MouseEvent) => {
-      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && isPlaylistMenuOpen) {
         setIsPlaylistMenuOpen(false);
+        setIsCreatingInline(false);
+        setNewPlaylistTitle('');
       }
     };
-    if (isPlaylistMenuOpen) {
-      document.addEventListener('mousedown', handleClickOutside);
-    }
-    return () => document.removeEventListener('mousedown', handleClickOutside);
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
   }, [isPlaylistMenuOpen]);
 
-  // Dynamically expand mini-player window in standalone/compact mode when playlist menu is open
+  // Reset playlist search and inline create when panel closes
   useEffect(() => {
-    if (isStandalone) {
-      if (isPlaylistMenuOpen) {
-        window.electronAPI?.setCompactMode?.(true, 360, 420);
-      } else {
-        window.electronAPI?.setCompactMode?.(true, 360, 240);
-        setPlaylistSearch('');
-      }
-    } else if (!isPlaylistMenuOpen) {
+    if (!isPlaylistMenuOpen) {
       setPlaylistSearch('');
+      setIsCreatingInline(false);
+      setNewPlaylistTitle('');
     }
-  }, [isPlaylistMenuOpen, isStandalone]);
+  }, [isPlaylistMenuOpen]);
 
-  // Safety cleanup: reset back to default compact height on unmount if menu was still open
-  useEffect(() => {
-    return () => {
-      if (isStandalone && isPlaylistMenuOpen) {
-        window.electronAPI?.setCompactMode?.(true, 360, 240);
-      }
-    };
-  }, [isStandalone, isPlaylistMenuOpen]);
+  const handleCreateInline = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    const trimmed = newPlaylistTitle.trim();
+    if (!trimmed) {
+      setIsCreatingInline(false);
+      return;
+    }
+    if (onCreatePlaylistDirect) {
+      await onCreatePlaylistDirect(trimmed);
+      setFeedbackMessage(`Playlist "${trimmed}" créée !`);
+      setNewPlaylistTitle('');
+      setIsCreatingInline(false);
+      setTimeout(() => setFeedbackMessage(null), 2500);
+    } else if (onCreatePlaylist) {
+      setIsPlaylistMenuOpen(false);
+      onCreatePlaylist();
+      setIsCreatingInline(false);
+    }
+  };
 
   const handleToggleTrack = (playlistId: string, playlistTitle: string, isPresent: boolean) => {
     if (!currentTrack) return;
@@ -270,7 +307,7 @@ export const MiniPlayer: React.FC<MiniPlayerProps> = ({
     setTimeout(() => setFeedbackMessage(null), 2500);
   };
 
-  const customPlaylists = playlists.filter((p) => !p.isSmart);
+  const customPlaylists = (playlists || []).filter((p) => !p.isSmart);
 
   const filteredPlaylists = useMemo(() => {
     if (!playlistSearch.trim()) return customPlaylists;
@@ -306,10 +343,10 @@ export const MiniPlayer: React.FC<MiniPlayerProps> = ({
         touchAction: 'none',
       }}
       className={`${
-        isStandalone ? 'relative w-full h-full rounded-2xl' : 'fixed z-[100] w-84 rounded-2xl'
-      } border border-neutral-800/80 bg-neutral-950/95 backdrop-blur-md shadow-2xl p-3 flex flex-col justify-between select-none transition-opacity duration-200 ${
-        isPlaylistMenuOpen ? 'overflow-visible' : 'overflow-hidden'
-      } ${
+        isStandalone
+          ? 'relative w-full h-full rounded-2xl'
+          : `fixed z-[100] w-84 ${isPlaylistMenuOpen ? 'h-[235px]' : 'h-auto'} rounded-2xl`
+      } border border-neutral-800/80 bg-neutral-950/95 backdrop-blur-md shadow-2xl p-3 flex flex-col justify-between select-none overflow-hidden transition-opacity duration-200 ${
         isGhostMode ? 'opacity-70 hover:opacity-100' : 'opacity-100'
       } ${!isStandalone && isDragging ? 'cursor-grabbing shadow-emerald-500/20 ring-1 ring-emerald-500/40' : !isStandalone ? 'cursor-grab' : ''}`}
     >
@@ -395,246 +432,297 @@ export const MiniPlayer: React.FC<MiniPlayerProps> = ({
         </div>
       </div>
 
-      {/* Middle: Artwork + Info + Actions */}
-      <div className="flex items-center gap-3">
-        {currentTrack ? (
-          <img
-            src={
-              currentTrack.coverUrl ||
-              'https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?w=600&auto=format&fit=crop&q=80'
-            }
-            alt={currentTrack.title}
-            className="w-11 h-11 rounded-xl object-cover shadow-md flex-shrink-0"
-            referrerPolicy="no-referrer"
-          />
-        ) : (
-          <div className="w-11 h-11 rounded-xl bg-neutral-950 border border-neutral-800 flex items-center justify-center text-neutral-500 flex-shrink-0">
-            <Activity className="w-5 h-5 opacity-40" />
-          </div>
-        )}
-
-        <div className="flex-1 min-w-0">
-          <h4
-            className="text-xs font-bold text-neutral-100 truncate cursor-pointer hover:underline"
-            onClick={onRestore}
-            title={currentTrack ? currentTrack.title : ''}
-          >
-            {currentTrack ? currentTrack.title : 'Sélectionnez un titre'}
-          </h4>
-          <p className="text-[11px] text-neutral-400 truncate">
-            {currentTrack ? currentTrack.artist : 'Lecteur en veille'}
-          </p>
-        </div>
-
-        <div className="flex items-center gap-1 flex-shrink-0">
-          {currentTrack && (
+      {isPlaylistMenuOpen ? (
+        /* Full-frame internal Playlist Selection Panel (100% of the useful area) */
+        <div className="flex-1 min-h-0 flex flex-col justify-between pt-1 gap-1.5 animate-in fade-in zoom-in-95 duration-150 select-none">
+          {/* Header row: Back arrow button + Title + Close button */}
+          <div className="flex items-center justify-between flex-shrink-0 px-0.5">
             <button
               type="button"
-              onClick={onToggleFavorite}
-              className={`p-1.5 rounded-full transition-colors cursor-pointer ${
-                isFavorite ? 'text-rose-500 fill-current' : 'text-neutral-500 hover:text-white'
-              }`}
-              title={isFavorite ? 'Retirer des favoris' : 'Ajouter aux favoris'}
+              onClick={() => setIsPlaylistMenuOpen(false)}
+              className={`flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider ${ACCENT_TEXT[accent]} hover:opacity-80 transition-opacity cursor-pointer`}
+              title="Retour aux commandes de lecture"
             >
-              <Heart className={`w-4 h-4 ${isFavorite ? 'fill-rose-500' : ''}`} />
+              <ArrowLeft className="w-4 h-4" />
+              <span>Ajouter à une playlist</span>
             </button>
-          )}
+            <button
+              type="button"
+              onClick={() => setIsPlaylistMenuOpen(false)}
+              className="p-1 rounded text-neutral-400 hover:text-white hover:bg-neutral-800/80 transition-colors cursor-pointer"
+              title="Fermer et revenir au lecteur"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
 
-          {currentTrack && (
-            <div className="relative" ref={menuRef}>
-              <button
-                type="button"
-                onClick={() => setIsPlaylistMenuOpen(!isPlaylistMenuOpen)}
-                className="p-1.5 rounded-full text-neutral-400 hover:text-white hover:bg-neutral-800 transition-colors cursor-pointer"
-                title="Ajouter à une playlist"
-              >
-                <ListPlus className="w-4 h-4" />
-              </button>
+          {/* Search filter input */}
+          <div className="relative flex-shrink-0">
+            <Search className="w-3.5 h-3.5 text-neutral-500 absolute left-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+            <input
+              type="text"
+              placeholder="Filtrer les playlists..."
+              value={playlistSearch}
+              onChange={(e) => setPlaylistSearch(e.target.value)}
+              className="w-full pl-8 pr-2.5 py-1 text-xs bg-neutral-900/90 border border-neutral-800 rounded-lg text-neutral-200 placeholder:text-neutral-500 focus:outline-none focus:border-neutral-700 transition-colors"
+              autoFocus
+            />
+          </div>
 
-              {isPlaylistMenuOpen && (
-                <div
-                  id="miniplayer-playlist-menu"
-                  className="absolute right-0 top-full mt-2 z-50 w-64 max-w-[calc(100vw-24px)] bg-neutral-900/95 backdrop-blur-xl border border-neutral-700/80 rounded-xl shadow-2xl p-2 flex flex-col gap-1.5 text-left animate-in fade-in slide-in-from-top-1 duration-150"
-                  onClick={(e) => e.stopPropagation()}
+          {/* Scrollable compact playlist list */}
+          <div className="flex-1 min-h-0 overflow-y-auto flex flex-col gap-1 pr-0.5 scrollbar-thin">
+            {customPlaylists.length === 0 ? (
+              <div className="py-4 text-xs text-neutral-400 text-center">
+                Aucune playlist disponible
+              </div>
+            ) : filteredPlaylists.length === 0 ? (
+              <div className="py-4 text-xs text-neutral-400 text-center">
+                Aucune playlist trouvée
+              </div>
+            ) : (
+              filteredPlaylists.map((pl) => {
+                const isPresent = currentTrack ? pl.trackIds.includes(currentTrack.id) : false;
+                return (
+                  <button
+                    key={pl.id}
+                    type="button"
+                    onClick={() => handleToggleTrack(pl.id, pl.title, isPresent)}
+                    className={`w-full text-left px-2.5 py-1.5 rounded-lg text-xs flex items-center justify-between gap-2 border transition-all cursor-pointer group ${
+                      isPresent
+                        ? `${ACCENT_ROW_ACTIVE[accent]} hover:bg-rose-500/15 hover:border-rose-500/30 hover:text-rose-300`
+                        : 'bg-neutral-900/40 border-neutral-800/60 text-neutral-200 hover:bg-neutral-800/80 hover:border-neutral-700'
+                    }`}
+                    title={isPresent ? `Cliquer pour retirer de "${pl.title}"` : `Cliquer pour ajouter à "${pl.title}"`}
+                  >
+                    <span className="truncate flex-1 font-medium">{pl.title}</span>
+                    {isPresent ? (
+                      <span className="flex items-center gap-1 flex-shrink-0">
+                        <Check className={`w-3.5 h-3.5 ${ACCENT_TEXT[accent]} group-hover:hidden`} />
+                        <span className="text-[10px] text-rose-400 font-semibold hidden group-hover:inline">Retirer</span>
+                      </span>
+                    ) : (
+                      <Plus className="w-3.5 h-3.5 text-neutral-500 group-hover:text-white flex-shrink-0" />
+                    )}
+                  </button>
+                );
+              })
+            )}
+          </div>
+
+          {/* Anchored bottom button or inline create form */}
+          {(onCreatePlaylist || onCreatePlaylistDirect) && (
+            isCreatingInline ? (
+              <form onSubmit={handleCreateInline} className="flex items-center gap-1.5 flex-shrink-0 pt-0.5">
+                <input
+                  ref={inlineInputRef}
+                  type="text"
+                  placeholder="Nom de la playlist..."
+                  value={newPlaylistTitle}
+                  onChange={(e) => setNewPlaylistTitle(e.target.value)}
+                  className="flex-1 min-w-0 px-2.5 py-1.5 text-xs bg-neutral-900 border border-neutral-700 rounded-lg text-white placeholder-neutral-500 focus:outline-none"
+                  autoFocus
+                  onKeyDown={(e) => {
+                    if (e.key === 'Escape') {
+                      setIsCreatingInline(false);
+                      setNewPlaylistTitle('');
+                    }
+                  }}
+                />
+                <button
+                  type="submit"
+                  disabled={!newPlaylistTitle.trim()}
+                  className={`px-2.5 py-1.5 rounded-lg text-xs font-bold transition-colors cursor-pointer ${
+                    newPlaylistTitle.trim() ? ACCENT_BG[accent] : 'bg-neutral-800 text-neutral-500 cursor-not-allowed'
+                  }`}
+                  title="Créer"
                 >
-                  <div className="flex items-center justify-between px-2 py-1 text-[10px] font-mono font-bold uppercase tracking-wider text-neutral-400 border-b border-neutral-800">
-                    <span className="flex items-center gap-1.5">
-                      <ListPlus className="w-3.5 h-3.5 text-emerald-400" />
-                      <span>Playlists ({customPlaylists.length})</span>
-                    </span>
-                    <button
-                      type="button"
-                      onClick={() => setIsPlaylistMenuOpen(false)}
-                      className="p-1 rounded text-neutral-500 hover:text-white hover:bg-neutral-800 transition-colors cursor-pointer"
-                      title="Fermer"
-                    >
-                      <X className="w-3.5 h-3.5" />
-                    </button>
-                  </div>
+                  <Check className="w-3.5 h-3.5" />
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsCreatingInline(false);
+                    setNewPlaylistTitle('');
+                  }}
+                  className="p-1.5 rounded-lg text-neutral-400 hover:text-white hover:bg-neutral-800 transition-colors cursor-pointer"
+                  title="Annuler"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              </form>
+            ) : (
+              <div className="flex-shrink-0 pt-0.5">
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (onCreatePlaylistDirect) {
+                      setIsCreatingInline(true);
+                      setTimeout(() => inlineInputRef.current?.focus(), 50);
+                    } else if (onCreatePlaylist) {
+                      setIsPlaylistMenuOpen(false);
+                      onCreatePlaylist();
+                    }
+                  }}
+                  className={`w-full px-3 py-1.5 rounded-xl text-xs font-semibold flex items-center justify-center gap-2 border transition-all cursor-pointer shadow-md ${ACCENT_BG_SUBTLE[accent]}`}
+                >
+                  <Plus className="w-3.5 h-3.5" />
+                  <span>Créer une playlist</span>
+                </button>
+              </div>
+            )
+          )}
+        </div>
+      ) : (
+        <>
+          {/* Middle: Artwork + Info + Actions */}
+          <div className="flex items-center gap-3">
+            {currentTrack ? (
+              <img
+                src={
+                  currentTrack.coverUrl ||
+                  'https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?w=600&auto=format&fit=crop&q=80'
+                }
+                alt={currentTrack.title}
+                className="w-11 h-11 rounded-xl object-cover shadow-md flex-shrink-0"
+                referrerPolicy="no-referrer"
+              />
+            ) : (
+              <div className="w-11 h-11 rounded-xl bg-neutral-950 border border-neutral-800 flex items-center justify-center text-neutral-500 flex-shrink-0">
+                <Activity className="w-5 h-5 opacity-40" />
+              </div>
+            )}
 
-                  {customPlaylists.length >= 4 && (
-                    <div className="relative px-0.5 pt-0.5">
-                      <Search className="w-3.5 h-3.5 text-neutral-500 absolute left-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
-                      <input
-                        type="text"
-                        placeholder="Filtrer les playlists..."
-                        value={playlistSearch}
-                        onChange={(e) => setPlaylistSearch(e.target.value)}
-                        className="w-full pl-7 pr-2.5 py-1 text-[11px] bg-neutral-950/80 border border-neutral-800 rounded-lg text-neutral-200 placeholder:text-neutral-500 focus:outline-none focus:border-emerald-500/50"
-                      />
-                    </div>
-                  )}
+            <div className="flex-1 min-w-0">
+              <h4
+                className="text-xs font-bold text-neutral-100 truncate cursor-pointer hover:underline"
+                onClick={onRestore}
+                title={currentTrack ? currentTrack.title : ''}
+              >
+                {currentTrack ? currentTrack.title : 'Sélectionnez un titre'}
+              </h4>
+              <p className="text-[11px] text-neutral-400 truncate">
+                {currentTrack ? currentTrack.artist : 'Lecteur en veille'}
+              </p>
+            </div>
 
-                  {customPlaylists.length === 0 ? (
-                    <div className="px-3 py-3 text-xs text-neutral-400 text-center">
-                      Aucune playlist disponible
-                    </div>
-                  ) : filteredPlaylists.length === 0 ? (
-                    <div className="px-3 py-3 text-xs text-neutral-400 text-center">
-                      Aucune playlist trouvée
-                    </div>
-                  ) : (
-                    <div className="max-h-60 overflow-y-auto flex flex-col gap-1 pr-0.5 scrollbar-thin">
-                      {filteredPlaylists.map((pl) => {
-                        const isPresent = pl.trackIds.includes(currentTrack.id);
-                        return (
-                          <button
-                            key={pl.id}
-                            type="button"
-                            onClick={() => handleToggleTrack(pl.id, pl.title, isPresent)}
-                            className={`w-full text-left px-2.5 py-1.5 rounded-lg text-xs flex items-center justify-between gap-1.5 transition-colors cursor-pointer group ${
-                              isPresent
-                                ? 'bg-emerald-500/10 text-emerald-300 hover:bg-rose-500/15 hover:text-rose-300'
-                                : 'text-neutral-200 hover:bg-neutral-800 hover:text-white'
-                            }`}
-                            title={isPresent ? `Cliquer pour retirer de "${pl.title}"` : `Cliquer pour ajouter à "${pl.title}"`}
-                          >
-                            <span className="truncate flex-1 font-medium">{pl.title}</span>
-                            {isPresent ? (
-                              <span className="flex items-center gap-1 flex-shrink-0">
-                                <Check className="w-3.5 h-3.5 text-emerald-400 group-hover:hidden" />
-                                <span className="text-[10px] text-rose-400 font-semibold hidden group-hover:inline">Retirer</span>
-                              </span>
-                            ) : (
-                              <Plus className="w-3.5 h-3.5 text-neutral-500 group-hover:text-white flex-shrink-0" />
-                            )}
-                          </button>
-                        );
-                      })}
-                    </div>
-                  )}
+            <div className="flex items-center gap-1 flex-shrink-0">
+              {currentTrack && (
+                <button
+                  type="button"
+                  onClick={onToggleFavorite}
+                  className={`p-1.5 rounded-full transition-colors cursor-pointer ${
+                    isFavorite ? 'text-rose-500 fill-current' : 'text-neutral-500 hover:text-white'
+                  }`}
+                  title={isFavorite ? 'Retirer des favoris' : 'Ajouter aux favoris'}
+                >
+                  <Heart className={`w-4 h-4 ${isFavorite ? 'fill-rose-500' : ''}`} />
+                </button>
+              )}
 
-                  {onCreatePlaylist && (
-                    <div className="pt-1 border-t border-neutral-800">
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setIsPlaylistMenuOpen(false);
-                          onCreatePlaylist();
-                        }}
-                        className="w-full px-2.5 py-1.5 rounded-lg text-[11px] font-semibold text-emerald-400 bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/20 flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
-                      >
-                        <Plus className="w-3.5 h-3.5" />
-                        <span>Créer une playlist</span>
-                      </button>
-                    </div>
-                  )}
-                </div>
+              {currentTrack && (
+                <button
+                  type="button"
+                  onClick={() => setIsPlaylistMenuOpen(true)}
+                  className="p-1.5 rounded-full text-neutral-400 hover:text-white hover:bg-neutral-800 transition-colors cursor-pointer"
+                  title="Ajouter à une playlist"
+                >
+                  <ListPlus className="w-4 h-4" />
+                </button>
               )}
             </div>
-          )}
-        </div>
-      </div>
+          </div>
 
-      {/* Progress slider & time */}
-      <div className="flex flex-col gap-1">
-        <input
-          type="range"
-          min={0}
-          max={duration || 100}
-          step={0.5}
-          value={currentTime}
-          disabled={!currentTrack}
-          onChange={(e) => onSeek(parseFloat(e.target.value))}
-          className={`w-full h-1 bg-neutral-800 rounded-lg cursor-pointer ${ACCENT_RANGE[accent]}`}
-        />
-        <div className="flex justify-between items-center text-[10px] font-mono text-neutral-500 px-0.5">
-          <span>{formatTime(currentTime)}</span>
-          <span>{formatTime(duration)}</span>
-        </div>
-      </div>
+          {/* Progress slider & time */}
+          <div className="flex flex-col gap-1">
+            <input
+              type="range"
+              min={0}
+              max={duration || 100}
+              step={0.5}
+              value={currentTime}
+              disabled={!currentTrack}
+              onChange={(e) => onSeek(parseFloat(e.target.value))}
+              className={`w-full h-1 bg-neutral-800 rounded-lg cursor-pointer ${ACCENT_RANGE[accent]}`}
+            />
+            <div className="flex justify-between items-center text-[10px] font-mono text-neutral-500 px-0.5">
+              <span>{formatTime(currentTime)}</span>
+              <span>{formatTime(duration)}</span>
+            </div>
+          </div>
 
-      {/* Controls & Volume */}
-      <div className="flex items-center justify-between pt-0.5">
-        <div className="flex items-center gap-1.5">
-          <button
-            type="button"
-            onClick={onToggleMute}
-            className="text-neutral-400 hover:text-white cursor-pointer"
-          >
-            {isMuted || volume === 0 ? (
-              <VolumeX className="w-3.5 h-3.5" />
-            ) : (
-              <Volume2 className="w-3.5 h-3.5" />
-            )}
-          </button>
-          <input
-            type="range"
-            min={0}
-            max={1}
-            step={0.05}
-            value={isMuted ? 0 : volume}
-            onChange={(e) => onVolumeChange(parseFloat(e.target.value))}
-            className={`w-14 h-1 bg-neutral-800 rounded-lg cursor-pointer ${ACCENT_RANGE[accent]}`}
-          />
-        </div>
+          {/* Controls & Volume */}
+          <div className="flex items-center justify-between pt-0.5">
+            <div className="flex items-center gap-1.5">
+              <button
+                type="button"
+                onClick={onToggleMute}
+                className="text-neutral-400 hover:text-white cursor-pointer"
+              >
+                {isMuted || volume === 0 ? (
+                  <VolumeX className="w-3.5 h-3.5" />
+                ) : (
+                  <Volume2 className="w-3.5 h-3.5" />
+                )}
+              </button>
+              <input
+                type="range"
+                min={0}
+                max={1}
+                step={0.05}
+                value={isMuted ? 0 : volume}
+                onChange={(e) => onVolumeChange(parseFloat(e.target.value))}
+                className={`w-14 h-1 bg-neutral-800 rounded-lg cursor-pointer ${ACCENT_RANGE[accent]}`}
+              />
+            </div>
 
-        <div className="flex items-center gap-1.5">
-          <button
-            type="button"
-            onClick={onPrev}
-            className="p-1.5 text-neutral-400 hover:text-white rounded-md cursor-pointer"
-          >
-            <SkipBack className="w-3.5 h-3.5" />
-          </button>
-          <button
-            type="button"
-            onClick={onTogglePlay}
-            className={`p-2 rounded-full shadow-md cursor-pointer ${ACCENT_BG[accent]}`}
-          >
-            {isPlaying ? (
-              <Pause className="w-3.5 h-3.5 fill-current" />
-            ) : (
-              <Play className="w-3.5 h-3.5 fill-current ml-0.5" />
-            )}
-          </button>
-          {onStop && (
-            <button
-              type="button"
-              onClick={onStop}
-              disabled={!currentTrack && currentTime === 0}
-              className={`p-1.5 rounded-md transition-colors cursor-pointer ${
-                currentTrack
-                  ? 'text-neutral-400 hover:text-red-400 hover:bg-neutral-800'
-                  : 'text-neutral-700 cursor-not-allowed opacity-40'
-              }`}
-              title="Arrêter totalement la musique"
-            >
-              <Square className="w-3 h-3 fill-current" />
-            </button>
-          )}
-          <button
-            type="button"
-            onClick={onNext}
-            className="p-1.5 text-neutral-400 hover:text-white rounded-md cursor-pointer"
-          >
-            <SkipForward className="w-3.5 h-3.5" />
-          </button>
-        </div>
+            <div className="flex items-center gap-1.5">
+              <button
+                type="button"
+                onClick={onPrev}
+                className="p-1.5 text-neutral-400 hover:text-white rounded-md cursor-pointer"
+              >
+                <SkipBack className="w-3.5 h-3.5" />
+              </button>
+              <button
+                type="button"
+                onClick={onTogglePlay}
+                className={`p-2 rounded-full shadow-md cursor-pointer ${ACCENT_BG[accent]}`}
+              >
+                {isPlaying ? (
+                  <Pause className="w-3.5 h-3.5 fill-current" />
+                ) : (
+                  <Play className="w-3.5 h-3.5 fill-current ml-0.5" />
+                )}
+              </button>
+              {onStop && (
+                <button
+                  type="button"
+                  onClick={onStop}
+                  disabled={!currentTrack && currentTime === 0}
+                  className={`p-1.5 rounded-md transition-colors cursor-pointer ${
+                    currentTrack
+                      ? 'text-neutral-400 hover:text-red-400 hover:bg-neutral-800'
+                      : 'text-neutral-700 cursor-not-allowed opacity-40'
+                  }`}
+                  title="Arrêter totalement la musique"
+                >
+                  <Square className="w-3 h-3 fill-current" />
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={onNext}
+                className="p-1.5 text-neutral-400 hover:text-white rounded-md cursor-pointer"
+              >
+                <SkipForward className="w-3.5 h-3.5" />
+              </button>
+            </div>
 
-        {/* Balanced spacer to keep playback controls centered */}
-        <div className="w-16 flex items-center justify-end" aria-hidden="true" />
-      </div>
+            {/* Balanced spacer to keep playback controls centered */}
+            <div className="w-16 flex items-center justify-end" aria-hidden="true" />
+          </div>
+        </>
+      )}
     </div>
   );
 };

@@ -1637,6 +1637,9 @@ export default function App() {
             onAddToPlaylist={handleAddToPlaylist}
             onRemoveFromPlaylist={handleRemoveTrackFromPlaylist}
             onCreatePlaylist={() => setIsCreatePlaylistModalOpen(true)}
+            onCreatePlaylistDirect={async (title) => {
+              await handleSaveNewPlaylist(title);
+            }}
             settings={playerSettings}
             onUpdateSettings={handleUpdatePlayerSettings}
             isStandalone={true}
