@@ -501,11 +501,13 @@ export const EqualizerModal: React.FC<EqualizerModalProps> = ({
                 <div className="flex items-center justify-between mb-1">
                   <span className="text-xs font-semibold text-neutral-200">Fondu Enchaîné (Crossfade)</span>
                   <span className="text-xs font-mono text-amber-300 font-semibold">
-                    {playerSettings.crossfadeDuration > 0 ? `${playerSettings.crossfadeDuration}s` : 'Désactivé'}
+                    {playerSettings.crossfadeDuration > 0
+                      ? `${playerSettings.crossfadeDuration}s`
+                      : (playerSettings.gaplessPlayback ? 'Zéro Blanc' : 'Désactivé')}
                   </span>
                 </div>
                 <p className="text-[11px] text-neutral-400 leading-tight mb-2.5">
-                  Transition fondue et mix continu entre chaque morceau
+                  Transition fondue et mix continu (remplace le mode Zéro Blanc si &gt; 0s)
                 </p>
               </div>
               <input
@@ -516,13 +518,17 @@ export const EqualizerModal: React.FC<EqualizerModalProps> = ({
                 value={playerSettings.crossfadeDuration}
                 onChange={(e) => {
                   const val = parseInt(e.target.value, 10);
-                  const updated = { ...playerSettings, crossfadeDuration: val };
+                  const updated = {
+                    ...playerSettings,
+                    crossfadeDuration: val,
+                    gaplessPlayback: val === 0 ? true : false,
+                  };
                   onUpdatePlayerSettings(updated);
                 }}
                 className={`w-full h-1.5 bg-neutral-800 rounded-lg ${ACCENT_ACCENT[accent]} cursor-pointer mb-2`}
               />
               <div className="flex items-center justify-between text-[10px] text-neutral-500">
-                <span>0s (Cut)</span>
+                <span>0s (Zéro Blanc)</span>
                 <span>3s (Standard)</span>
                 <span>6s (Radio)</span>
                 <span>12s (Club)</span>

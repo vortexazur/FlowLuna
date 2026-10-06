@@ -64,7 +64,7 @@ const DEFAULT_PLAYER_SETTINGS: PlayerSettings = {
   glassIntensity: 70,
   acrylicIntensity: 30,
   visualizerStyle: 'bars',
-  crossfadeDuration: 2,
+  crossfadeDuration: 0,
   gaplessPlayback: true,
   autoCacheFavorites: true,
   maxCacheSizeMb: 1024,
@@ -349,9 +349,13 @@ export default function App() {
     if (audioRef.current) {
       audioEngine.init(audioRef.current);
       audioEngine.applyEqualizer(equalizerSettings);
-      audioEngine.setVolumeNormalization(playerSettings.volumeNormalization, playerSettings.normalizationTarget ?? 'streaming');
+      const isVideo = !!currentPlayingTrack?.isVideo;
+      const target = isVideo
+        ? (playerSettings.normalizationTarget === 'streaming' ? 'broadcast' : (playerSettings.normalizationTarget ?? 'broadcast'))
+        : (playerSettings.normalizationTarget ?? 'streaming');
+      audioEngine.setVolumeNormalization(playerSettings.volumeNormalization, target);
     }
-  }, [equalizerSettings, playerSettings.volumeNormalization, playerSettings.normalizationTarget]);
+  }, [equalizerSettings, playerSettings.volumeNormalization, playerSettings.normalizationTarget, currentPlayingTrack?.isVideo]);
 
   // Launch automatic background library scanner (discovers local audio tracks without manual import)
   useEffect(() => {
@@ -447,9 +451,13 @@ export default function App() {
         // Check again after load
         if (playRequestIdRef.current !== requestId) return;
 
-        // Crossfade fade-in transition ONLY for automatic track progression (not manual next/prev)
-        const crossfade = playerSettings.crossfadeDuration ?? 2;
-        if (!isManualSkip && crossfade > 0 && !isMuted) {
+        // Crossfade fade-in transition ONLY for automatic track progression of music tracks
+        // Strictly disabled for video files and when Gapless (Zéro Blanc) is enabled
+        const isVideoTrack = !!track.isVideo;
+        const crossfade = playerSettings.crossfadeDuration ?? 0;
+        const shouldCrossfade = !isManualSkip && !isVideoTrack && !playerSettings.gaplessPlayback && crossfade > 0 && !isMuted;
+
+        if (shouldCrossfade) {
           audio.volume = 0;
           const startTime = performance.now();
           const fadeDuration = Math.min(1200, crossfade * 1000);
@@ -484,11 +492,11 @@ export default function App() {
         saveTrack(track).catch(() => {});
         setTracks((prev) => prev.map((t) => (t.id === track.id ? { ...t, playCount: track.playCount } : t)));
 
-        // Proactive Gapless Pre-buffering: prefetch next track audio in background
-        if (playerSettings.gaplessPlayback !== false && targetQueue.length > 1) {
+        // Proactive Gapless Pre-buffering: prefetch next track audio in background for music tracks
+        if (playerSettings.gaplessPlayback && !isVideoTrack && targetQueue.length > 1) {
           const nextIdx = (index + 1) % targetQueue.length;
           const nextTrack = targetQueue[nextIdx];
-          if (nextTrack) {
+          if (nextTrack && !nextTrack.isVideo) {
             getTrackPlayableUrl(nextTrack).catch(() => {});
           }
         }
@@ -1109,9 +1117,14 @@ export default function App() {
       setCurrentTime(audio.currentTime);
 
       // Crossfade fade-out transition nearing end of track
-      const crossfade = playerSettings.crossfadeDuration ?? 2;
+      // ONLY for music tracks (!currentPlayingTrack?.isVideo)
+      // AND ONLY when gapless is disabled (!playerSettings.gaplessPlayback)
+      const isVideo = !!currentPlayingTrack?.isVideo;
+      const crossfade = playerSettings.crossfadeDuration ?? 0;
+      const isCrossfadeActive = !isVideo && !playerSettings.gaplessPlayback && crossfade > 0;
       const d = audio.duration;
-      if (crossfade > 0 && d && d > 6 && !isMuted && crossfadeAnimRef.current === null) {
+
+      if (isCrossfadeActive && d && d > 6 && !isMuted && crossfadeAnimRef.current === null) {
         const remaining = d - audio.currentTime;
         if (remaining <= crossfade && remaining > 0) {
           const fadeRatio = Math.max(0.02, remaining / crossfade);
@@ -1119,6 +1132,8 @@ export default function App() {
         } else if (audio.currentTime > crossfade + 0.5 && Math.abs(audio.volume - volume) > 0.05) {
           audio.volume = volume;
         }
+      } else if (!isCrossfadeActive && !isMuted && crossfadeAnimRef.current === null && Math.abs(audio.volume - volume) > 0.05) {
+        audio.volume = volume;
       }
     };
 
@@ -1152,7 +1167,7 @@ export default function App() {
       audio.removeEventListener('durationchange', handleLoadedMetadata);
       audio.removeEventListener('ended', handleEnded);
     };
-  }, [handleNext, playerSettings.crossfadeDuration, isMuted, volume]);
+  }, [handleNext, playerSettings.crossfadeDuration, playerSettings.gaplessPlayback, currentPlayingTrack?.isVideo, isMuted, volume]);
 
   // Windows SMTC (System Media Transport Controls) API for OS integration
   useEffect(() => {

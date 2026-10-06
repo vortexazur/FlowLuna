@@ -23,6 +23,8 @@ import {
   Download,
   ArrowUpCircle,
   ExternalLink,
+  Zap,
+  Disc,
 } from 'lucide-react';
 import { PlayerSettings, AccentColor, APP_VERSION, AppUpdateInfo, AppUpdateProgress } from '../types';
 import { SUPPORTED_LANGUAGES, getT } from '../i18n';
@@ -858,47 +860,141 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
           {/* TAB 2: AUDIO & ÉCOUTE */}
           {activeTab === 'audio' && (
             <div className="flex flex-col gap-4 animate-in fade-in duration-150">
-              {/* Fondu Enchaîné (Crossfade) */}
-              <div className="flex items-center justify-between bg-neutral-900/60 p-4 rounded-xl border border-neutral-800 hover:border-neutral-700/60 transition-colors">
-                <div>
-                  <span className="font-semibold text-neutral-200 block text-xs">{t.crossfade}</span>
-                  <span className="text-neutral-400 text-[11px] leading-relaxed">{t.crossfadeDesc}</span>
-                </div>
-                <div className="flex items-center gap-3 flex-shrink-0">
-                  <input
-                    type="range"
-                    min={0}
-                    max={10}
-                    step={1}
-                    value={settings.crossfadeDuration}
-                    onChange={(e) => updateSetting('crossfadeDuration', parseInt(e.target.value, 10))}
-                    className="w-28 accent-emerald-500 cursor-pointer"
-                  />
-                  <span className="font-mono text-neutral-200 w-8 text-right font-bold text-xs">
-                    {settings.crossfadeDuration}s
-                  </span>
-                </div>
-              </div>
-
-              {/* Lecture Sans Interruption (Gapless) */}
-              <div className="flex items-center justify-between bg-neutral-900/60 p-4 rounded-xl border border-neutral-800 hover:border-neutral-700/60 transition-colors">
-                <div className="pr-4">
-                  <div className="flex items-center gap-2">
-                    <span className="font-semibold text-neutral-200 block text-xs">{t.gapless}</span>
-                    <span className="text-[10px] uppercase font-mono px-2 py-0.5 rounded bg-sky-500/20 text-sky-300 font-semibold border border-sky-500/30">
-                      {t.gaplessBadge}
+              {/* Enchaînement & Transitions Audio (Exclusif & Intelligent) */}
+              <div className="flex flex-col gap-3 bg-neutral-900/60 p-4 rounded-xl border border-neutral-800 hover:border-neutral-700/60 transition-colors">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <span className="font-semibold text-neutral-200 block text-xs">
+                      Enchaînement & Transitions Audio
+                    </span>
+                    <span className="text-neutral-400 text-[11px] leading-relaxed">
+                      Choisissez le comportement d'enchaînement entre les morceaux
                     </span>
                   </div>
-                  <span className="text-neutral-400 text-[11px] block mt-1 leading-relaxed">
-                    {t.gaplessDesc}
+                  <span
+                    className={`text-[10px] uppercase font-mono px-2 py-0.5 rounded font-semibold border ${
+                      settings.gaplessPlayback
+                        ? 'bg-sky-500/20 text-sky-300 border-sky-500/30'
+                        : settings.crossfadeDuration > 0
+                        ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30'
+                        : 'bg-neutral-800/60 text-neutral-400 border-neutral-700/50'
+                    }`}
+                  >
+                    {settings.gaplessPlayback
+                      ? 'ZÉRO BLANC'
+                      : settings.crossfadeDuration > 0
+                      ? `FONDU ${settings.crossfadeDuration}s`
+                      : 'STANDARD'}
                   </span>
                 </div>
-                <ToggleSwitch
-                  id="settings-gapless-playback-toggle"
-                  checked={settings.gaplessPlayback ?? true}
-                  onChange={(val) => updateSetting('gaplessPlayback', val)}
-                  accent={accent}
-                />
+
+                {/* 3 Choix exclusifs de transition */}
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-2 mt-1">
+                  {/* Option 1: Gapless (Zéro Blanc) */}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      onChange({ ...settings, gaplessPlayback: true, crossfadeDuration: 0 });
+                    }}
+                    className={`p-3 rounded-xl border text-left transition-all cursor-pointer flex flex-col justify-between gap-1.5 ${
+                      settings.gaplessPlayback
+                        ? 'bg-sky-500/15 border-sky-500/50 text-white shadow-xs ring-1 ring-sky-500/30'
+                        : 'bg-neutral-950/60 border-neutral-800 text-neutral-400 hover:text-neutral-200 hover:border-neutral-700'
+                    }`}
+                  >
+                    <div className="flex items-center gap-1.5 font-bold text-xs text-sky-300">
+                      <Zap className="w-4 h-4 text-sky-400 shrink-0" />
+                      <span>Zéro Blanc (Gapless)</span>
+                    </div>
+                    <span className="text-[11px] text-neutral-300 leading-tight">
+                      Enchaîne les pistes instantanément sans aucun silence à 100% de volume (idéal albums live et mix).
+                    </span>
+                    <span className="text-[10px] font-mono text-sky-400/80 uppercase font-semibold">
+                      Recommandé Hi-Fi
+                    </span>
+                  </button>
+
+                  {/* Option 2: Crossfade (Fondu Enchaîné) */}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const dur = settings.crossfadeDuration > 0 ? settings.crossfadeDuration : 3;
+                      onChange({ ...settings, gaplessPlayback: false, crossfadeDuration: dur });
+                    }}
+                    className={`p-3 rounded-xl border text-left transition-all cursor-pointer flex flex-col justify-between gap-1.5 ${
+                      !settings.gaplessPlayback && settings.crossfadeDuration > 0
+                        ? 'bg-emerald-500/15 border-emerald-500/50 text-white shadow-xs ring-1 ring-emerald-500/30'
+                        : 'bg-neutral-950/60 border-neutral-800 text-neutral-400 hover:text-neutral-200 hover:border-neutral-700'
+                    }`}
+                  >
+                    <div className="flex items-center gap-1.5 font-bold text-xs text-emerald-300">
+                      <Sliders className="w-4 h-4 text-emerald-400 shrink-0" />
+                      <span>Fondu Enchaîné</span>
+                    </div>
+                    <span className="text-[11px] text-neutral-300 leading-tight">
+                      Transition fluide avec fondu croisé progressif entre la fin et le début de chaque morceau.
+                    </span>
+                    <span className="text-[10px] font-mono text-emerald-400/80 uppercase font-semibold">
+                      Style Radio / DJ
+                    </span>
+                  </button>
+
+                  {/* Option 3: Standard (Fin naturelle) */}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      onChange({ ...settings, gaplessPlayback: false, crossfadeDuration: 0 });
+                    }}
+                    className={`p-3 rounded-xl border text-left transition-all cursor-pointer flex flex-col justify-between gap-1.5 ${
+                      !settings.gaplessPlayback && settings.crossfadeDuration === 0
+                        ? 'bg-neutral-800/40 border-neutral-600 text-white shadow-xs ring-1 ring-neutral-500/30'
+                        : 'bg-neutral-950/60 border-neutral-800 text-neutral-400 hover:text-neutral-200 hover:border-neutral-700'
+                    }`}
+                  >
+                    <div className="flex items-center gap-1.5 font-bold text-xs text-neutral-300">
+                      <Disc className="w-4 h-4 text-neutral-400 shrink-0" />
+                      <span>Fin Naturelle</span>
+                    </div>
+                    <span className="text-[11px] text-neutral-300 leading-tight">
+                      Laisse chaque morceau se terminer normalement sans aucune modification sonore.
+                    </span>
+                    <span className="text-[10px] font-mono text-neutral-400 uppercase font-semibold">
+                      Standard
+                    </span>
+                  </button>
+                </div>
+
+                {/* Slider de durée si Fondu Enchaîné est sélectionné */}
+                {!settings.gaplessPlayback && settings.crossfadeDuration > 0 && (
+                  <div className="pt-3 border-t border-neutral-800/80 flex items-center justify-between">
+                    <div>
+                      <span className="text-xs font-semibold text-neutral-200 block">Durée du fondu croisé</span>
+                      <span className="text-[11px] text-neutral-400">Temps de chevauchement progressif</span>
+                    </div>
+                    <div className="flex items-center gap-3 flex-shrink-0">
+                      <input
+                        type="range"
+                        min={1}
+                        max={12}
+                        step={1}
+                        value={settings.crossfadeDuration}
+                        onChange={(e) => updateSetting('crossfadeDuration', parseInt(e.target.value, 10))}
+                        className="w-32 accent-emerald-500 cursor-pointer"
+                      />
+                      <span className="font-mono text-emerald-300 w-10 text-right font-bold text-xs">
+                        {settings.crossfadeDuration}s
+                      </span>
+                    </div>
+                  </div>
+                )}
+
+                {/* Note d'exclusion vidéo */}
+                <div className="flex items-center gap-2 pt-2 text-[11px] text-neutral-400 border-t border-neutral-800/50">
+                  <Film className="w-3.5 h-3.5 text-sky-400 shrink-0" />
+                  <span>
+                    Actif sur la musique uniquement — Désactivé automatiquement lors du visionnage de vidéos (dialogues et génériques intacts).
+                  </span>
+                </div>
               </div>
 
               {/* Harmonisation du Volume Sonore */}
@@ -946,6 +1042,9 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                         </button>
                       ))}
                     </div>
+                    <span className="text-[10px] text-neutral-500 italic mt-0.5">
+                      Idéal pour égaliser le niveau sonore entre musiques douces et fortes, ou préserver les voix en mode Cinéma.
+                    </span>
                   </div>
                 )}
               </div>
