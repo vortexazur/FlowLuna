@@ -8,9 +8,9 @@
     <UseWPF>true</UseWPF>
     <AssemblyName>FlowLuna</AssemblyName>
     <RootNamespace>FlowLuna</RootNamespace>
-    <Version>1.1.8</Version>
-    <AssemblyVersion>1.1.8.0</AssemblyVersion>
-    <FileVersion>1.1.8.0</FileVersion>
+    <Version>1.1.9</Version>
+    <AssemblyVersion>1.1.9.0</AssemblyVersion>
+    <FileVersion>1.1.9.0</FileVersion>
     <ApplicationIcon>..\public\favicon.ico</ApplicationIcon>
     <ServerGarbageCollection>false</ServerGarbageCollection>
     <ConcurrentGarbageCollection>true</ConcurrentGarbageCollection>

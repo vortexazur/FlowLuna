@@ -468,10 +468,10 @@ function compareSemVer(v1: string, v2: string): number {
 }
 
 app.get('/api/app/check-update', async (req, res) => {
-  const currentVersion = '1.1.8';
+  const currentVersion = '1.1.9';
   try {
     const fetchRes = await fetch('https://api.github.com/repos/vortexazur/FlowLuna/releases/latest', {
-      headers: { 'User-Agent': 'FlowLuna-App/1.1.8' },
+      headers: { 'User-Agent': 'FlowLuna-App/1.1.9' },
     });
     if (fetchRes.ok) {
       const data: any = await fetchRes.json();
@@ -529,7 +529,7 @@ function downloadUpdateFileWithProgress(urlStr: string, destPath: string, maxRed
   }
 
   const client = urlStr.startsWith('https') ? https : http;
-  const req = client.get(urlStr, { headers: { 'User-Agent': 'FlowLuna-App/1.1.8' } }, (res) => {
+  const req = client.get(urlStr, { headers: { 'User-Agent': 'FlowLuna-App/1.1.9' } }, (res) => {
     if (res.statusCode && [301, 302, 303, 307, 308].includes(res.statusCode) && res.headers.location) {
       downloadUpdateFileWithProgress(res.headers.location, destPath, maxRedirects - 1);
       return;
@@ -608,7 +608,7 @@ app.post('/api/app/download-update', express.json(), async (req, res) => {
 
     if (!downloadUrl) {
       const fetchRes = await fetch('https://api.github.com/repos/vortexazur/FlowLuna/releases/latest', {
-        headers: { 'User-Agent': 'FlowLuna-App/1.1.8' },
+        headers: { 'User-Agent': 'FlowLuna-App/1.1.9' },
       });
       if (fetchRes.ok) {
         const data: any = await fetchRes.json();
