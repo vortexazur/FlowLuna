@@ -334,10 +334,14 @@ export class VLCMediaPlayer {
     }
   }
 
-  public async play(): Promise<boolean> {
+  public async resumeContext(): Promise<void> {
     if (this.audioContext && this.audioContext.state === 'suspended') {
       await this.audioContext.resume().catch(() => {});
     }
+  }
+
+  public async play(): Promise<boolean> {
+    await this.resumeContext();
 
     if (this.audioEl) {
       try {

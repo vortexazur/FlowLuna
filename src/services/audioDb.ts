@@ -11,7 +11,6 @@ interface DBSchema {
 }
 
 let dbInstance: IDBDatabase | null = null;
-const activeBlobUrls = new Map<string, string>();
 
 export async function getDB(): Promise<IDBDatabase> {
   if (dbInstance) return dbInstance;
@@ -46,11 +45,30 @@ export async function getDB(): Promise<IDBDatabase> {
   });
 }
 
-// Memory optimization: revoke old blob URLs
+const MAX_ACTIVE_BLOB_URLS = 8;
+const activeBlobUrls = new Map<string, string>();
+
+// Memory optimization: revoke old blob URLs safely using LRU cache
 export function revokeTrackBlobUrl(trackId: string) {
+  if (activeBlobUrls.size > MAX_ACTIVE_BLOB_URLS) {
+    for (const [key, url] of activeBlobUrls.entries()) {
+      if (key !== trackId) {
+        try {
+          URL.revokeObjectURL(url);
+        } catch {}
+        activeBlobUrls.delete(key);
+        break;
+      }
+    }
+  }
+}
+
+export function forceRevokeTrackBlobUrl(trackId: string) {
   const existingUrl = activeBlobUrls.get(trackId);
   if (existingUrl) {
-    URL.revokeObjectURL(existingUrl);
+    try {
+      URL.revokeObjectURL(existingUrl);
+    } catch {}
     activeBlobUrls.delete(trackId);
   }
 }
@@ -103,13 +121,31 @@ export async function getTrackPlayableUrl(track: Track): Promise<string> {
   // Check if we have an active blob URL in memory
   if (activeBlobUrls.has(track.id)) {
     const active = activeBlobUrls.get(track.id);
-    if (active) return active;
+    if (active) {
+      // Re-insert to refresh LRU order
+      activeBlobUrls.delete(track.id);
+      activeBlobUrls.set(track.id, active);
+      return active;
+    }
   }
 
   // Check if saved in IndexedDB (user's authentic downloaded track)
   try {
     const blob = await getAudioBlob(track.id);
     if (blob && blob.size > 20000) {
+      // Evict oldest entry if pool is full
+      if (activeBlobUrls.size >= MAX_ACTIVE_BLOB_URLS) {
+        const oldestKey = activeBlobUrls.keys().next().value;
+        if (oldestKey) {
+          const oldUrl = activeBlobUrls.get(oldestKey);
+          if (oldUrl) {
+            try {
+              URL.revokeObjectURL(oldUrl);
+            } catch {}
+            activeBlobUrls.delete(oldestKey);
+          }
+        }
+      }
       const url = URL.createObjectURL(blob);
       activeBlobUrls.set(track.id, url);
       return url;
@@ -127,7 +163,7 @@ export async function getTrackPlayableUrl(track: Track): Promise<string> {
 }
 
 export async function removeAudioBlob(trackId: string): Promise<void> {
-  revokeTrackBlobUrl(trackId);
+  forceRevokeTrackBlobUrl(trackId);
   const db = await getDB();
   return new Promise((resolve, reject) => {
     const tx = db.transaction('audioBlobs', 'readwrite');

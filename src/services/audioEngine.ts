@@ -25,7 +25,11 @@ class AudioEngine {
   }
 
   public resume() {
-    this.vlcPlayer.play();
+    this.vlcPlayer.resumeContext();
+  }
+
+  public resumeContext() {
+    this.vlcPlayer.resumeContext();
   }
 
   public setVolumeNormalization(enabled: boolean, target: 'streaming' | 'replaygain' | 'broadcast' = 'streaming') {
