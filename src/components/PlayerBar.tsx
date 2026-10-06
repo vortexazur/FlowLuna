@@ -162,6 +162,7 @@ export const PlayerBar: React.FC<PlayerBarProps> = ({
                 }
                 alt={currentTrack.title}
                 className="w-full h-full object-cover"
+                decoding="async"
                 referrerPolicy="no-referrer"
               />
               <button

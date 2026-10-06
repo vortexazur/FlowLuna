@@ -5,6 +5,7 @@ using System.Runtime.InteropServices;
 using System.Text.Json;
 using System.Windows;
 using Microsoft.Win32;
+using FlowLuna.Windows;
 
 namespace FlowLuna.Services;
 
@@ -90,6 +91,11 @@ public class NativeBridge
                 _window.Width = width > 0 ? width : 360;
                 _window.Height = height > 0 ? height : 240;
                 _window.Topmost = true;
+
+                if (_window is MainWindow mw)
+                {
+                    _ = Task.Delay(500).ContinueWith(_ => mw.Dispatcher.Invoke(mw.FlushProcessMemoryAndChildren));
+                }
             }
             else
             {

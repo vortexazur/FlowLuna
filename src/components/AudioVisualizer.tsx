@@ -150,6 +150,12 @@ export const AudioVisualizer: React.FC<AudioVisualizerProps> = ({
           return;
         }
 
+        // Memory & CPU conservation: pause canvas rendering loop when app is hidden/minimized
+        if (typeof document !== 'undefined' && document.hidden) {
+          ctx.restore();
+          return;
+        }
+
         ctx.clearRect(0, 0, width, height);
 
         if (!isPlaying) {
@@ -359,7 +365,16 @@ export const AudioVisualizer: React.FC<AudioVisualizerProps> = ({
 
     render();
 
+    const handleVisibilityChange = () => {
+      if (typeof document !== 'undefined' && !document.hidden && isPlaying) {
+        if (animationFrameRef.current) cancelAnimationFrame(animationFrameRef.current);
+        animationFrameRef.current = requestAnimationFrame(render);
+      }
+    };
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+
     return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
       if (animationFrameRef.current) {
         cancelAnimationFrame(animationFrameRef.current);
       }

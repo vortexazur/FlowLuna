@@ -905,7 +905,7 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
                 return (
                   <tr
                     key={track.id}
-                    className={`group transition-all cursor-pointer relative ${
+                    className={`group transition-all cursor-pointer relative track-row-optimized ${
                       isSelected
                         ? 'bg-neutral-800/60'
                         : isCurrentTrack
@@ -943,6 +943,8 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
                             }
                             alt={track.title}
                             className="w-full h-full object-cover"
+                            loading="lazy"
+                            decoding="async"
                             referrerPolicy="no-referrer"
                           />
                           {isCurrentTrack && (
@@ -1047,7 +1049,7 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
             return (
               <div
                 key={track.id}
-                className={`group relative bg-neutral-900/70 hover:bg-neutral-900 border rounded-2xl p-3 flex flex-col gap-2.5 transition-all cursor-pointer shadow-sm ${
+                className={`group relative bg-neutral-900/70 hover:bg-neutral-900 border rounded-2xl p-3 flex flex-col gap-2.5 transition-all cursor-pointer shadow-sm track-card-optimized ${
                   isSelected
                     ? 'border-emerald-500 bg-neutral-800/80 shadow-md ring-1 ring-emerald-500/30'
                     : isCurrentTrack
@@ -1071,6 +1073,8 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
                     }
                     alt={track.title}
                     className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                    loading="lazy"
+                    decoding="async"
                     referrerPolicy="no-referrer"
                   />
 

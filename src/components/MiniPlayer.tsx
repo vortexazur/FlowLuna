@@ -584,6 +584,7 @@ export const MiniPlayer: React.FC<MiniPlayerProps> = ({
                 }
                 alt={currentTrack.title}
                 className="w-11 h-11 rounded-xl object-cover shadow-md flex-shrink-0"
+                decoding="async"
                 referrerPolicy="no-referrer"
               />
             ) : (

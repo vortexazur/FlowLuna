@@ -302,6 +302,26 @@ public partial class MainWindow : Window
     }
 
     /// <summary>
+    /// Builds fine-tuned Chromium environment options targeting lower RAM footprint
+    /// while maintaining 60 FPS hardware-accelerated fluid rendering.
+    /// </summary>
+    private static CoreWebView2EnvironmentOptions GetOptimizedEnvironmentOptions()
+    {
+        return new CoreWebView2EnvironmentOptions
+        {
+            AdditionalBrowserArguments =
+                "--renderer-process-limit=1 " +
+                "--disable-features=Translate,OptimizationHints,MediaRouter " +
+                "--disable-background-networking " +
+                "--disable-component-update " +
+                "--disable-domain-reliability " +
+                "--disable-sync " +
+                "--disable-speech-api " +
+                "--js-flags=\"--max-old-space-size=256\""
+        };
+    }
+
+    /// <summary>
     /// Initialize WebView2 with automatic retry on corrupted cache (COMException 0x8007139F).
     /// Strategy: 1) Try normal folder → 2) Clean + retry → 3) Fallback to temp GUID folder.
     /// Inspired by Screenbox's resilient initialization pattern.
@@ -311,13 +331,14 @@ public partial class MainWindow : Window
         var localAppData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
         var userDataFolder = Path.Combine(localAppData, "FlowLuna", "webview2_data");
         Directory.CreateDirectory(userDataFolder);
+        var options = GetOptimizedEnvironmentOptions();
 
         try
         {
             var env = await CoreWebView2Environment.CreateAsync(
                 browserExecutableFolder: null,
                 userDataFolder: userDataFolder,
-                options: null);
+                options: options);
             await WebViewControl.EnsureCoreWebView2Async(env);
         }
         catch (System.Runtime.InteropServices.COMException comEx)
@@ -364,7 +385,7 @@ public partial class MainWindow : Window
                 var fallbackEnv = await CoreWebView2Environment.CreateAsync(
                     browserExecutableFolder: null,
                     userDataFolder: fallbackFolder,
-                    options: null);
+                    options: options);
                 await WebViewControl.EnsureCoreWebView2Async(fallbackEnv);
             }
         }
@@ -443,21 +464,78 @@ public partial class MainWindow : Window
         catch { }
     }
 
+    /// <summary>
+    /// Flushes physical RAM working set across the host process and all WebView2 child processes
+    /// without interrupting audio playback or UI threads.
+    /// </summary>
+    public void FlushProcessMemoryAndChildren()
+    {
+        try
+        {
+            var currentProc = System.Diagnostics.Process.GetCurrentProcess();
+            try { EmptyWorkingSet(currentProc.Handle); } catch { }
+
+            // Purge WebView2 main browser process
+            if (WebViewControl?.CoreWebView2 != null)
+            {
+                try
+                {
+                    var browserPid = (int)WebViewControl.CoreWebView2.BrowserProcessId;
+                    if (browserPid > 0)
+                    {
+                        using var browserProc = System.Diagnostics.Process.GetProcessById(browserPid);
+                        EmptyWorkingSet(browserProc.Handle);
+                    }
+                }
+                catch { }
+            }
+
+            // Purge msedgewebview2 processes associated with this user session
+            try
+            {
+                var edgeProcs = System.Diagnostics.Process.GetProcessesByName("msedgewebview2");
+                foreach (var p in edgeProcs)
+                {
+                    try { EmptyWorkingSet(p.Handle); } catch { }
+                    finally { p.Dispose(); }
+                }
+            }
+            catch { }
+        }
+        catch { }
+    }
+
     private void MainWindow_StateChanged(object? sender, EventArgs e)
     {
         if (WindowState == WindowState.Minimized)
         {
-            // Aggressive RAM flush when minimized
+            if (WebViewControl?.CoreWebView2 != null)
+            {
+                try
+                {
+                    WebViewControl.CoreWebView2.MemoryUsageTargetLevel = CoreWebView2MemoryUsageTargetLevel.Low;
+                }
+                catch { }
+            }
+
+            // Aggressive RAM flush when minimized: .NET GC + EmptyWorkingSet on host and WebView2 children
             GC.Collect(2, GCCollectionMode.Aggressive, true, true);
             GC.WaitForPendingFinalizers();
-            try
+            FlushProcessMemoryAndChildren();
+        }
+        else
+        {
+            if (WebViewControl?.CoreWebView2 != null)
             {
-                EmptyWorkingSet(System.Diagnostics.Process.GetCurrentProcess().Handle);
+                try
+                {
+                    WebViewControl.CoreWebView2.MemoryUsageTargetLevel = CoreWebView2MemoryUsageTargetLevel.Normal;
+                }
+                catch { }
             }
-            catch { }
         }
 
-        if (WebViewControl.CoreWebView2 != null)
+        if (WebViewControl?.CoreWebView2 != null)
         {
             var isMax = WindowState == WindowState.Maximized;
             WebViewControl.CoreWebView2.ExecuteScriptAsync(

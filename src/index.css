@@ -1227,4 +1227,18 @@ html.light #flowluna-titlebar button:not(:last-child):hover {
   color: var(--text-primary, #0f172a) !important;
 }
 
+/* =========================================================================
+   CHROMIUM PERFORMANCE & MEMORY OPTIMIZATION
+   Skips off-screen DOM layout and paint trees while preserving instant 60 FPS scrolling.
+   ========================================================================= */
+.track-row-optimized {
+  content-visibility: auto;
+  contain-intrinsic-size: 0 58px;
+}
+
+.track-card-optimized {
+  content-visibility: auto;
+  contain-intrinsic-size: 0 240px;
+}
+
 
