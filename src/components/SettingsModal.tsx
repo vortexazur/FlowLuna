@@ -26,7 +26,7 @@ import {
   Zap,
   Disc,
 } from 'lucide-react';
-import { PlayerSettings, AccentColor, APP_VERSION, AppUpdateInfo, AppUpdateProgress } from '../types';
+import { PlayerSettings, AccentColor, APP_VERSION, AppUpdateInfo, AppUpdateProgress, DEFAULT_MARATHON_CONFIG } from '../types';
 import { SUPPORTED_LANGUAGES, getT } from '../i18n';
 import { CountryFlag } from './CountryFlag';
 import { backgroundScanner } from '../services/backgroundScanner';
@@ -115,6 +115,15 @@ const SHORTCUT_GROUPS = [
       { key: 'F', desc: 'Plein Écran & Paroles synchronisées' },
       { key: 'W', desc: 'Mini-Barre d’appoint / Widget compact' },
       { key: 'Ctrl + K', desc: 'Palette de commandes rapide' },
+    ],
+  },
+  {
+    title: 'Lecteur Vidéo & Mode Marathon',
+    shortcuts: [
+      { key: 'S', desc: "Passer l'opening (Skip Opening)" },
+      { key: 'N', desc: "Épisode suivant / Forcer l'enchaînement immédiat" },
+      { key: 'Échap', desc: "Annuler l'enchaînement automatique / Réduire en PiP" },
+      { key: 'Double-tap / Clic', desc: 'Reculer (-10s à gauche) / Avancer (+10s à droite)' },
     ],
   },
 ];
@@ -1099,6 +1108,147 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                   onChange={(val) => updateSetting('compactPlayerGhost', val)}
                   accent={accent}
                 />
+              </div>
+
+              {/* Saut Automatique des Openings (Auto-Skip) */}
+              <div className="flex items-center justify-between bg-neutral-900/60 p-4 rounded-xl border border-neutral-800 hover:border-neutral-700/60 transition-colors">
+                <div>
+                  <span className="font-semibold text-neutral-200 block text-xs">Saut automatique des intros & génériques (Auto-Skip)</span>
+                  <span className="text-neutral-400 text-[11px] leading-relaxed">
+                    Passe automatiquement les openings détectés (via chapitres, Aniskip ou empreinte acoustique).
+                  </span>
+                </div>
+                <ToggleSwitch
+                  checked={!!settings.autoSkipOpening}
+                  onChange={(val) => updateSetting('autoSkipOpening', val)}
+                  accent={accent}
+                />
+              </div>
+
+              {/* Mode Marathon (Auto-Chain & Smart Transitions) */}
+              <div className="flex flex-col gap-3.5 bg-neutral-900/60 p-4.5 rounded-xl border border-neutral-800">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <Zap className="w-4 h-4 text-amber-400" />
+                    <span className="text-xs uppercase tracking-wider text-neutral-300 font-bold">
+                      Mode Marathon (Enchaînement automatique & Smart Transitions)
+                    </span>
+                  </div>
+                  <ToggleSwitch
+                    checked={!!(settings.marathonConfig?.enabled ?? DEFAULT_MARATHON_CONFIG.enabled)}
+                    onChange={(val) => {
+                      const cur = settings.marathonConfig || DEFAULT_MARATHON_CONFIG;
+                      updateSetting('marathonConfig', { ...cur, enabled: val });
+                    }}
+                    accent={accent}
+                  />
+                </div>
+                <p className="text-xs text-neutral-400 leading-relaxed">
+                  Automatise les transitions entre épisodes en sautant intelligemment les génériques d'intro et de fin, avec préchargement d'arrière-plan sans écran noir.
+                </p>
+
+                {(settings.marathonConfig?.enabled ?? DEFAULT_MARATHON_CONFIG.enabled) && (
+                  <div className="flex flex-col gap-3 pt-2 border-t border-neutral-800/80 animate-in fade-in duration-200">
+                    {/* Conserver l'opening de l'épisode 1 */}
+                    <div className="flex items-center justify-between py-1">
+                      <div>
+                        <span className="font-semibold text-neutral-200 block text-xs">
+                          Passer l'opening dès le 1er épisode
+                        </span>
+                        <span className="text-neutral-400 text-[11px] leading-relaxed">
+                          Désactivé : écoute l'opening en entier au premier épisode, ne saute automatiquement qu'à partir de l'épisode 2.
+                        </span>
+                      </div>
+                      <ToggleSwitch
+                        checked={!!(settings.marathonConfig?.skipFirstEpisodeOp ?? DEFAULT_MARATHON_CONFIG.skipFirstEpisodeOp)}
+                        onChange={(val) => {
+                          const cur = settings.marathonConfig || DEFAULT_MARATHON_CONFIG;
+                          updateSetting('marathonConfig', { ...cur, skipFirstEpisodeOp: val });
+                        }}
+                        accent={accent}
+                      />
+                    </div>
+
+                    {/* Sauter l'ending (ED) */}
+                    <div className="flex items-center justify-between py-1">
+                      <div>
+                        <span className="font-semibold text-neutral-200 block text-xs">
+                          Sauter le générique de fin (ED)
+                        </span>
+                        <span className="text-neutral-400 text-[11px] leading-relaxed">
+                          Déclenche le passage à l'épisode suivant dès le début de l'ending.
+                        </span>
+                      </div>
+                      <ToggleSwitch
+                        checked={!!(settings.marathonConfig?.skipEnding ?? DEFAULT_MARATHON_CONFIG.skipEnding)}
+                        onChange={(val) => {
+                          const cur = settings.marathonConfig || DEFAULT_MARATHON_CONFIG;
+                          updateSetting('marathonConfig', { ...cur, skipEnding: val });
+                        }}
+                        accent={accent}
+                      />
+                    </div>
+
+                    {/* Scènes post-crédits / teasers */}
+                    <div className="flex items-center justify-between py-1">
+                      <div>
+                        <span className="font-semibold text-neutral-200 block text-xs">
+                          Lire la scène post-crédits / teaser si présente
+                        </span>
+                        <span className="text-neutral-400 text-[11px] leading-relaxed">
+                          Saute l'ending pour aller directement au teaser, puis enchaîne l'épisode suivant une fois le teaser terminé.
+                        </span>
+                      </div>
+                      <ToggleSwitch
+                        checked={!!(settings.marathonConfig?.playPostCreditsScene ?? DEFAULT_MARATHON_CONFIG.playPostCreditsScene)}
+                        onChange={(val) => {
+                          const cur = settings.marathonConfig || DEFAULT_MARATHON_CONFIG;
+                          updateSetting('marathonConfig', { ...cur, playPostCreditsScene: val });
+                        }}
+                        accent={accent}
+                      />
+                    </div>
+
+                    {/* Compte à rebours avant transition */}
+                    <div className="flex flex-col gap-1.5 py-1">
+                      <span className="font-semibold text-neutral-200 block text-xs">
+                        Délai du compte à rebours avant l'épisode suivant
+                      </span>
+                      <span className="text-neutral-400 text-[11px] leading-relaxed">
+                        Affiche une bannière avec mini-chrono avant de lancer l'épisode suivant (Raccourci N pour forcer, Échap pour annuler).
+                      </span>
+                      <div className="grid grid-cols-4 gap-2 pt-1.5">
+                        {[
+                          { secs: 0, label: 'Instantané (0s)' },
+                          { secs: 3, label: '3 secondes' },
+                          { secs: 5, label: '5 secondes' },
+                          { secs: 10, label: '10 secondes' },
+                        ].map(({ secs, label }) => {
+                          const currentDuration =
+                            settings.marathonConfig?.countdownDuration ?? DEFAULT_MARATHON_CONFIG.countdownDuration;
+                          const isSelected = currentDuration === secs;
+                          return (
+                            <button
+                              key={secs}
+                              type="button"
+                              onClick={() => {
+                                const cur = settings.marathonConfig || DEFAULT_MARATHON_CONFIG;
+                                updateSetting('marathonConfig', { ...cur, countdownDuration: secs });
+                              }}
+                              className={`py-2 px-2.5 rounded-xl text-xs font-semibold border transition-all cursor-pointer text-center ${
+                                isSelected
+                                  ? 'bg-neutral-800 text-white border-amber-400/60 ring-1 ring-amber-400/40 shadow-sm'
+                                  : 'bg-neutral-900/60 text-neutral-400 hover:text-white border-neutral-800 hover:border-neutral-700'
+                              }`}
+                            >
+                              {label}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
           )}

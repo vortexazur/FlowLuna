@@ -42,6 +42,57 @@ export interface Track {
   videoWidth?: number;
   videoHeight?: number;
   filePath?: string;
+  chapters?: VideoChapter[];
+}
+
+export interface VideoChapter {
+  id?: number | string;
+  title: string;
+  startTime: number;
+  endTime: number;
+}
+
+export interface SkipInterval {
+  start: number; // en secondes
+  end: number;   // en secondes
+  type: 'op' | 'ed';
+  source: 'chapter' | 'api' | 'audio_fingerprint';
+  title?: string;
+}
+
+export interface PlayerSkipState {
+  currentInterval: SkipInterval | null;
+  isVisible: boolean;
+  autoSkipEnabled: boolean;
+}
+
+export interface VideoSkipMarkers {
+  op: SkipInterval | null;
+  ed: SkipInterval | null;
+  hasPostCredits: boolean;
+  postCreditsStart?: number;
+}
+
+export interface MarathonConfig {
+  enabled: boolean;
+  skipFirstEpisodeOp: boolean;    // false = on écoute l'OP de l'ep 1, true = skip direct
+  skipEnding: boolean;            // Sauter l'ED pour passer directement à la suite
+  playPostCreditsScene: boolean;  // Si présent, lit la scène post-crédits après le skip de l'ED
+  countdownDuration: number;      // Délai en secondes avant transition (0 = instantané)
+}
+
+export const DEFAULT_MARATHON_CONFIG: MarathonConfig = {
+  enabled: true,
+  skipFirstEpisodeOp: false,
+  skipEnding: true,
+  playPostCreditsScene: true,
+  countdownDuration: 5,
+};
+
+export interface PlaylistState {
+  playlist: Array<{ id: string; episodeNumber: number; url: string; title?: string }>;
+  currentIndex: number;
+  hasNext: boolean;
 }
 
 export interface Playlist {
@@ -153,4 +204,6 @@ export interface PlayerSettings {
   compactPlayerGhost?: boolean;
   stereoWidth?: number; // 0 to 200%
   playbackSpeed?: number; // 0.5 to 2.0
+  autoSkipOpening?: boolean; // Saut automatique des génériques/openings (Auto-skip)
+  marathonConfig?: MarathonConfig; // Mode Marathon (Auto-chain & transitions intelligentes)
 }

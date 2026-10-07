@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
   Play,
   Pause,
@@ -17,8 +17,20 @@ import {
   Tv,
   Film,
   Sparkles,
+  ChevronDown,
+  ChevronLeft,
+  ChevronRight,
+  ListVideo,
+  FolderPlus,
+  Trash2,
+  PlusSquare,
+  ListFilter,
+  Zap,
 } from 'lucide-react';
-import { Track, AccentColor } from '../types';
+import { Track, AccentColor, MarathonConfig } from '../types';
+import { SkipOpeningButton } from './SkipOpeningButton';
+import { MarathonCountdownOverlay } from './MarathonCountdownOverlay';
+import { useMarathonController } from '../hooks/useMarathonController';
 
 export type VideoDisplayMode = 'theater' | 'pip' | 'hidden';
 export type VideoAspectRatio = 'contain' | 'cover' | '16-9';
@@ -43,6 +55,17 @@ interface VideoPlayerProps {
   onSetVideoMode: (mode: VideoDisplayMode) => void;
   accent: AccentColor;
   videoRef: React.RefObject<HTMLVideoElement | null>;
+  queue?: Track[];
+  currentTrackIndex?: number;
+  onSelectTrack?: (index: number) => void;
+  onRemoveFromQueue?: (index: number) => void;
+  onClearQueue?: () => void;
+  onAddMediaToQueue?: (files: FileList | File[]) => void;
+  onSaveQueueAsPlaylist?: () => void;
+  autoSkipOpening?: boolean;
+  onToggleAutoSkip?: (enabled: boolean) => void;
+  marathonConfig?: MarathonConfig;
+  onUpdateMarathonConfig?: (config: MarathonConfig) => void;
 }
 
 export const VideoPlayer: React.FC<VideoPlayerProps> = ({
@@ -65,6 +88,17 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
   onSetVideoMode,
   accent,
   videoRef,
+  queue = [],
+  currentTrackIndex = 0,
+  onSelectTrack,
+  onRemoveFromQueue,
+  onClearQueue,
+  onAddMediaToQueue,
+  onSaveQueueAsPlaylist,
+  autoSkipOpening = false,
+  onToggleAutoSkip,
+  marathonConfig,
+  onUpdateMarathonConfig,
 }) => {
   const [areControlsVisible, setAreControlsVisible] = useState(true);
   const [aspectRatio, setAspectRatio] = useState<VideoAspectRatio>('contain');
@@ -73,8 +107,55 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
   const [isHovered, setIsHovered] = useState(false);
   const [clickAnim, setClickAnim] = useState<'play' | 'pause' | null>(null);
 
+  // Étape 1: File d'attente flottante & Feedback saut temporel
+  const [isQueueOpen, setIsQueueOpen] = useState(false);
+  const [isBadgeVisible, setIsBadgeVisible] = useState(false);
+  const [accumulatedDelta, setAccumulatedDelta] = useState<number>(0);
+  const [leftIndicatorActive, setLeftIndicatorActive] = useState(false);
+  const [rightIndicatorActive, setRightIndicatorActive] = useState(false);
+
+  // Étape 2 & 3: Système Hybride de Détection, Skip Opening et Mode Marathon
+  const {
+    markers,
+    isCountdownActive,
+    countdownRemaining,
+    countdownTotal,
+    countdownProgress,
+    nextTrack: marathonNextTrack,
+    nextEpisodeNumber: marathonNextEpNum,
+    triggerNextImmediately,
+    cancelCountdown,
+    toggleMarathon,
+    marathonToast,
+    opInterval: skipInterval,
+    isOpButtonVisible: isSkipButtonVisible,
+    skipOpening,
+  } = useMarathonController({
+    track: currentTrack,
+    currentTime,
+    duration,
+    queue,
+    currentTrackIndex,
+    videoRef,
+    onNext,
+    onSeek,
+    config: marathonConfig,
+    onUpdateConfig: onUpdateMarathonConfig,
+    autoSkipOpening,
+  });
+
   const containerRef = useRef<HTMLDivElement>(null);
   const hideControlsTimer = useRef<NodeJS.Timeout | null>(null);
+  const badgeTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const leftIndicatorTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const rightIndicatorTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Click & Touch debouncing for double-tap / click detection
+  const clickTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const lastTapLeftRef = useRef<number>(0);
+  const lastTapRightRef = useRef<number>(0);
+  const lastTapCenterRef = useRef<number>(0);
 
   const isVideo = !!currentTrack?.isVideo;
 
@@ -90,7 +171,57 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
     return `${m}:${s.toString().padStart(2, '0')}`;
   };
 
-  // Auto-hide controls in theater mode when mouse is idle
+  // Format delta for dynamic pill (+0:20, -0:10, etc.)
+  const formatDelta = (secs: number) => {
+    const abs = Math.abs(secs);
+    const m = Math.floor(abs / 60);
+    const s = abs % 60;
+    const sign = secs >= 0 ? '+' : '-';
+    return `${sign}${m}:${s.toString().padStart(2, '0')}`;
+  };
+
+  // Trigger Seek with dynamic badge and lateral indicators feedback
+  const triggerSeek = useCallback(
+    (step: number) => {
+      const newTime = Math.max(0, Math.min(duration || 0, currentTime + step));
+      onSeek(newTime);
+
+      // Cumuler le saut si déclenché rapidement
+      setAccumulatedDelta((prev) => {
+        if ((prev > 0 && step < 0) || (prev < 0 && step > 0)) {
+          return step;
+        }
+        return prev + step;
+      });
+      setIsBadgeVisible(true);
+
+      if (badgeTimerRef.current) clearTimeout(badgeTimerRef.current);
+      badgeTimerRef.current = setTimeout(() => {
+        setIsBadgeVisible(false);
+        setTimeout(() => setAccumulatedDelta(0), 300);
+      }, 1000);
+
+      // Feedback visuel des indicateurs latéraux
+      if (step < 0) {
+        setLeftIndicatorActive(true);
+        if (leftIndicatorTimerRef.current) clearTimeout(leftIndicatorTimerRef.current);
+        leftIndicatorTimerRef.current = setTimeout(() => {
+          setLeftIndicatorActive(false);
+        }, 700);
+      } else {
+        setRightIndicatorActive(true);
+        if (rightIndicatorTimerRef.current) clearTimeout(rightIndicatorTimerRef.current);
+        rightIndicatorTimerRef.current = setTimeout(() => {
+          setRightIndicatorActive(false);
+        }, 700);
+      }
+
+      setAreControlsVisible(true);
+    },
+    [currentTime, duration, onSeek]
+  );
+
+  // Auto-hide controls in theater mode after 2.5s of idle
   useEffect(() => {
     if (videoMode !== 'theater' || !isPlaying) {
       setAreControlsVisible(true);
@@ -101,21 +232,27 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
       setAreControlsVisible(true);
       if (hideControlsTimer.current) clearTimeout(hideControlsTimer.current);
       hideControlsTimer.current = setTimeout(() => {
-        if (isPlaying && !isSpeedMenuOpen) {
+        if (isPlaying && !isSpeedMenuOpen && !isQueueOpen) {
           setAreControlsVisible(false);
         }
       }, 2500);
     };
 
-    const handleMouseMove = () => resetTimer();
-    window.addEventListener('mousemove', handleMouseMove);
+    const handleActivity = () => resetTimer();
+    window.addEventListener('mousemove', handleActivity);
+    window.addEventListener('mousedown', handleActivity);
+    window.addEventListener('touchstart', handleActivity);
+    window.addEventListener('keydown', handleActivity);
     resetTimer();
 
     return () => {
-      window.removeEventListener('mousemove', handleMouseMove);
+      window.removeEventListener('mousemove', handleActivity);
+      window.removeEventListener('mousedown', handleActivity);
+      window.removeEventListener('touchstart', handleActivity);
+      window.removeEventListener('keydown', handleActivity);
       if (hideControlsTimer.current) clearTimeout(hideControlsTimer.current);
     };
-  }, [videoMode, isPlaying, isSpeedMenuOpen]);
+  }, [videoMode, isPlaying, isSpeedMenuOpen, isQueueOpen]);
 
   // Keyboard shortcuts when in theater mode
   useEffect(() => {
@@ -129,51 +266,86 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
 
       if (e.code === 'Space') {
         e.preventDefault();
+        e.stopPropagation();
         onTogglePlay();
         triggerClickAnim(isPlaying ? 'pause' : 'play');
       } else if (e.code === 'ArrowLeft') {
         e.preventDefault();
-        onSeek(Math.max(0, currentTime - 5));
+        e.stopPropagation();
+        triggerSeek(-10);
       } else if (e.code === 'ArrowRight') {
         e.preventDefault();
-        onSeek(Math.min(duration, currentTime + 5));
+        e.stopPropagation();
+        triggerSeek(10);
       } else if (e.code === 'ArrowUp') {
         e.preventDefault();
+        e.stopPropagation();
         onVolumeChange(Math.min(1, volume + 0.05));
       } else if (e.code === 'ArrowDown') {
         e.preventDefault();
+        e.stopPropagation();
         onVolumeChange(Math.max(0, volume - 0.05));
       } else if (e.key === 'm' || e.key === 'M') {
+        e.stopPropagation();
         onToggleMute();
       } else if (e.key === 'f' || e.key === 'F') {
+        e.stopPropagation();
         toggleBrowserFullscreen();
+      } else if (e.key === 's' || e.key === 'S') {
+        e.stopPropagation();
+        if (skipInterval) {
+          skipOpening();
+        }
+      } else if (e.key === 'n' || e.key === 'N') {
+        e.preventDefault();
+        e.stopPropagation();
+        if (isCountdownActive) {
+          triggerNextImmediately();
+        } else if (queue && currentTrackIndex + 1 < queue.length) {
+          onNext();
+        }
       } else if (e.key === 'Escape') {
-        onSetVideoMode('pip');
+        e.stopPropagation();
+        if (isCountdownActive) {
+          cancelCountdown();
+        } else if (isQueueOpen) {
+          setIsQueueOpen(false);
+        } else if (isSpeedMenuOpen) {
+          setIsSpeedMenuOpen(false);
+        } else {
+          onSetVideoMode('pip');
+        }
       }
     };
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [videoMode, isPlaying, currentTime, duration, volume, onTogglePlay, onSeek, onVolumeChange, onToggleMute, onSetVideoMode]);
+  }, [
+    videoMode,
+    isPlaying,
+    currentTime,
+    duration,
+    volume,
+    onTogglePlay,
+    triggerSeek,
+    onVolumeChange,
+    onToggleMute,
+    onSetVideoMode,
+    isQueueOpen,
+    isSpeedMenuOpen,
+    skipInterval,
+    skipOpening,
+    isCountdownActive,
+    triggerNextImmediately,
+    cancelCountdown,
+    onNext,
+    queue,
+    currentTrackIndex,
+  ]);
 
   const triggerClickAnim = (type: 'play' | 'pause') => {
     setClickAnim(type);
     setTimeout(() => setClickAnim(null), 500);
-  };
-
-  const handleVideoClick = (e: React.MouseEvent) => {
-    e.stopPropagation();
-    onTogglePlay();
-    triggerClickAnim(isPlaying ? 'pause' : 'play');
-  };
-
-  const handleVideoDoubleClick = (e: React.MouseEvent) => {
-    e.stopPropagation();
-    if (videoMode === 'theater') {
-      toggleBrowserFullscreen();
-    } else {
-      onSetVideoMode('theater');
-    }
   };
 
   const toggleBrowserFullscreen = () => {
@@ -181,6 +353,65 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
       containerRef.current?.requestFullscreen?.().catch(() => {});
     } else {
       document.exitFullscreen?.().catch(() => {});
+    }
+  };
+
+  // Lateral and central click / double-click / double-tap handling
+  const handleZoneClick = (zone: 'left' | 'center' | 'right', e: React.MouseEvent) => {
+    e.stopPropagation();
+
+    if (isQueueOpen) {
+      setIsQueueOpen(false);
+      return;
+    }
+
+    if (e.detail === 2) {
+      if (clickTimeoutRef.current) {
+        clearTimeout(clickTimeoutRef.current);
+        clickTimeoutRef.current = null;
+      }
+      if (zone === 'left') {
+        triggerSeek(-10);
+      } else if (zone === 'right') {
+        triggerSeek(10);
+      } else {
+        toggleBrowserFullscreen();
+      }
+      return;
+    }
+
+    if (e.detail === 1) {
+      if (clickTimeoutRef.current) clearTimeout(clickTimeoutRef.current);
+      clickTimeoutRef.current = setTimeout(() => {
+        if (!areControlsVisible) {
+          setAreControlsVisible(true);
+        } else {
+          onTogglePlay();
+          triggerClickAnim(isPlaying ? 'pause' : 'play');
+        }
+      }, 250);
+    }
+  };
+
+  const handleZoneTouchEnd = (zone: 'left' | 'center' | 'right', e: React.TouchEvent) => {
+    const now = Date.now();
+    const tapRef = zone === 'left' ? lastTapLeftRef : zone === 'right' ? lastTapRightRef : lastTapCenterRef;
+    if (now - tapRef.current < 300) {
+      e.preventDefault();
+      if (clickTimeoutRef.current) {
+        clearTimeout(clickTimeoutRef.current);
+        clickTimeoutRef.current = null;
+      }
+      if (zone === 'left') {
+        triggerSeek(-10);
+      } else if (zone === 'right') {
+        triggerSeek(10);
+      } else {
+        toggleBrowserFullscreen();
+      }
+      tapRef.current = 0;
+    } else {
+      tapRef.current = now;
     }
   };
 
@@ -244,9 +475,20 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
     >
       {/* Video Media Screen Container */}
       <div
-        className="relative w-full h-full flex items-center justify-center bg-black cursor-pointer overflow-hidden"
-        onClick={handleVideoClick}
-        onDoubleClick={handleVideoDoubleClick}
+        className="relative w-full h-full flex items-center justify-center bg-black overflow-hidden"
+        onClick={() => {
+          if (videoMode === 'pip') {
+            onTogglePlay();
+            triggerClickAnim(isPlaying ? 'pause' : 'play');
+          } else if (isQueueOpen) {
+            setIsQueueOpen(false);
+          }
+        }}
+        onDoubleClick={() => {
+          if (videoMode === 'pip') {
+            onSetVideoMode('theater');
+          }
+        }}
       >
         {/* The single persistent video element attached to audio pipeline */}
         <video
@@ -278,6 +520,233 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
         {/* ============================================================ */}
         {videoMode === 'theater' && (
           <>
+            {/* Lateral and Center Touch / Click Zones (double-tap / clic rapide +/- 10s) */}
+            <div
+              className="absolute top-16 bottom-24 left-0 w-1/4 md:w-1/3 z-20 cursor-pointer"
+              onClick={(e) => handleZoneClick('left', e)}
+              onTouchEnd={(e) => handleZoneTouchEnd('left', e)}
+            />
+            <div
+              className="absolute top-16 bottom-24 right-0 w-1/4 md:w-1/3 z-20 cursor-pointer"
+              onClick={(e) => handleZoneClick('right', e)}
+              onTouchEnd={(e) => handleZoneTouchEnd('right', e)}
+            />
+            <div
+              className="absolute top-16 bottom-24 left-1/4 md:left-1/3 right-1/4 md:right-1/3 z-10 cursor-pointer"
+              onClick={(e) => handleZoneClick('center', e)}
+              onTouchEnd={(e) => handleZoneTouchEnd('center', e)}
+            />
+
+            {/* Left Lateral Skip Indicator (Image 3) */}
+            <div
+              className={`absolute left-4 md:left-6 top-1/2 -translate-y-1/2 z-30 transition-all duration-300 ${
+                areControlsVisible || leftIndicatorActive
+                  ? 'opacity-100 pointer-events-auto'
+                  : 'opacity-0 pointer-events-none'
+              }`}
+            >
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  triggerSeek(-10);
+                }}
+                title="Reculer de 10 secondes (Double-tap gauche ou ←)"
+                className={`w-12 h-12 md:w-14 md:h-14 rounded-full bg-neutral-900/85 hover:bg-neutral-800 border text-white flex items-center justify-center shadow-2xl backdrop-blur-md cursor-pointer transition-all duration-200 ${
+                  leftIndicatorActive
+                    ? 'scale-125 bg-neutral-800 border-sky-400 text-sky-400 ring-4 ring-sky-500/30'
+                    : 'border-white/10 opacity-80 hover:opacity-100 hover:scale-105 active:scale-95'
+                }`}
+              >
+                <ChevronLeft className="w-6 h-6 md:w-7 md:h-7" />
+              </button>
+            </div>
+
+            {/* Right Lateral Skip Indicator (Image 3) */}
+            <div
+              className={`absolute right-4 md:right-6 top-1/2 -translate-y-1/2 z-30 transition-all duration-300 ${
+                areControlsVisible || rightIndicatorActive
+                  ? 'opacity-100 pointer-events-auto'
+                  : 'opacity-0 pointer-events-none'
+              }`}
+            >
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  triggerSeek(10);
+                }}
+                title="Avancer de 10 secondes (Double-tap droite ou →)"
+                className={`w-12 h-12 md:w-14 md:h-14 rounded-full bg-neutral-900/85 hover:bg-neutral-800 border text-white flex items-center justify-center shadow-2xl backdrop-blur-md cursor-pointer transition-all duration-200 ${
+                  rightIndicatorActive
+                    ? 'scale-125 bg-neutral-800 border-sky-400 text-sky-400 ring-4 ring-sky-500/30'
+                    : 'border-white/10 opacity-80 hover:opacity-100 hover:scale-105 active:scale-95'
+                }`}
+              >
+                <ChevronRight className="w-6 h-6 md:w-7 md:h-7" />
+              </button>
+            </div>
+
+            {/* Dynamic Time Badge (Image 2) */}
+            <div
+              className={`absolute ${
+                isQueueOpen ? 'top-20 left-[360px] md:left-[430px]' : 'top-20 left-6 md:left-8'
+              } z-40 transition-all duration-300 pointer-events-none ${
+                isBadgeVisible && accumulatedDelta !== 0
+                  ? 'opacity-100 scale-100 translate-y-0'
+                  : 'opacity-0 scale-95 -translate-y-1'
+              }`}
+            >
+              <div className="px-3.5 py-1.5 rounded-xl bg-neutral-900/90 backdrop-blur-md border border-white/10 shadow-2xl text-white font-mono text-sm md:text-base font-semibold tracking-wide flex items-center gap-2">
+                <span>
+                  {formatTime(currentTime)} / {formatTime(duration)} ({formatDelta(accumulatedDelta)})
+                </span>
+              </div>
+            </div>
+
+            {/* Floating Queue Panel (Image 1) */}
+            {isQueueOpen && (
+              <div
+                className="absolute top-20 left-6 md:left-8 z-50 w-80 md:w-96 max-h-[70vh] bg-neutral-900/95 backdrop-blur-md border border-neutral-700/80 rounded-2xl shadow-2xl p-4 flex flex-col gap-3 animate-in fade-in slide-in-from-top-2 duration-200 select-none text-white"
+                onClick={(e) => e.stopPropagation()}
+              >
+                {/* Hidden file input for adding files */}
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  multiple
+                  accept="video/*,audio/*,.mp4,.mkv,.webm,.mov,.avi,.m4v,.mp3,.flac,.wav,.ogg,.m4a,.aac"
+                  onChange={(e) => {
+                    if (e.target.files && e.target.files.length > 0) {
+                      onAddMediaToQueue?.(e.target.files);
+                    }
+                    e.target.value = '';
+                  }}
+                  className="hidden"
+                />
+
+                {/* Header / Actions toolbar inside panel */}
+                <div className="flex items-center justify-between gap-2 border-b border-neutral-800/80 pb-3">
+                  <button
+                    type="button"
+                    onClick={() => fileInputRef.current?.click()}
+                    className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-neutral-800/80 hover:bg-neutral-700/80 border border-neutral-700/60 text-xs font-semibold text-neutral-200 hover:text-white transition-colors cursor-pointer"
+                    title="Ajouter un fichier à la file d'attente"
+                  >
+                    <FolderPlus className="w-4 h-4 text-emerald-400" />
+                    <span>Ajouter un fichier</span>
+                  </button>
+
+                  <div className="flex items-center gap-1.5">
+                    {onClearQueue && (
+                      <button
+                        type="button"
+                        onClick={onClearQueue}
+                        className="p-1.5 rounded-lg bg-neutral-800/70 hover:bg-red-950/60 text-neutral-400 hover:text-red-400 border border-neutral-700/50 transition-colors cursor-pointer"
+                        title="Vider la file"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    )}
+
+                    {onSaveQueueAsPlaylist && (
+                      <button
+                        type="button"
+                        onClick={onSaveQueueAsPlaylist}
+                        className="p-1.5 rounded-lg bg-neutral-800/70 hover:bg-neutral-700/80 text-neutral-400 hover:text-sky-300 border border-neutral-700/50 transition-colors cursor-pointer flex items-center gap-0.5"
+                        title="Enregistrer comme playlist"
+                      >
+                        <PlusSquare className="w-4 h-4" />
+                        <ChevronDown className="w-3 h-3 text-neutral-500" />
+                      </button>
+                    )}
+
+                    <button
+                      type="button"
+                      className="p-1.5 rounded-lg bg-neutral-800/70 text-neutral-400 hover:text-white border border-neutral-700/50 transition-colors cursor-pointer"
+                      title="File de lecture"
+                    >
+                      <ListFilter className="w-4 h-4" />
+                    </button>
+                  </div>
+                </div>
+
+                {/* Queue Items List */}
+                <div className="flex-1 overflow-y-auto max-h-[50vh] flex flex-col gap-2 pr-1 custom-scrollbar">
+                  {/* Current Playing Track */}
+                  {currentTrack ? (
+                    <div className="flex items-center justify-between gap-3 p-2.5 rounded-xl bg-neutral-800/80 border border-neutral-700/70 text-white shadow-sm">
+                      <div className="flex items-center gap-2.5 min-w-0 flex-1">
+                        <div className="flex items-end gap-0.5 h-3.5 w-3 shrink-0">
+                          <span className={`w-0.5 h-full rounded-full bg-sky-400 ${isPlaying ? 'animate-pulse' : ''}`} />
+                          <span className={`w-0.5 h-2/3 rounded-full bg-sky-400 ${isPlaying ? 'animate-pulse [animation-delay:150ms]' : ''}`} />
+                          <span className={`w-0.5 h-4/5 rounded-full bg-sky-400 ${isPlaying ? 'animate-pulse [animation-delay:300ms]' : ''}`} />
+                        </div>
+                        <Film className="w-4 h-4 text-sky-400 shrink-0" />
+                        <span className="text-xs md:text-sm font-semibold truncate text-white">
+                          {currentTrack.title}
+                        </span>
+                      </div>
+                      <span className="text-xs font-mono text-neutral-400 shrink-0">
+                        {formatTime(currentTrack.duration || duration)}
+                      </span>
+                    </div>
+                  ) : (
+                    <div className="text-center py-6 text-xs text-neutral-500">
+                      Aucun média en cours de lecture
+                    </div>
+                  )}
+
+                  {/* Upcoming tracks in queue */}
+                  {queue && queue.slice(currentTrackIndex + 1).length > 0 && (
+                    <div className="flex flex-col gap-1.5 mt-1">
+                      <span className="text-[10px] uppercase font-bold tracking-wider text-neutral-400 px-1">
+                        À suivre ({queue.slice(currentTrackIndex + 1).length})
+                      </span>
+
+                      {queue.slice(currentTrackIndex + 1).map((track, i) => {
+                        const realIdx = currentTrackIndex + 1 + i;
+                        return (
+                          <div
+                            key={`${track.id}-${realIdx}`}
+                            onClick={() => onSelectTrack?.(realIdx)}
+                            className="group flex items-center justify-between gap-2.5 p-2 rounded-xl bg-neutral-950/40 hover:bg-neutral-800/60 border border-neutral-800/60 hover:border-neutral-700/60 transition-colors cursor-pointer"
+                          >
+                            <div className="flex items-center gap-2.5 min-w-0 flex-1">
+                              <Play className="w-3.5 h-3.5 text-neutral-400 group-hover:text-white shrink-0 fill-current" />
+                              <Film className="w-3.5 h-3.5 text-neutral-500 group-hover:text-neutral-400 shrink-0" />
+                              <span className="text-xs text-neutral-300 group-hover:text-white truncate">
+                                {track.title}
+                              </span>
+                            </div>
+
+                            <div className="flex items-center gap-2 shrink-0">
+                              {onRemoveFromQueue && (
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    onRemoveFromQueue(realIdx);
+                                  }}
+                                  className="p-1 text-neutral-500 hover:text-red-400 opacity-0 group-hover:opacity-100 transition-opacity"
+                                  title="Retirer de la file"
+                                >
+                                  <X className="w-3.5 h-3.5" />
+                                </button>
+                              )}
+                              <span className="text-[11px] font-mono text-neutral-500">
+                                {formatTime(track.duration)}
+                              </span>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+
             {/* Top Bar: Title, Badge, Controls */}
             <div
               className={`absolute top-0 left-0 right-0 p-5 bg-gradient-to-b from-black/90 via-black/50 to-transparent flex items-center justify-between z-40 transition-opacity duration-300 ${
@@ -286,9 +755,48 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
               onClick={(e) => e.stopPropagation()}
             >
               <div className="flex items-center gap-3 min-w-0 pr-4">
-                <div className="p-2 rounded-xl bg-sky-950/80 border border-sky-500/30 text-sky-400 shrink-0">
-                  <Film className="w-5 h-5" />
-                </div>
+                {/* Minimize to PiP Chevron */}
+                <button
+                  type="button"
+                  onClick={() => onSetVideoMode('pip')}
+                  title="Réduire en lecteur flottant"
+                  className="p-2 rounded-xl bg-neutral-900/80 hover:bg-neutral-800 border border-neutral-700/70 text-neutral-300 hover:text-white transition-colors cursor-pointer shrink-0"
+                >
+                  <ChevronDown className="w-5 h-5" />
+                </button>
+
+                {/* Queue / Playlist Access Button (Image 1) */}
+                <button
+                  type="button"
+                  onClick={() => setIsQueueOpen((prev) => !prev)}
+                  title="File d'attente"
+                  className={`p-2 rounded-xl border transition-all cursor-pointer shrink-0 ${
+                    isQueueOpen
+                      ? 'bg-sky-500/20 text-sky-400 border-sky-500/50 shadow-lg shadow-sky-950/40'
+                      : 'bg-neutral-900/80 hover:bg-neutral-800 border-neutral-700/70 text-neutral-300 hover:text-white'
+                  }`}
+                >
+                  <ListVideo className="w-5 h-5" />
+                </button>
+
+                {/* Mode Marathon Quick Toggle Button (Étape 3) */}
+                <button
+                  type="button"
+                  onClick={toggleMarathon}
+                  title={
+                    marathonConfig?.enabled
+                      ? 'Mode Marathon activé (Transitions automatiques & Auto-skip) - Raccourci N'
+                      : 'Activer le Mode Marathon (Transitions automatiques)'
+                  }
+                  className={`p-2 rounded-xl border transition-all cursor-pointer shrink-0 flex items-center justify-center ${
+                    marathonConfig?.enabled
+                      ? 'bg-amber-500/20 text-amber-400 border-amber-500/50 shadow-lg shadow-amber-950/40 ring-1 ring-amber-500/30'
+                      : 'bg-neutral-900/80 hover:bg-neutral-800 border-neutral-700/70 text-neutral-400 hover:text-white'
+                  }`}
+                >
+                  <Zap className={`w-5 h-5 ${marathonConfig?.enabled ? 'fill-current' : ''}`} />
+                </button>
+
                 <div className="flex flex-col min-w-0">
                   <div className="flex items-center gap-2">
                     <h2 className="text-white font-bold text-base md:text-lg truncate">
@@ -339,6 +847,29 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
               </div>
             </div>
 
+            {/* Bouton d'action flottant "Passer l'opening" (Étape 2) */}
+            <SkipOpeningButton
+              isVisible={isSkipButtonVisible}
+              interval={skipInterval}
+              onSkip={skipOpening}
+              autoSkipEnabled={!!autoSkipOpening}
+              onToggleAutoSkip={(enabled) => onToggleAutoSkip?.(enabled)}
+              autoSkippedToast={marathonToast}
+            />
+
+            {/* Overlay Compte à Rebours Mode Marathon (Étape 3) */}
+            <MarathonCountdownOverlay
+              isVisible={isCountdownActive}
+              countdownRemaining={countdownRemaining}
+              countdownTotal={countdownTotal}
+              countdownProgress={countdownProgress}
+              nextTrack={marathonNextTrack}
+              nextEpisodeNumber={marathonNextEpNum}
+              onPlayNext={triggerNextImmediately}
+              onCancel={cancelCountdown}
+              accent={accent}
+            />
+
             {/* Bottom Controls Bar */}
             <div
               className={`absolute bottom-0 left-0 right-0 p-5 bg-gradient-to-t from-black/95 via-black/60 to-transparent flex flex-col gap-3 z-40 transition-opacity duration-300 ${
@@ -348,6 +879,28 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
             >
               {/* Progress Scrubber */}
               <div className="relative group/scrubber flex items-center">
+                {/* Repère visuel de l'opening détecté sur la timeline */}
+                {skipInterval && duration > 0 && (
+                  <div
+                    className="absolute h-1.5 group-hover/scrubber:h-2.5 rounded-lg bg-sky-400/50 pointer-events-none z-10 transition-all shadow-xs"
+                    style={{
+                      left: `${Math.max(0, Math.min(100, (skipInterval.start / duration) * 100))}%`,
+                      width: `${Math.max(0.5, Math.min(100, ((skipInterval.end - skipInterval.start) / duration) * 100))}%`,
+                    }}
+                    title={`Opening : ${formatTime(skipInterval.start)} - ${formatTime(skipInterval.end)}`}
+                  />
+                )}
+                {/* Repère visuel de l'ending détecté sur la timeline (Étape 3) */}
+                {markers?.ed && duration > 0 && (
+                  <div
+                    className="absolute h-1.5 group-hover/scrubber:h-2.5 rounded-lg bg-purple-400/50 pointer-events-none z-10 transition-all shadow-xs"
+                    style={{
+                      left: `${Math.max(0, Math.min(100, (markers.ed.start / duration) * 100))}%`,
+                      width: `${Math.max(0.5, Math.min(100, ((markers.ed.end - markers.ed.start) / duration) * 100))}%`,
+                    }}
+                    title={`Ending : ${formatTime(markers.ed.start)} - ${formatTime(markers.ed.end)}`}
+                  />
+                )}
                 <input
                   type="range"
                   min={0}
@@ -376,9 +929,9 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
                   {/* Rewind 10s */}
                   <button
                     type="button"
-                    onClick={() => onSeek(Math.max(0, currentTime - 10))}
+                    onClick={() => triggerSeek(-10)}
                     className="p-2 rounded-lg text-neutral-300 hover:text-white hover:bg-white/10 transition-colors cursor-pointer"
-                    title="Reculer de 10 secondes"
+                    title="Reculer de 10 secondes (Double-tap gauche ou ←)"
                   >
                     <RotateCcw className="w-4 h-4" />
                   </button>
@@ -400,9 +953,9 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
                   {/* Forward 10s */}
                   <button
                     type="button"
-                    onClick={() => onSeek(Math.min(duration, currentTime + 10))}
+                    onClick={() => triggerSeek(10)}
                     className="p-2 rounded-lg text-neutral-300 hover:text-white hover:bg-white/10 transition-colors cursor-pointer"
-                    title="Avancer de 10 secondes"
+                    title="Avancer de 10 secondes (Double-tap droite ou →)"
                   >
                     <RotateCw className="w-4 h-4" />
                   </button>

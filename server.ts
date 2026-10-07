@@ -3476,6 +3476,47 @@ app.get('/api/metadata/search', async (req, res) => {
   }
 });
 
+// Video container chapters parser route (Niveau 1 : Inspection des chapitres intégrés)
+app.get('/api/video/chapters', (req, res) => {
+  try {
+    const filePath = (req.query.filePath as string) || '';
+    if (!filePath || !fs.existsSync(filePath)) {
+      return res.json({ success: false, chapters: [] });
+    }
+
+    const ffprobePath = getFfprobePath();
+    if (!fs.existsSync(ffprobePath)) {
+      return res.json({ success: false, chapters: [] });
+    }
+
+    execFile(
+      ffprobePath,
+      ['-v', 'quiet', '-print_format', 'json', '-show_chapters', filePath],
+      { timeout: 8000 },
+      (err, stdout) => {
+        if (err || !stdout) {
+          return res.json({ success: false, chapters: [] });
+        }
+        try {
+          const parsed = JSON.parse(stdout);
+          const rawChapters = Array.isArray(parsed.chapters) ? parsed.chapters : [];
+          const chapters = rawChapters.map((ch: any, idx: number) => ({
+            id: ch.id ?? idx,
+            title: ch.tags?.title || ch.title || `Chapitre ${idx + 1}`,
+            startTime: parseFloat(ch.start_time || '0'),
+            endTime: parseFloat(ch.end_time || '0'),
+          }));
+          return res.json({ success: true, chapters });
+        } catch {
+          return res.json({ success: false, chapters: [] });
+        }
+      }
+    );
+  } catch (err: any) {
+    return res.json({ success: false, error: err?.message, chapters: [] });
+  }
+});
+
 // Lyrics lookup route (local .lrc or cache)
 app.get('/api/lyrics', (req, res) => {
   const filePath = req.query.file as string;

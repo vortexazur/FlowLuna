@@ -8,6 +8,7 @@ import {
   AccentColor,
   BackdropEffect,
   AppUpdateInfo,
+  DEFAULT_MARATHON_CONFIG,
 } from './types';
 import {
   getAllTracks,
@@ -77,6 +78,8 @@ const DEFAULT_PLAYER_SETTINGS: PlayerSettings = {
   compactMode: false,
   compactPlayerDock: 'bottom',
   compactPlayerGhost: false,
+  autoSkipOpening: false,
+  marathonConfig: DEFAULT_MARATHON_CONFIG,
 };
 
 const DEFAULT_EQ_SETTINGS: EqualizerSettings = {
@@ -1083,6 +1086,11 @@ export default function App() {
         return;
       }
 
+      // When in theater mode, let VideoPlayer handle shortcuts (arrows, space, mute, esc, etc.)
+      if (videoMode === 'theater') {
+        return;
+      }
+
       if (e.code === 'Space') {
         e.preventDefault();
         handleTogglePlay();
@@ -1818,6 +1826,55 @@ export default function App() {
         videoMode={videoMode}
         onSetVideoMode={setVideoMode}
         accent={playerSettings.accent}
+        queue={queue}
+        currentTrackIndex={currentTrackIndex}
+        onSelectTrack={(idx) => playTrackAt(idx)}
+        onRemoveFromQueue={(idx) => {
+          setQueue((prev) => {
+            const next = prev.filter((_, i) => i !== idx);
+            queueRef.current = next;
+            return next;
+          });
+          if (idx < currentTrackIndex) {
+            setCurrentTrackIndex((prev) => prev - 1);
+            currentTrackIndexRef.current--;
+          } else if (idx === currentTrackIndex) {
+            const nextQueue = queueRef.current;
+            if (nextQueue.length === 0) {
+              handleStop();
+            } else if (currentTrackIndex >= nextQueue.length) {
+              playTrackAt(0, nextQueue);
+            } else {
+              playTrackAt(currentTrackIndex, nextQueue);
+            }
+          }
+        }}
+        onClearQueue={() => {
+          setQueue(currentPlayingTrack ? [currentPlayingTrack] : []);
+          queueRef.current = currentPlayingTrack ? [currentPlayingTrack] : [];
+          setCurrentTrackIndex(currentPlayingTrack ? 0 : -1);
+          currentTrackIndexRef.current = currentPlayingTrack ? 0 : -1;
+        }}
+        onAddMediaToQueue={handleAddMediaToQueue}
+        onSaveQueueAsPlaylist={async () => {
+          if (queue.length === 0) return;
+          const newPl: Playlist = {
+            id: `playlist-${Date.now()}`,
+            title: `Session ${new Date().toLocaleDateString('fr-FR')}`,
+            description: 'Playlist générée depuis la file d’attente',
+            coverUrl: queue[0]?.coverUrl || 'https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?w=600&auto=format&fit=crop&q=80',
+            trackIds: queue.map((t) => t.id),
+            createdAt: Date.now(),
+            updatedAt: Date.now(),
+            isSmart: false,
+          };
+          await savePlaylist(newPl);
+          setPlaylists((prev) => [...prev, newPl]);
+        }}
+        autoSkipOpening={playerSettings.autoSkipOpening}
+        onToggleAutoSkip={(enabled) => handleUpdatePlayerSettings({ ...playerSettings, autoSkipOpening: enabled })}
+        marathonConfig={playerSettings.marathonConfig}
+        onUpdateMarathonConfig={(newCfg) => handleUpdatePlayerSettings({ ...playerSettings, marathonConfig: newCfg })}
       />
 
       {/* Exclusive Floating Widget Mode: when active, the player becomes ONLY the floating widget */}
