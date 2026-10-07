@@ -29,6 +29,8 @@ import {
 import { PlayerSettings, AccentColor, APP_VERSION, AppUpdateInfo, AppUpdateProgress } from '../types';
 import { SUPPORTED_LANGUAGES, getT } from '../i18n';
 import { CountryFlag } from './CountryFlag';
+import { backgroundScanner } from '../services/backgroundScanner';
+import { saveTracks } from '../services/audioDb';
 
 interface SettingsModalProps {
   isOpen: boolean;
@@ -216,17 +218,15 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
     setIsScanningSettings(true);
     setScanMessage(null);
     try {
-      const res = await fetch('/api/library/scan');
-      if (res.ok) {
-        const data = await res.json();
-        setScanMessage({
-          text: `${data.count} morceaux locaux détectés et synchronisés !`,
-          type: 'success',
-        });
-        if (onDataReload) await onDataReload();
-      } else {
-        throw new Error('Erreur de scan');
-      }
+      const newlyDiscovered = await backgroundScanner.runScan(false, true);
+      const count = newlyDiscovered?.length ?? 0;
+      setScanMessage({
+        text: count > 0
+          ? `${count} morceau(x) indexé(s) et synchronisé(s) sur le PC !`
+          : 'Bibliothèque synchronisée avec vos dossiers musicaux.',
+        type: 'success',
+      });
+      if (onDataReload) await onDataReload();
     } catch {
       setScanMessage({ text: 'Erreur lors de la détection musicale', type: 'error' });
     } finally {
@@ -247,6 +247,10 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
           });
           if (res.ok) {
             const data = await res.json();
+            if (Array.isArray(data.tracks) && data.tracks.length > 0) {
+              await saveTracks(data.tracks);
+              await backgroundScanner.runScan(false, true);
+            }
             setCustomFolders((prev) => (prev.includes(folder) ? prev : [...prev, folder]));
             setScanMessage({
               text: `${data.count} morceaux ajoutés depuis ${folder} !`,

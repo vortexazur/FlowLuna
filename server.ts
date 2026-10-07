@@ -468,10 +468,10 @@ function compareSemVer(v1: string, v2: string): number {
 }
 
 app.get('/api/app/check-update', async (req, res) => {
-  const currentVersion = '1.2.0';
+  const currentVersion = '1.2.1';
   try {
     const fetchRes = await fetch('https://api.github.com/repos/vortexazur/FlowLuna/releases/latest', {
-      headers: { 'User-Agent': 'FlowLuna-App/1.2.0' },
+      headers: { 'User-Agent': 'FlowLuna-App/1.2.1' },
     });
     if (fetchRes.ok) {
       const data: any = await fetchRes.json();
@@ -529,7 +529,7 @@ function downloadUpdateFileWithProgress(urlStr: string, destPath: string, maxRed
   }
 
   const client = urlStr.startsWith('https') ? https : http;
-  const req = client.get(urlStr, { headers: { 'User-Agent': 'FlowLuna-App/1.2.0' } }, (res) => {
+  const req = client.get(urlStr, { headers: { 'User-Agent': 'FlowLuna-App/1.2.1' } }, (res) => {
     if (res.statusCode && [301, 302, 303, 307, 308].includes(res.statusCode) && res.headers.location) {
       downloadUpdateFileWithProgress(res.headers.location, destPath, maxRedirects - 1);
       return;
@@ -608,7 +608,7 @@ app.post('/api/app/download-update', express.json(), async (req, res) => {
 
     if (!downloadUrl) {
       const fetchRes = await fetch('https://api.github.com/repos/vortexazur/FlowLuna/releases/latest', {
-        headers: { 'User-Agent': 'FlowLuna-App/1.2.0' },
+        headers: { 'User-Agent': 'FlowLuna-App/1.2.1' },
       });
       if (fetchRes.ok) {
         const data: any = await fetchRes.json();
@@ -2349,6 +2349,7 @@ app.post('/api/downloader/save-to-app', async (req, res) => {
             addedAt: Date.now(),
             sizeInBytes: stats.size,
             isVideo,
+            filePath: fullPath,
           },
         });
       } catch (e: any) {
@@ -2767,6 +2768,8 @@ app.post('/api/audio/convert', async (req, res) => {
 // ==========================================
 
 const AUDIO_EXTENSIONS = new Set(['.mp3', '.flac', '.wav', '.ogg', '.m4a', '.aac', '.webm', '.opus', '.wma', '.alac']);
+const VIDEO_EXTENSIONS = new Set(['.mp4', '.mkv', '.webm', '.mov', '.avi', '.m4v']);
+const ALL_MEDIA_EXTENSIONS = new Set([...AUDIO_EXTENSIONS, ...VIDEO_EXTENSIONS]);
 
 interface ScannedAudioTrack {
   id: string;
@@ -2788,6 +2791,7 @@ interface ScannedAudioTrack {
   filePath: string;
   genre?: string;
   year?: string;
+  isVideo?: boolean;
 }
 
 function getCustomScannedDirs(): string[] {
@@ -2847,7 +2851,7 @@ function scanDirectoryForAudio(dirPath: string, maxDepth: number = 4, currentDep
         results = results.concat(scanDirectoryForAudio(fullPath, maxDepth, currentDepth + 1));
       } else if (entry.isFile()) {
         const ext = path.extname(entry.name).toLowerCase();
-        if (AUDIO_EXTENSIONS.has(ext)) {
+        if (ALL_MEDIA_EXTENSIONS.has(ext)) {
           results.push(fullPath);
         }
       }
@@ -3022,7 +3026,8 @@ async function resolveCoverAndMetadata(
   currentArtist: string,
   currentAlbum: string,
   currentGenre?: string,
-  currentYear?: string
+  currentYear?: string,
+  fetchOnline: boolean = false
 ): Promise<{
   coverUrl: string;
   album: string;
@@ -3104,25 +3109,35 @@ async function resolveCoverAndMetadata(
     }
   } catch {}
 
-  // 3. Online metadata & cover via iTunes Search API
+  // 3. Online metadata & cover via iTunes Search API (only if requested)
   let resAlbum = currentAlbum;
   let resArtist = currentArtist;
   let resTitle = currentTitle;
   let resGenre = currentGenre;
   let resYear = currentYear;
 
-  try {
-    const online = await searchOnlineMetadata(undefined, currentArtist, currentTitle);
-    if (online) {
-      if ((resAlbum === 'Bibliothèque Locale' || !resAlbum) && online.album) resAlbum = online.album;
-      if (!resGenre && online.genre) resGenre = online.genre;
-      if (!resYear && online.year) resYear = online.year;
-      if (resArtist === 'Artiste Local' && online.artist) resArtist = online.artist;
-      if (online.coverUrl) {
-        const downloaded = await downloadCoverToFile(online.coverUrl, cachePath);
-        if (downloaded) {
+  if (fetchOnline) {
+    try {
+      const online = await searchOnlineMetadata(undefined, currentArtist, currentTitle);
+      if (online) {
+        if ((resAlbum === 'Bibliothèque Locale' || !resAlbum) && online.album) resAlbum = online.album;
+        if (!resGenre && online.genre) resGenre = online.genre;
+        if (!resYear && online.year) resYear = online.year;
+        if (resArtist === 'Artiste Local' && online.artist) resArtist = online.artist;
+        if (online.coverUrl) {
+          const downloaded = await downloadCoverToFile(online.coverUrl, cachePath);
+          if (downloaded) {
+            return {
+              coverUrl: `/covers/${trackHash}.jpg`,
+              album: resAlbum,
+              artist: resArtist,
+              title: resTitle,
+              genre: resGenre,
+              year: resYear,
+            };
+          }
           return {
-            coverUrl: `/covers/${trackHash}.jpg`,
+            coverUrl: online.coverUrl,
             album: resAlbum,
             artist: resArtist,
             title: resTitle,
@@ -3130,17 +3145,9 @@ async function resolveCoverAndMetadata(
             year: resYear,
           };
         }
-        return {
-          coverUrl: online.coverUrl,
-          album: resAlbum,
-          artist: resArtist,
-          title: resTitle,
-          genre: resGenre,
-          year: resYear,
-        };
       }
-    }
-  } catch {}
+    } catch {}
+  }
 
   // 4. Default gradient fallback
   const coverIndex = Math.abs(trackHash.split('').reduce((acc, c) => acc + c.charCodeAt(0), 0)) % DEFAULT_COVERS.length;
@@ -3154,12 +3161,17 @@ async function resolveCoverAndMetadata(
   };
 }
 
-async function buildTrackMetadataFromFile(filePath: string, isPublic: boolean = false): Promise<ScannedAudioTrack | null> {
+async function buildTrackMetadataFromFile(
+  filePath: string,
+  isPublic: boolean = false,
+  fetchOnline: boolean = false
+): Promise<ScannedAudioTrack | null> {
   if (!fs.existsSync(filePath)) return null;
 
   try {
     const fileName = path.basename(filePath);
     const ext = path.extname(fileName).toLowerCase().replace('.', '');
+    const isVideo = VIDEO_EXTENSIONS.has(`.${ext}`);
     const stats = fs.statSync(filePath);
 
     // Run ffprobe for precise metadata
@@ -3173,7 +3185,7 @@ async function buildTrackMetadataFromFile(filePath: string, isPublic: boolean = 
 
     let title = tags.title || tags.TITLE || '';
     let artist = tags.artist || tags.ARTIST || '';
-    let album = tags.album || tags.ALBUM || 'Bibliothèque Locale';
+    let album = tags.album || tags.ALBUM || (isVideo ? 'Vidéos Locales' : 'Bibliothèque Locale');
     let genre = tags.genre || tags.GENRE || undefined;
     let year = tags.year || tags.date || tags.DATE || undefined;
 
@@ -3185,16 +3197,16 @@ async function buildTrackMetadataFromFile(filePath: string, isPublic: boolean = 
         title = parts.slice(1).join(' - ').trim();
       } else {
         title = rawBaseName.trim();
-        artist = 'Artiste Local';
+        artist = isVideo ? 'Vidéo' : 'Artiste Local';
       }
     }
 
     if (!artist) {
-      artist = 'Artiste Local';
+      artist = isVideo ? 'Vidéo' : 'Artiste Local';
     }
 
     const trackHash = getTrackHash(filePath);
-    const enriched = await resolveCoverAndMetadata(filePath, trackHash, title, artist, album, genre, year);
+    const enriched = await resolveCoverAndMetadata(filePath, trackHash, title, artist, album, genre, year, fetchOnline);
 
     if (enriched.album) album = enriched.album;
     if (enriched.artist) artist = enriched.artist;
@@ -3203,8 +3215,9 @@ async function buildTrackMetadataFromFile(filePath: string, isPublic: boolean = 
     if (enriched.year) year = enriched.year;
 
     let playableUrl = '';
-    if (isPublic) {
-      const relFromPublic = path.relative(path.join(process.cwd(), 'public'), filePath);
+    const publicDir = path.join(process.cwd(), 'public');
+    if (isPublic && filePath.startsWith(publicDir)) {
+      const relFromPublic = path.relative(publicDir, filePath);
       playableUrl = `/${relFromPublic.replace(/\\/g, '/')}`;
     } else {
       playableUrl = `/api/library/stream?file=${encodeURIComponent(filePath)}`;
@@ -3222,7 +3235,7 @@ async function buildTrackMetadataFromFile(filePath: string, isPublic: boolean = 
       bitrate,
       url: playableUrl,
       coverUrl: enriched.coverUrl,
-      source: isPublic ? 'default' : 'local',
+      source: isPublic && filePath.startsWith(publicDir) ? 'default' : 'local',
       isFavorite: false,
       isCachedOffline: true,
       cachedAt: stats.mtimeMs,
@@ -3232,6 +3245,7 @@ async function buildTrackMetadataFromFile(filePath: string, isPublic: boolean = 
       filePath,
       genre,
       year,
+      isVideo,
     };
   } catch (err) {
     console.warn(`Error building track metadata for ${filePath}:`, err);
@@ -3247,12 +3261,17 @@ app.get('/api/library/scan', async (req, res) => {
     }
 
     const searchDirs: { dir: string; isPublic: boolean }[] = [
-      { dir: getDownloadDir(false), isPublic: true },
+      { dir: getDownloadDir(false), isPublic: false },
+      { dir: getDownloadDir(true), isPublic: false },
       { dir: path.join(process.cwd(), 'public', 'audio'), isPublic: true },
       { dir: path.join(process.cwd(), 'audio'), isPublic: false },
       { dir: path.join(process.cwd(), 'music'), isPublic: false },
       { dir: path.join(os.homedir(), 'Music'), isPublic: false },
       { dir: path.join(os.homedir(), 'Musique'), isPublic: false },
+      { dir: path.join(os.homedir(), 'Music', 'FlowLuna'), isPublic: false },
+      { dir: path.join(os.homedir(), 'Videos'), isPublic: false },
+      { dir: path.join(os.homedir(), 'Vidéos'), isPublic: false },
+      { dir: path.join(os.homedir(), 'Videos', 'FlowLuna'), isPublic: false },
       { dir: path.join(os.homedir(), 'OneDrive', 'Music'), isPublic: false },
       { dir: path.join(os.homedir(), 'OneDrive', 'Musique'), isPublic: false },
       { dir: path.join(os.homedir(), 'Downloads'), isPublic: false },
@@ -3372,8 +3391,8 @@ app.get('/api/library/stream', (req, res) => {
   }
 
   const ext = path.extname(resolved).toLowerCase();
-  if (!AUDIO_EXTENSIONS.has(ext)) {
-    return res.status(403).send('Format audio non autorisé');
+  if (!ALL_MEDIA_EXTENSIONS.has(ext)) {
+    return res.status(403).send('Format média non autorisé');
   }
   const mimeMap: Record<string, string> = {
     '.mp3': 'audio/mpeg',
@@ -3382,8 +3401,15 @@ app.get('/api/library/stream', (req, res) => {
     '.ogg': 'audio/ogg',
     '.m4a': 'audio/mp4',
     '.aac': 'audio/aac',
-    '.webm': 'audio/webm',
+    '.webm': 'video/webm',
     '.opus': 'audio/opus',
+    '.wma': 'audio/x-ms-wma',
+    '.alac': 'audio/alac',
+    '.mp4': 'video/mp4',
+    '.mkv': 'video/x-matroska',
+    '.mov': 'video/quicktime',
+    '.avi': 'video/x-msvideo',
+    '.m4v': 'video/x-m4v',
   };
 
   const stat = fs.statSync(resolved);

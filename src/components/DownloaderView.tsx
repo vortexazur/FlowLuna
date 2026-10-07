@@ -58,6 +58,7 @@ interface DownloadHistoryItem {
   timestamp: number;
   durationStr: string;
   sizeStr?: string;
+  filePath?: string;
 }
 
 interface DownloaderViewProps {
@@ -378,6 +379,7 @@ export const DownloaderView: React.FC<DownloaderViewProps> = ({
         downloadUrl: data.track?.url || '',
         timestamp: Date.now(),
         durationStr: inspectedMedia.durationStr,
+        filePath: data.track?.filePath,
       });
 
       setDownloadSuccessMessage(
@@ -1156,6 +1158,37 @@ export const DownloaderView: React.FC<DownloaderViewProps> = ({
                   </div>
 
                   <div className="flex items-center gap-2">
+                    {onPlayTrack && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const historyTrack: Track = {
+                            id: item.id,
+                            title: item.title,
+                            artist: item.artist,
+                            album: item.type === 'video' ? 'Vidéos Téléchargées' : 'Téléchargements yt-dlp',
+                            duration: 180,
+                            format: (item.format as any) || (item.type === 'video' ? 'mp4' : 'mp3'),
+                            url: item.downloadUrl,
+                            coverUrl: item.thumbnail,
+                            source: 'local',
+                            isFavorite: false,
+                            isCachedOffline: true,
+                            playCount: 0,
+                            addedAt: item.timestamp,
+                            isVideo: item.type === 'video',
+                            filePath: item.filePath || (item.downloadUrl.startsWith('/api/library/stream?file=')
+                              ? decodeURIComponent(item.downloadUrl.replace('/api/library/stream?file=', ''))
+                              : undefined),
+                          };
+                          onPlayTrack(historyTrack);
+                        }}
+                        className="p-2 rounded-lg bg-red-600 hover:bg-red-500 text-white transition-colors cursor-pointer shadow-xs"
+                        title="Écouter / Lire ce média"
+                      >
+                        <Play className="w-4 h-4 fill-current ml-0.5" />
+                      </button>
+                    )}
                     {item.downloadUrl && (
                       <a
                         href={item.downloadUrl}

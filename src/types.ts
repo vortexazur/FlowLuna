@@ -1,4 +1,4 @@
-export const APP_VERSION = '1.2.0';
+export const APP_VERSION = '1.2.1';
 
 export type MediaFormat =
   | 'mp3'
@@ -41,6 +41,7 @@ export interface Track {
   isVideo?: boolean;
   videoWidth?: number;
   videoHeight?: number;
+  filePath?: string;
 }
 
 export interface Playlist {

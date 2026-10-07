@@ -55,6 +55,7 @@ import { Layers, Maximize2 } from 'lucide-react';
 import { TitleBar } from './components/TitleBar';
 import { discordRpc } from './services/discordRpcService';
 import { UpdateNotificationToast } from './components/UpdateNotificationToast';
+import { showSystemNotification } from './utils/systemNotification';
 
 const DEFAULT_PLAYER_SETTINGS: PlayerSettings = {
   language: 'fr',
@@ -114,6 +115,8 @@ export default function App() {
   currentTrackIndexRef.current = currentTrackIndex;
   const playRequestIdRef = useRef<number>(0);
   const crossfadeAnimRef = useRef<number | null>(null);
+  const isTransitioningRef = useRef<boolean>(false);
+  const lastTrackStartTimeRef = useRef<number>(0);
 
   // Modals & Panels
   const [isEqualizerOpen, setIsEqualizerOpen] = useState<boolean>(false);
@@ -335,13 +338,30 @@ export default function App() {
         if (res.ok) {
           const data: AppUpdateInfo = await res.json();
           setAppUpdateInfo(data);
+          if (data.hasUpdate) {
+            showSystemNotification(
+              `Mise à jour FlowLuna disponible (v${data.latestVersion})`,
+              {
+                body: `Une nouvelle version v${data.latestVersion} de FlowLuna est disponible. Cliquez pour voir les nouveautés et mettre à jour.`,
+                icon: '/logo.jpg',
+              },
+              () => {
+                setSettingsInitialTab('system');
+                setIsSettingsOpen(true);
+              }
+            );
+          }
         }
       } catch {
         // Non-blocking
       }
     };
     const timer = setTimeout(checkUpdate, 3500);
-    return () => clearTimeout(timer);
+    const interval = setInterval(checkUpdate, 4 * 60 * 60 * 1000);
+    return () => {
+      clearTimeout(timer);
+      clearInterval(interval);
+    };
   }, []);
 
   // Connect Web Audio API to the HTMLAudioElement
@@ -395,10 +415,12 @@ export default function App() {
 
       // Generate sequence request ID to eliminate async race conditions
       const requestId = ++playRequestIdRef.current;
+      isTransitioningRef.current = true;
+
+      const previousTrack = queueRef.current[currentTrackIndexRef.current] || null;
       currentTrackIndexRef.current = index;
 
       const track = targetQueue[index];
-      const previousTrack = queueRef.current[currentTrackIndexRef.current] || null;
       if (previousTrack && previousTrack.id !== track.id) {
         revokeTrackBlobUrl(previousTrack.id);
       }
@@ -418,11 +440,15 @@ export default function App() {
       }
 
       const audio = audioRef.current;
-      if (!audio) return;
+      if (!audio) {
+        isTransitioningRef.current = false;
+        return;
+      }
 
-      // Safely pause currently playing track immediately
+      // Safely pause currently playing track immediately and reset position
       try {
         audio.pause();
+        audio.currentTime = 0;
       } catch {}
 
       // Manual skips start immediately at target volume (no 1.2s silence/blank!)
@@ -486,6 +512,7 @@ export default function App() {
 
         if (playRequestIdRef.current !== requestId) return;
         setIsPlaying(true);
+        lastTrackStartTimeRef.current = Date.now();
 
         // Update play count asynchronously
         track.playCount = (track.playCount || 0) + 1;
@@ -506,6 +533,10 @@ export default function App() {
           return;
         }
         console.warn('Playback request error:', err);
+      } finally {
+        if (playRequestIdRef.current === requestId) {
+          isTransitioningRef.current = false;
+        }
       }
     },
     [playerSettings.crossfadeDuration, isMuted, volume, playerSettings.gaplessPlayback]
@@ -553,10 +584,14 @@ export default function App() {
     const curQueue = queueRef.current;
     if (curQueue.length === 0) return;
 
-    if (audioRef.current) {
+    const timeSinceStart = Date.now() - lastTrackStartTimeRef.current;
+    const isRapidSkipping = isTransitioningRef.current || timeSinceStart < 1500;
+
+    if (!isRapidSkipping && audioRef.current) {
       try {
         if (isFinite(audioRef.current.currentTime) && audioRef.current.currentTime > 3) {
           audioRef.current.currentTime = 0;
+          setCurrentTime(0);
           return;
         }
       } catch {}
@@ -1404,13 +1439,16 @@ export default function App() {
           }}
           onPlayTrack={(track) => {
             saveTrack(track);
+            const updatedQueue = [track, ...queue.filter((t) => t.id !== track.id)];
             setTracks((prev) => [track, ...prev.filter((t) => t.id !== track.id)]);
-            setQueue((prev) => [track, ...prev.filter((t) => t.id !== track.id)]);
+            setQueue(updatedQueue);
+            queueRef.current = updatedQueue;
             setCurrentTrackIndex(0);
-            setIsPlaying(true);
+            currentTrackIndexRef.current = 0;
             if (track.isVideo) {
               setVideoMode('theater');
             }
+            playTrackAt(0, updatedQueue);
           }}
         />
       );
@@ -1678,9 +1716,16 @@ export default function App() {
         currentTrack={currentPlayingTrack}
         isPlaying={isPlaying}
         onTogglePlay={handleTogglePlay}
-        onPlay={() => setIsPlaying(true)}
-        onPause={() => setIsPlaying(false)}
+        onPlay={() => {
+          if (isTransitioningRef.current) return;
+          setIsPlaying(true);
+        }}
+        onPause={() => {
+          if (isTransitioningRef.current) return;
+          setIsPlaying(false);
+        }}
         onError={(e) => {
+          if (isTransitioningRef.current) return;
           const mediaError = audioRef.current?.error;
           if (mediaError && mediaError.code === MediaError.MEDIA_ERR_ABORTED) {
             return;

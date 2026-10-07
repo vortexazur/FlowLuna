@@ -67,13 +67,26 @@ class BackgroundLibraryScanner {
     }
   }
 
+  private activeScanPromise: Promise<Track[]> | null = null;
+
   /**
    * Executes a background scan against local server storage and IndexedDB
    */
-  public async runScan(isSilent = false): Promise<Track[]> {
-    if (this.isScanning) return [];
+  public async runScan(isSilent = false, force = false): Promise<Track[]> {
+    if (this.isScanning && !force && this.activeScanPromise) {
+      return this.activeScanPromise;
+    }
     this.isScanning = true;
+    this.activeScanPromise = this.executeScan(isSilent);
+    try {
+      return await this.activeScanPromise;
+    } finally {
+      this.isScanning = false;
+      this.activeScanPromise = null;
+    }
+  }
 
+  private async executeScan(isSilent = false): Promise<Track[]> {
     try {
       const response = await fetch('/api/library/scan');
       if (!response.ok) {
@@ -91,11 +104,6 @@ class BackgroundLibraryScanner {
 
       // Retrieve existing tracks from IndexedDB
       const existing = await getAllTracks();
-      const existingUrls = new Set(existing.map((t) => t.url).filter(Boolean));
-      const existingIds = new Set(existing.map((t) => t.id));
-      const existingTitleArtist = new Set(
-        existing.map((t) => `${t.title.toLowerCase().trim()}:::${t.artist.toLowerCase().trim()}`)
-      );
 
       // Find brand new tracks or existing tracks that need duration correction
       const newlyDiscovered: Track[] = [];
@@ -106,8 +114,9 @@ class BackgroundLibraryScanner {
         const existingTrack = existing.find(
           (t) =>
             t.id === scanned.id ||
+            (scanned.filePath && t.filePath && t.filePath.toLowerCase() === scanned.filePath.toLowerCase()) ||
             (scanned.url && t.url === scanned.url) ||
-            `${t.title.toLowerCase().trim()}:::${t.artist.toLowerCase().trim()}` === signature
+            (!scanned.filePath && `${t.title.toLowerCase().trim()}:::${t.artist.toLowerCase().trim()}` === signature && (t.album === scanned.album || (!t.album && !scanned.album)))
         );
 
         if (!existingTrack) {
@@ -139,8 +148,12 @@ class BackgroundLibraryScanner {
             existingTrack.genre = scanned.genre;
             hasUpdated = true;
           }
-          if (!existingTrack.year && scanned.year) {
-            existingTrack.year = scanned.year;
+          if (!existingTrack.filePath && scanned.filePath) {
+            existingTrack.filePath = scanned.filePath;
+            hasUpdated = true;
+          }
+          if ((!existingTrack.url || existingTrack.url.startsWith('blob:')) && scanned.url) {
+            existingTrack.url = scanned.url;
             hasUpdated = true;
           }
 

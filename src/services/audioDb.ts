@@ -154,7 +154,17 @@ export async function getTrackPlayableUrl(track: Track): Promise<string> {
     console.warn('IndexedDB blob retrieval warning:', err);
   }
 
-  // If track has a valid URL (blob URL, stream URL, or CDN), use it directly
+  // If track has a valid URL that is not a dead stale blob URL, use it directly
+  if (track.url && track.url.trim().length > 0 && !track.url.startsWith('blob:')) {
+    return track.url;
+  }
+
+  // If track has a known local filePath, stream directly from server
+  if (track.filePath && track.filePath.trim().length > 0) {
+    return `/api/library/stream?file=${encodeURIComponent(track.filePath)}`;
+  }
+
+  // If track has a blob URL and no other fallback, return it
   if (track.url && track.url.trim().length > 0) {
     return track.url;
   }

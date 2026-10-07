@@ -36,7 +36,8 @@ public static class LibraryScanner
 {
     private static readonly HashSet<string> AudioExtensions = new(StringComparer.OrdinalIgnoreCase)
     {
-        ".mp3", ".flac", ".wav", ".ogg", ".m4a", ".aac", ".webm", ".opus", ".wma", ".alac"
+        ".mp3", ".flac", ".wav", ".ogg", ".m4a", ".aac", ".webm", ".opus", ".wma", ".alac",
+        ".mp4", ".mkv", ".mov", ".avi", ".m4v"
     };
 
     private static readonly HashSet<string> IgnoredDirs = new(StringComparer.OrdinalIgnoreCase)
@@ -277,7 +278,8 @@ public static class LibraryScanner
         string? currentArtist,
         string? currentAlbum,
         string? currentGenre,
-        string? currentYear)
+        string? currentYear,
+        bool fetchOnline = false)
     {
         var cachePath = Path.Combine(FlowLunaCoversDir, $"{trackHash}.jpg");
 
@@ -352,53 +354,56 @@ public static class LibraryScanner
         }
         catch { }
 
-        // 3. Fallback: Search online metadata & cover via iTunes Search API
+        // 3. Fallback: Search online metadata & cover via iTunes Search API (only if requested)
         string? resAlbum = currentAlbum;
         string? resArtist = currentArtist;
         string? resTitle = currentTitle;
         string? resGenre = currentGenre;
         string? resYear = currentYear;
 
-        try
+        if (fetchOnline)
         {
-            var online = await MetadataFetcher.SearchOnlineMetadataAsync(null, currentArtist, currentTitle);
-            if (online != null)
+            try
             {
-                if ((resAlbum == "Bibliothèque Locale" || string.IsNullOrWhiteSpace(resAlbum)) && !string.IsNullOrWhiteSpace(online.Album))
+                var online = await MetadataFetcher.SearchOnlineMetadataAsync(null, currentArtist, currentTitle);
+                if (online != null)
                 {
-                    resAlbum = online.Album;
-                }
-                if (string.IsNullOrWhiteSpace(resGenre) && !string.IsNullOrWhiteSpace(online.Genre))
-                {
-                    resGenre = online.Genre;
-                }
-                if (string.IsNullOrWhiteSpace(resYear) && !string.IsNullOrWhiteSpace(online.Year))
-                {
-                    resYear = online.Year;
-                }
-                if (resArtist == "Artiste Local" && !string.IsNullOrWhiteSpace(online.Artist))
-                {
-                    resArtist = online.Artist;
-                }
-                if (!string.IsNullOrWhiteSpace(online.CoverUrl))
-                {
-                    var downloaded = await MetadataFetcher.DownloadCoverToFileAsync(online.CoverUrl, cachePath);
-                    if (downloaded)
+                    if ((resAlbum == "Bibliothèque Locale" || string.IsNullOrWhiteSpace(resAlbum)) && !string.IsNullOrWhiteSpace(online.Album))
                     {
-                        return ($"/covers/{trackHash}.jpg", resAlbum, resArtist, resTitle, resGenre, resYear);
+                        resAlbum = online.Album;
                     }
-                    return (online.CoverUrl, resAlbum, resArtist, resTitle, resGenre, resYear);
+                    if (string.IsNullOrWhiteSpace(resGenre) && !string.IsNullOrWhiteSpace(online.Genre))
+                    {
+                        resGenre = online.Genre;
+                    }
+                    if (string.IsNullOrWhiteSpace(resYear) && !string.IsNullOrWhiteSpace(online.Year))
+                    {
+                        resYear = online.Year;
+                    }
+                    if (resArtist == "Artiste Local" && !string.IsNullOrWhiteSpace(online.Artist))
+                    {
+                        resArtist = online.Artist;
+                    }
+                    if (!string.IsNullOrWhiteSpace(online.CoverUrl))
+                    {
+                        var downloaded = await MetadataFetcher.DownloadCoverToFileAsync(online.CoverUrl, cachePath);
+                        if (downloaded)
+                        {
+                            return ($"/covers/{trackHash}.jpg", resAlbum, resArtist, resTitle, resGenre, resYear);
+                        }
+                        return (online.CoverUrl, resAlbum, resArtist, resTitle, resGenre, resYear);
+                    }
                 }
             }
+            catch { }
         }
-        catch { }
 
         // 4. Default gradient / artwork fallback
         var coverIndex = Math.Abs(trackHash.Sum(c => (int)c)) % DefaultCovers.Length;
         return (DefaultCovers[coverIndex], resAlbum, resArtist, resTitle, resGenre, resYear);
     }
 
-    public static async Task<ScannedAudioTrack?> BuildTrackMetadataAsync(string filePath, bool isPublic = false)
+    public static async Task<ScannedAudioTrack?> BuildTrackMetadataAsync(string filePath, bool isPublic = false, bool fetchOnline = false)
     {
         if (!File.Exists(filePath)) return null;
 
@@ -503,7 +508,7 @@ public static class LibraryScanner
 
             var trackHash = GetTrackHash(filePath);
             var (coverUrl, enrichedAlbum, enrichedArtist, enrichedTitle, enrichedGenre, enrichedYear) =
-                await ResolveCoverAndMetadataAsync(filePath, trackHash, title, artist, album, genre, year);
+                await ResolveCoverAndMetadataAsync(filePath, trackHash, title, artist, album, genre, year, fetchOnline);
 
             if (!string.IsNullOrWhiteSpace(enrichedAlbum)) album = enrichedAlbum;
             if (!string.IsNullOrWhiteSpace(enrichedArtist)) artist = enrichedArtist;
@@ -553,19 +558,29 @@ public static class LibraryScanner
         var userProfile = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
         var music = Path.Combine(userProfile, "Music");
         var musique = Path.Combine(userProfile, "Musique");
+        var videos = Path.Combine(userProfile, "Videos");
+        var videosFr = Path.Combine(userProfile, "Vidéos");
         var oneDriveMusic = Path.Combine(userProfile, "OneDrive", "Music");
         var oneDriveMusique = Path.Combine(userProfile, "OneDrive", "Musique");
         var downloads = Path.Combine(userProfile, "Downloads");
         var telechargements = Path.Combine(userProfile, "Téléchargements");
         var appDataAudio = Path.Combine(BinaryManager.FlowLunaDataDir, "audio");
+        var appDataVideos = Path.Combine(BinaryManager.FlowLunaDataDir, "videos");
+        var flowLunaMusic = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.MyMusic), "FlowLuna");
+        var flowLunaVideos = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.MyVideos), "FlowLuna");
 
         if (Directory.Exists(music)) targetDirs.Add(music);
         if (Directory.Exists(musique)) targetDirs.Add(musique);
+        if (Directory.Exists(videos)) targetDirs.Add(videos);
+        if (Directory.Exists(videosFr)) targetDirs.Add(videosFr);
         if (Directory.Exists(oneDriveMusic)) targetDirs.Add(oneDriveMusic);
         if (Directory.Exists(oneDriveMusique)) targetDirs.Add(oneDriveMusique);
         if (Directory.Exists(downloads)) targetDirs.Add(downloads);
         if (Directory.Exists(telechargements)) targetDirs.Add(telechargements);
         if (Directory.Exists(appDataAudio)) targetDirs.Add(appDataAudio);
+        if (Directory.Exists(appDataVideos)) targetDirs.Add(appDataVideos);
+        if (Directory.Exists(flowLunaMusic) && !targetDirs.Contains(flowLunaMusic, StringComparer.OrdinalIgnoreCase)) targetDirs.Add(flowLunaMusic);
+        if (Directory.Exists(flowLunaVideos) && !targetDirs.Contains(flowLunaVideos, StringComparer.OrdinalIgnoreCase)) targetDirs.Add(flowLunaVideos);
 
         foreach (var custom in GetCustomScannedDirs())
         {
@@ -594,7 +609,7 @@ public static class LibraryScanner
             {
                 if (scannedFiles.Add(file))
                 {
-                    var track = await BuildTrackMetadataAsync(file);
+                    var track = await BuildTrackMetadataAsync(file, false, false);
                     if (track != null)
                     {
                         tracks.Add(track);

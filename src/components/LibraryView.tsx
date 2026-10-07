@@ -430,7 +430,7 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
     if (isScanningPc) return;
     setIsScanningPc(true);
     try {
-      const newlyDiscovered = await backgroundScanner.runScan(false);
+      const newlyDiscovered = await backgroundScanner.runScan(false, true);
       if (newlyDiscovered && newlyDiscovered.length > 0) {
         setNotification({
           message: `${newlyDiscovered.length} nouveau${newlyDiscovered.length > 1 ? 'x' : ''} morceau${newlyDiscovered.length > 1 ? 'x' : ''} indexé${newlyDiscovered.length > 1 ? 's' : ''} sur le PC !`,

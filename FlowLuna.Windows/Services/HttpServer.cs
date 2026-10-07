@@ -177,10 +177,15 @@ public class HttpServer
                 [".ogg"] = "audio/ogg",
                 [".m4a"] = "audio/mp4",
                 [".aac"] = "audio/aac",
-                [".webm"] = "audio/webm",
+                [".webm"] = "video/webm",
                 [".opus"] = "audio/opus",
                 [".wma"] = "audio/x-ms-wma",
-                [".alac"] = "audio/alac"
+                [".alac"] = "audio/alac",
+                [".mp4"] = "video/mp4",
+                [".mkv"] = "video/x-matroska",
+                [".mov"] = "video/quicktime",
+                [".avi"] = "video/x-msvideo",
+                [".m4v"] = "video/x-m4v"
             };
 
             var contentType = mimeMap.TryGetValue(ext, out var mime) ? mime : "audio/mpeg";
