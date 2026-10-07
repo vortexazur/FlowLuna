@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import {
   Play,
   Pause,
@@ -87,6 +87,15 @@ const ACCENT_RANGE: Record<AccentColor, string> = {
   cyan: 'accent-cyan-500',
 };
 
+const ACCENT_SUBTLE_BTN: Record<AccentColor, string> = {
+  emerald: 'text-emerald-400 bg-emerald-950/60 border border-emerald-500/30 hover:bg-emerald-900/60',
+  violet: 'text-violet-400 bg-violet-950/60 border border-violet-500/30 hover:bg-violet-900/60',
+  blue: 'text-blue-400 bg-blue-950/60 border border-blue-500/30 hover:bg-blue-900/60',
+  amber: 'text-amber-400 bg-amber-950/60 border border-amber-500/30 hover:bg-amber-900/60',
+  rose: 'text-rose-400 bg-rose-950/60 border border-rose-500/30 hover:bg-rose-900/60',
+  cyan: 'text-cyan-400 bg-cyan-950/60 border border-cyan-500/30 hover:bg-cyan-900/60',
+};
+
 export const PlayerBar: React.FC<PlayerBarProps> = ({
   currentTrack,
   isPlaying,
@@ -122,6 +131,10 @@ export const PlayerBar: React.FC<PlayerBarProps> = ({
   onOpenTrimmer,
 }) => {
   const t = getT(settings?.language);
+  const [isScrubbing, setIsScrubbing] = useState(false);
+  const [scrubTime, setScrubTime] = useState<number>(0);
+  const displayedTime = isScrubbing ? scrubTime : currentTime;
+
   const formatTime = (secs: number) => {
     const m = Math.floor(secs / 60);
     const s = Math.floor(secs % 60);
@@ -327,7 +340,7 @@ export const PlayerBar: React.FC<PlayerBarProps> = ({
 
         {/* Seek Bar with background Frequency Spectrum waveform & Timestamps */}
         <div className="flex items-center gap-3 w-full text-[11px] font-mono text-neutral-400 relative">
-          <span className="w-10 text-right">{formatTime(currentTime)}</span>
+          <span className="w-10 text-right">{formatTime(displayedTime)}</span>
           <div className="relative flex-1 flex items-center h-4">
             {/* Real-time spectrum reactive backdrop when playing */}
             <div className="absolute inset-0 opacity-25 pointer-events-none overflow-hidden rounded">
@@ -345,8 +358,22 @@ export const PlayerBar: React.FC<PlayerBarProps> = ({
               min={0}
               max={duration || 100}
               step={0.5}
-              value={currentTime}
-              onChange={(e) => onSeek(parseFloat(e.target.value))}
+              value={displayedTime}
+              onPointerDown={() => {
+                setIsScrubbing(true);
+                setScrubTime(currentTime);
+              }}
+              onChange={(e) => {
+                const val = parseFloat(e.target.value);
+                setScrubTime(val);
+                if (!isScrubbing) {
+                  onSeek(val);
+                }
+              }}
+              onPointerUp={() => {
+                setIsScrubbing(false);
+                onSeek(scrubTime);
+              }}
               className={`w-full h-1.5 bg-neutral-800/80 relative z-10 rounded-lg cursor-pointer ${ACCENT_RANGE[accent]}`}
             />
           </div>
@@ -394,8 +421,8 @@ export const PlayerBar: React.FC<PlayerBarProps> = ({
             onClick={onOpenDetachedPip}
             className={`p-2 rounded-lg transition-colors ${
               isDetachedPipActive
-                ? 'text-emerald-400 bg-emerald-950/70 border border-emerald-500/40 shadow-sm'
-                : 'text-neutral-400 hover:text-emerald-400 hover:bg-neutral-800'
+                ? (ACCENT_SUBTLE_BTN[accent] || ACCENT_SUBTLE_BTN.emerald)
+                : 'text-neutral-400 hover:text-white hover:bg-neutral-800'
             }`}
             title="Mode Mini-Lecteur Détachable (Always-on-Top au-dessus de vos jeux & applications)"
           >
@@ -417,7 +444,7 @@ export const PlayerBar: React.FC<PlayerBarProps> = ({
               }
               className={`p-1.5 rounded-lg transition-colors text-xs ${
                 settings.volumeNormalization
-                  ? 'text-emerald-400 bg-emerald-950/60 border border-emerald-500/30'
+                  ? (ACCENT_SUBTLE_BTN[accent] || ACCENT_SUBTLE_BTN.emerald)
                   : 'text-neutral-500 hover:text-neutral-300 hover:bg-neutral-800'
               }`}
               title={

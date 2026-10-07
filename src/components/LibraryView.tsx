@@ -98,6 +98,24 @@ const ACCENT_BORDER_L: Record<AccentColor, string> = {
   cyan: 'border-l-4 border-l-cyan-500 bg-cyan-500/10 dark:bg-cyan-950/25',
 };
 
+const ACCENT_SUBTLE_BTN: Record<AccentColor, string> = {
+  emerald: 'border-emerald-500/30 bg-emerald-950/60 hover:bg-emerald-900/60 text-emerald-300 hover:text-emerald-100',
+  violet: 'border-violet-500/30 bg-violet-950/60 hover:bg-violet-900/60 text-violet-300 hover:text-violet-100',
+  blue: 'border-blue-500/30 bg-blue-950/60 hover:bg-blue-900/60 text-blue-300 hover:text-blue-100',
+  amber: 'border-amber-500/30 bg-amber-950/60 hover:bg-amber-900/60 text-amber-300 hover:text-amber-100',
+  rose: 'border-rose-500/30 bg-rose-950/60 hover:bg-rose-900/60 text-rose-300 hover:text-rose-100',
+  cyan: 'border-cyan-500/30 bg-cyan-950/60 hover:bg-cyan-900/60 text-cyan-300 hover:text-cyan-100',
+};
+
+const ACCENT_BADGE: Record<AccentColor, string> = {
+  emerald: 'bg-emerald-950/80 border-emerald-500/30 text-emerald-400',
+  violet: 'bg-violet-950/80 border-violet-500/30 text-violet-400',
+  blue: 'bg-blue-950/80 border-blue-500/30 text-blue-400',
+  amber: 'bg-amber-950/80 border-amber-500/30 text-amber-400',
+  rose: 'bg-rose-950/80 border-rose-500/30 text-rose-400',
+  cyan: 'bg-cyan-950/80 border-cyan-500/30 text-cyan-400',
+};
+
 export const LibraryView: React.FC<LibraryViewProps> = ({
   tracks,
   playlists,
@@ -527,13 +545,13 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
       {/* Top Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-neutral-800/80 pb-6">
         <div className="flex items-center gap-3.5">
-          <div className="p-3 rounded-2xl bg-emerald-950/80 border border-emerald-500/30 text-emerald-400 shadow-sm flex-shrink-0">
+          <div className={`p-3 rounded-2xl border shadow-sm flex-shrink-0 ${ACCENT_BADGE[accent] || ACCENT_BADGE.emerald}`}>
             <Music className="w-6 h-6" />
           </div>
           <div>
             <h1 className="text-2xl font-black text-white tracking-tight flex items-center gap-2.5 flex-wrap">
               <span>{t.libraryTitle}</span>
-              <span className="text-xs font-mono font-semibold px-2 py-0.5 rounded-full bg-emerald-950 border border-emerald-500/30 text-emerald-400">
+              <span className={`text-xs font-mono font-semibold px-2 py-0.5 rounded-full border ${ACCENT_BADGE[accent] || ACCENT_BADGE.emerald}`}>
                 {musicTracks.length} {musicTracks.length > 1 ? (settings?.language === 'fr' ? 'morceaux' : 'tracks') : (settings?.language === 'fr' ? 'morceau' : 'track')}
               </span>
             </h1>
@@ -544,16 +562,44 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
         </div>
 
         <div className="flex items-center gap-2.5">
+          {musicTracks.length > 0 && (
+            <>
+              <button
+                type="button"
+                id="library-play-all-btn"
+                onClick={() => handlePlayAllTracks(false)}
+                className={`px-3.5 py-2.5 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition-all shadow-xs cursor-pointer ${ACCENT_BTN[accent]}`}
+                title="Tout lire depuis le début"
+              >
+                <Play className="w-3.5 h-3.5 fill-current ml-0.5" />
+                <span>Tout lire</span>
+              </button>
+
+              <button
+                type="button"
+                id="library-shuffle-all-btn"
+                onClick={() => handlePlayAllTracks(true)}
+                className="px-3.5 py-2.5 rounded-xl text-xs font-semibold flex items-center gap-1.5 border border-amber-500/30 bg-amber-950/60 hover:bg-amber-900/60 text-amber-300 hover:text-amber-100 transition-all shadow-xs cursor-pointer"
+                title="Tout lire en mode aléatoire"
+              >
+                <Shuffle className="w-3.5 h-3.5 text-amber-400" />
+                <span>Aléatoire</span>
+              </button>
+            </>
+          )}
+
           {/* Bouton rapide: Scanner le PC */}
           <button
             type="button"
             id="library-scan-pc-btn"
             onClick={handleScanPc}
             disabled={isScanningPc}
-            className="px-3.5 py-2.5 rounded-xl text-xs font-semibold flex items-center gap-2 border border-emerald-500/30 bg-emerald-950/60 hover:bg-emerald-900/60 text-emerald-300 hover:text-emerald-100 transition-all shadow-xs cursor-pointer disabled:opacity-50"
+            className={`px-3.5 py-2.5 rounded-xl text-xs font-semibold flex items-center gap-2 border transition-all shadow-xs cursor-pointer disabled:opacity-50 ${
+              ACCENT_SUBTLE_BTN[accent] || ACCENT_SUBTLE_BTN.emerald
+            }`}
             title="Analyser le PC à la recherche de fichiers audio (Musique, OneDrive, Téléchargements)"
           >
-            <RefreshCw className={`w-3.5 h-3.5 ${isScanningPc ? 'animate-spin text-emerald-400' : 'text-emerald-400'}`} />
+            <RefreshCw className={`w-3.5 h-3.5 ${isScanningPc ? 'animate-spin' : ''} ${ACCENT_TEXT[accent] || 'text-emerald-400'}`} />
             <span>{isScanningPc ? t.scanningPc : t.scanPcBtn}</span>
           </button>
 
@@ -596,9 +642,9 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
                     setIsHeaderMenuOpen(false);
                     handleScanPc();
                   }}
-                  className="w-full text-left px-3 py-2 rounded-lg text-xs hover:bg-neutral-800 text-emerald-300 font-medium flex items-center gap-2.5 transition-colors cursor-pointer"
+                  className={`w-full text-left px-3 py-2 rounded-lg text-xs hover:bg-neutral-800 font-medium flex items-center gap-2.5 transition-colors cursor-pointer ${ACCENT_TEXT[accent] || 'text-emerald-300'}`}
                 >
-                  <RefreshCw className="w-4 h-4 text-emerald-400" />
+                  <RefreshCw className={`w-4 h-4 ${ACCENT_TEXT[accent] || 'text-emerald-400'}`} />
                   <span>Resynchroniser tout le PC</span>
                 </button>
 

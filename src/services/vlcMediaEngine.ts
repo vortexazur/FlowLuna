@@ -142,6 +142,7 @@ export class VLCMediaPlayer {
   private volumeLevel: number = 85; // 0..100
   private isMutedState: boolean = false;
 
+  private hasAttachedListeners: boolean = false;
   private listeners: Map<string, Set<EventListener>> = new Map();
 
   constructor() {
@@ -153,6 +154,11 @@ export class VLCMediaPlayer {
       const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
       if (AudioCtx) {
         this.audioContext = new AudioCtx();
+        this.audioContext.onstatechange = () => {
+          if (this.audioContext && this.audioContext.state === 'suspended' && this.audioEl && !this.audioEl.paused) {
+            this.audioContext.resume().catch(() => {});
+          }
+        };
       }
     } catch (e) {
       console.warn('LibVLCSharp audio context warning:', e);
@@ -163,7 +169,10 @@ export class VLCMediaPlayer {
     if (this.audioEl === element && this.isConnected) return;
     this.audioEl = element;
 
-    this.setupMediaEventListeners();
+    if (!this.hasAttachedListeners) {
+      this.setupMediaEventListeners();
+      this.hasAttachedListeners = true;
+    }
     this.buildDspPipeline();
   }
 
@@ -335,8 +344,19 @@ export class VLCMediaPlayer {
   }
 
   public async resumeContext(): Promise<void> {
-    if (this.audioContext && this.audioContext.state === 'suspended') {
-      await this.audioContext.resume().catch(() => {});
+    if (!this.audioContext) {
+      this.initAudioContext();
+    }
+    if (this.audioContext) {
+      if (this.audioContext.state === 'suspended') {
+        await this.audioContext.resume().catch(() => {});
+      } else if (this.audioContext.state === 'closed') {
+        this.initAudioContext();
+        if (this.audioEl) {
+          this.isConnected = false;
+          this.buildDspPipeline();
+        }
+      }
     }
   }
 

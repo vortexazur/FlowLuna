@@ -141,6 +141,7 @@ export const MiniPlayer: React.FC<MiniPlayerProps> = ({
   onAddToPlaylist,
   onRemoveFromPlaylist,
   onCreatePlaylist,
+  onCreatePlaylistDirect,
   settings,
   onUpdateSettings,
   isAppMinimized = false,

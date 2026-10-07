@@ -157,6 +157,15 @@ export default function App() {
     return inTracks ? { ...base, ...inTracks, isFavorite: inTracks.isFavorite } : base;
   }, [queue, currentTrackIndex, tracks]);
 
+  const currentPlayingTrackRef = useRef(currentPlayingTrack);
+  currentPlayingTrackRef.current = currentPlayingTrack;
+  const playerSettingsRef = useRef(playerSettings);
+  playerSettingsRef.current = playerSettings;
+  const isMutedRef = useRef(isMuted);
+  isMutedRef.current = isMuted;
+  const volumeRef = useRef(volume);
+  volumeRef.current = volume;
+
   // Initialize Data from IndexedDB
   const loadDatabase = useCallback(async () => {
     try {
@@ -435,6 +444,10 @@ export default function App() {
         setDuration(track.duration);
       }
 
+      // Optimistic UI update: immediate feedback on play buttons and player bar (0ms perceived latency)
+      setIsPlaying(true);
+      lastTrackStartTimeRef.current = Date.now();
+
       if (track.isVideo) {
         setVideoMode('theater');
       }
@@ -445,10 +458,9 @@ export default function App() {
         return;
       }
 
-      // Safely pause currently playing track immediately and reset position
+      // Safely pause currently playing track immediately
       try {
         audio.pause();
-        audio.currentTime = 0;
       } catch {}
 
       // Manual skips start immediately at target volume (no 1.2s silence/blank!)
@@ -468,13 +480,17 @@ export default function App() {
 
         if (!playableUrl) {
           console.warn('Playback URL not found for track:', track.title);
+          if (playRequestIdRef.current === requestId) {
+            setIsPlaying(false);
+            isTransitioningRef.current = false;
+          }
           return;
         }
 
+        // Direct src assignment begins media load without aborting and re-creating decoder
         audio.src = playableUrl;
-        audio.load();
 
-        // Check again after load
+        // Check again after src assignment
         if (playRequestIdRef.current !== requestId) return;
 
         // Crossfade fade-in transition ONLY for automatic track progression of music tracks
@@ -511,8 +527,6 @@ export default function App() {
         }
 
         if (playRequestIdRef.current !== requestId) return;
-        setIsPlaying(true);
-        lastTrackStartTimeRef.current = Date.now();
 
         // Update play count asynchronously
         track.playCount = (track.playCount || 0) + 1;
@@ -533,6 +547,9 @@ export default function App() {
           return;
         }
         console.warn('Playback request error:', err);
+        if (playRequestIdRef.current === requestId) {
+          setIsPlaying(false);
+        }
       } finally {
         if (playRequestIdRef.current === requestId) {
           isTransitioningRef.current = false;
@@ -552,10 +569,17 @@ export default function App() {
       if (repeatMode === 'one' && isAuto) {
         if (audioRef.current) {
           try {
-            if (isFinite(audioRef.current.duration) && audioRef.current.duration > 0) {
-              audioRef.current.currentTime = 0;
+            audioRef.current.currentTime = 0;
+            setCurrentTime(0);
+            lastTrackStartTimeRef.current = Date.now();
+            audioRef.current.play().then(() => {
+              setIsPlaying(true);
+            }).catch(console.warn);
+            const curTrack = curQueue[currentTrackIndexRef.current];
+            if (curTrack) {
+              curTrack.playCount = (curTrack.playCount || 0) + 1;
+              saveTrack(curTrack).catch(() => {});
             }
-            audioRef.current.play().catch(console.warn);
           } catch {}
         }
         return;
@@ -563,7 +587,15 @@ export default function App() {
 
       let nextIndex: number;
       if (shuffle) {
-        nextIndex = Math.floor(Math.random() * curQueue.length);
+        if (curQueue.length > 1) {
+          let attempts = 0;
+          do {
+            nextIndex = Math.floor(Math.random() * curQueue.length);
+            attempts++;
+          } while (nextIndex === currentTrackIndexRef.current && attempts < 10);
+        } else {
+          nextIndex = 0;
+        }
       } else if (currentTrackIndexRef.current < curQueue.length - 1) {
         nextIndex = currentTrackIndexRef.current + 1;
       } else if (repeatMode === 'all') {
@@ -578,6 +610,9 @@ export default function App() {
     },
     [repeatMode, shuffle, playTrackAt]
   );
+
+  const handleNextRef = useRef(handleNext);
+  handleNextRef.current = handleNext;
 
   // Play previous track
   const handlePrev = useCallback(() => {
@@ -603,6 +638,10 @@ export default function App() {
     } else if (repeatMode === 'all') {
       prevIndex = curQueue.length - 1;
     } else {
+      if (audioRef.current) {
+        audioRef.current.currentTime = 0;
+        setCurrentTime(0);
+      }
       return;
     }
 
@@ -622,14 +661,15 @@ export default function App() {
       if (!currentPlayingTrack) {
         const targetList = queue.length > 0 ? queue : tracks;
         if (targetList.length > 0) {
-          playTrackAt(0, targetList);
+          playTrackAt(0, targetList, true);
         }
       } else {
         if (!audioRef.current.src || audioRef.current.src === '' || audioRef.current.src === window.location.href) {
-          playTrackAt(currentTrackIndex >= 0 ? currentTrackIndex : 0, queue.length > 0 ? queue : tracks);
+          playTrackAt(currentTrackIndex >= 0 ? currentTrackIndex : 0, queue.length > 0 ? queue : tracks, true);
         } else {
-          audioRef.current.play().then(() => setIsPlaying(true)).catch(() => {
-            playTrackAt(currentTrackIndex >= 0 ? currentTrackIndex : 0, queue.length > 0 ? queue : tracks);
+          setIsPlaying(true);
+          audioRef.current.play().catch(() => {
+            playTrackAt(currentTrackIndex >= 0 ? currentTrackIndex : 0, queue.length > 0 ? queue : tracks, true);
           });
         }
       }
@@ -699,6 +739,15 @@ export default function App() {
         const target = Math.min(newTime, max);
         audioRef.current.currentTime = target;
         setCurrentTime(target);
+        if ('mediaSession' in navigator && 'setPositionState' in navigator.mediaSession && duration > 0) {
+          try {
+            navigator.mediaSession.setPositionState({
+              duration: Math.max(0, duration),
+              playbackRate: playerSettings.playbackSpeed ?? 1.0,
+              position: target,
+            });
+          } catch {}
+        }
       } catch (err) {
         console.warn('Seek error ignored:', err);
       }
@@ -1143,7 +1192,7 @@ export default function App() {
     };
   }, [handleImportFiles]);
 
-  // Audio element listeners
+  // Audio element listeners - stable mount once, reads fresh state via refs to prevent listener churn & GC stalls
   useEffect(() => {
     const audio = audioRef.current;
     if (!audio) return;
@@ -1151,24 +1200,26 @@ export default function App() {
     const handleTimeUpdate = () => {
       setCurrentTime(audio.currentTime);
 
-      // Crossfade fade-out transition nearing end of track
-      // ONLY for music tracks (!currentPlayingTrack?.isVideo)
-      // AND ONLY when gapless is disabled (!playerSettings.gaplessPlayback)
-      const isVideo = !!currentPlayingTrack?.isVideo;
-      const crossfade = playerSettings.crossfadeDuration ?? 0;
-      const isCrossfadeActive = !isVideo && !playerSettings.gaplessPlayback && crossfade > 0;
+      const curTrack = currentPlayingTrackRef.current;
+      const settings = playerSettingsRef.current;
+      const curMuted = isMutedRef.current;
+      const curVol = volumeRef.current;
+
+      const isVideo = !!curTrack?.isVideo;
+      const crossfade = settings.crossfadeDuration ?? 0;
+      const isCrossfadeActive = !isVideo && !settings.gaplessPlayback && crossfade > 0;
       const d = audio.duration;
 
-      if (isCrossfadeActive && d && d > 6 && !isMuted && crossfadeAnimRef.current === null) {
+      if (isCrossfadeActive && d && d > 6 && !curMuted && crossfadeAnimRef.current === null) {
         const remaining = d - audio.currentTime;
         if (remaining <= crossfade && remaining > 0) {
           const fadeRatio = Math.max(0.02, remaining / crossfade);
-          audio.volume = Math.max(0, Math.min(1, volume * fadeRatio));
-        } else if (audio.currentTime > crossfade + 0.5 && Math.abs(audio.volume - volume) > 0.05) {
-          audio.volume = volume;
+          audio.volume = Math.max(0, Math.min(1, curVol * fadeRatio));
+        } else if (audio.currentTime > crossfade + 0.5 && Math.abs(audio.volume - curVol) > 0.05) {
+          audio.volume = curVol;
         }
-      } else if (!isCrossfadeActive && !isMuted && crossfadeAnimRef.current === null && Math.abs(audio.volume - volume) > 0.05) {
-        audio.volume = volume;
+      } else if (!isCrossfadeActive && !curMuted && crossfadeAnimRef.current === null && Math.abs(audio.volume - curVol) > 0.05) {
+        audio.volume = curVol;
       }
     };
 
@@ -1178,8 +1229,9 @@ export default function App() {
         const rounded = Math.round(d);
         setDuration(rounded);
 
-        if (currentPlayingTrack && currentPlayingTrack.duration !== rounded) {
-          const updated = { ...currentPlayingTrack, duration: rounded };
+        const curTrack = currentPlayingTrackRef.current;
+        if (curTrack && curTrack.duration !== rounded) {
+          const updated = { ...curTrack, duration: rounded };
           setQueue((prev) => prev.map((t) => (t.id === updated.id ? updated : t)));
           setTracks((prev) => prev.map((t) => (t.id === updated.id ? updated : t)));
           saveTrack(updated).catch(() => {});
@@ -1188,7 +1240,7 @@ export default function App() {
     };
 
     const handleEnded = () => {
-      handleNext(true);
+      handleNextRef.current(true);
     };
 
     audio.addEventListener('timeupdate', handleTimeUpdate);
@@ -1202,9 +1254,9 @@ export default function App() {
       audio.removeEventListener('durationchange', handleLoadedMetadata);
       audio.removeEventListener('ended', handleEnded);
     };
-  }, [handleNext, playerSettings.crossfadeDuration, playerSettings.gaplessPlayback, currentPlayingTrack?.isVideo, isMuted, volume]);
+  }, []);
 
-  // Windows SMTC (System Media Transport Controls) API for OS integration
+  // Windows SMTC (System Media Transport Controls) API: Metadata & PlaybackState (no currentTime spam)
   useEffect(() => {
     if (!('mediaSession' in navigator)) return;
 
@@ -1227,15 +1279,25 @@ export default function App() {
           navigator.mediaSession.setPositionState({
             duration: Math.max(0, duration),
             playbackRate: playerSettings.playbackSpeed ?? 1.0,
-            position: Math.min(Math.max(0, currentTime), duration),
+            position: Math.min(Math.max(0, audioRef.current?.currentTime || 0), duration),
           });
-        } catch { }
+        } catch {}
       }
     } else {
       navigator.mediaSession.metadata = null;
       navigator.mediaSession.playbackState = 'none';
     }
-  }, [currentPlayingTrack, isPlaying, duration, currentTime, playerSettings.smtcEnabled, playerSettings.playbackSpeed]);
+  }, [
+    currentPlayingTrack?.id,
+    currentPlayingTrack?.title,
+    currentPlayingTrack?.artist,
+    currentPlayingTrack?.album,
+    currentPlayingTrack?.coverUrl,
+    isPlaying,
+    duration,
+    playerSettings.smtcEnabled,
+    playerSettings.playbackSpeed,
+  ]);
 
   useEffect(() => {
     if (!('mediaSession' in navigator)) return;
@@ -1302,13 +1364,14 @@ export default function App() {
   // Play All in playlist or library
   const handlePlayAllInPlaylist = (playlistTracks: Track[], shuffleTracks: boolean) => {
     if (playlistTracks.length === 0) return;
+    audioEngine.resume();
     if (shuffleTracks) {
       setShuffle(true);
     }
     const finalQueue = shuffleTracks
       ? [...playlistTracks].sort(() => Math.random() - 0.5)
       : [...playlistTracks];
-    playTrackAt(0, finalQueue);
+    playTrackAt(0, finalQueue, true);
   };
 
   // Save updated settings
@@ -1941,9 +2004,23 @@ export default function App() {
         currentTrackIndex={currentTrackIndex}
         onSelectTrack={(idx) => playTrackAt(idx)}
         onRemoveFromQueue={(idx) => {
-          setQueue((prev) => prev.filter((_, i) => i !== idx));
+          setQueue((prev) => {
+            const next = prev.filter((_, i) => i !== idx);
+            queueRef.current = next;
+            return next;
+          });
           if (idx < currentTrackIndex) {
             setCurrentTrackIndex((prev) => prev - 1);
+            currentTrackIndexRef.current--;
+          } else if (idx === currentTrackIndex) {
+            const nextQueue = queueRef.current;
+            if (nextQueue.length === 0) {
+              handleStop();
+            } else if (currentTrackIndex >= nextQueue.length) {
+              playTrackAt(0, nextQueue);
+            } else {
+              playTrackAt(currentTrackIndex, nextQueue);
+            }
           }
         }}
         onMoveQueueItem={(from, to) => {
@@ -1951,12 +2028,25 @@ export default function App() {
             const next = [...prev];
             const [item] = next.splice(from, 1);
             next.splice(to, 0, item);
+            queueRef.current = next;
             return next;
           });
+          if (currentTrackIndex === from) {
+            setCurrentTrackIndex(to);
+            currentTrackIndexRef.current = to;
+          } else if (from < currentTrackIndex && to >= currentTrackIndex) {
+            setCurrentTrackIndex((prev) => prev - 1);
+            currentTrackIndexRef.current--;
+          } else if (from > currentTrackIndex && to <= currentTrackIndex) {
+            setCurrentTrackIndex((prev) => prev + 1);
+            currentTrackIndexRef.current++;
+          }
         }}
         onClearQueue={() => {
           setQueue(currentPlayingTrack ? [currentPlayingTrack] : []);
+          queueRef.current = currentPlayingTrack ? [currentPlayingTrack] : [];
           setCurrentTrackIndex(currentPlayingTrack ? 0 : -1);
+          currentTrackIndexRef.current = currentPlayingTrack ? 0 : -1;
         }}
         onAddMediaToQueue={handleAddMediaToQueue}
         onSaveQueueAsPlaylist={async () => {

@@ -49,16 +49,31 @@ const MAX_ACTIVE_BLOB_URLS = 8;
 const activeBlobUrls = new Map<string, string>();
 
 // Memory optimization: revoke old blob URLs safely using LRU cache
-export function revokeTrackBlobUrl(trackId: string) {
-  if (activeBlobUrls.size > MAX_ACTIVE_BLOB_URLS) {
-    for (const [key, url] of activeBlobUrls.entries()) {
-      if (key !== trackId) {
-        try {
-          URL.revokeObjectURL(url);
-        } catch {}
-        activeBlobUrls.delete(key);
-        break;
+export function revokeTrackBlobUrl(trackId?: string) {
+  while (activeBlobUrls.size > MAX_ACTIVE_BLOB_URLS) {
+    const oldestKey = activeBlobUrls.keys().next().value;
+    if (!oldestKey) break;
+    // Don't evict the specified active track unless necessary
+    if (trackId && oldestKey === trackId && activeBlobUrls.size > 1) {
+      const entries = Array.from(activeBlobUrls.keys());
+      const otherKey = entries.find((k) => k !== trackId);
+      if (otherKey) {
+        const otherUrl = activeBlobUrls.get(otherKey);
+        if (otherUrl) {
+          try {
+            URL.revokeObjectURL(otherUrl);
+          } catch {}
+          activeBlobUrls.delete(otherKey);
+        }
+        continue;
       }
+    }
+    const oldUrl = activeBlobUrls.get(oldestKey);
+    if (oldUrl) {
+      try {
+        URL.revokeObjectURL(oldUrl);
+      } catch {}
+      activeBlobUrls.delete(oldestKey);
     }
   }
 }
@@ -129,42 +144,49 @@ export async function getTrackPlayableUrl(track: Track): Promise<string> {
     }
   }
 
-  // Check if saved in IndexedDB (user's authentic downloaded track)
-  try {
-    const blob = await getAudioBlob(track.id);
-    if (blob && blob.size > 20000) {
-      // Evict oldest entry if pool is full
-      if (activeBlobUrls.size >= MAX_ACTIVE_BLOB_URLS) {
-        const oldestKey = activeBlobUrls.keys().next().value;
-        if (oldestKey) {
-          const oldUrl = activeBlobUrls.get(oldestKey);
-          if (oldUrl) {
-            try {
-              URL.revokeObjectURL(oldUrl);
-            } catch {}
-            activeBlobUrls.delete(oldestKey);
-          }
-        }
-      }
-      const url = URL.createObjectURL(blob);
-      activeBlobUrls.set(track.id, url);
-      return url;
-    }
-  } catch (err) {
-    console.warn('IndexedDB blob retrieval warning:', err);
-  }
-
-  // If track has a valid URL that is not a dead stale blob URL, use it directly
+  // 1. FAST PATH: If track has a direct non-blob URL (HTTP/streaming), return immediately without touching IndexedDB
   if (track.url && track.url.trim().length > 0 && !track.url.startsWith('blob:')) {
     return track.url;
   }
 
-  // If track has a known local filePath, stream directly from server
+  // 2. FAST PATH: If track has a local filePath and is not cached as offline blob, stream directly from server
+  if (track.filePath && track.filePath.trim().length > 0 && !track.isCachedOffline) {
+    return `/api/library/stream?file=${encodeURIComponent(track.filePath)}`;
+  }
+
+  // 3. Check if saved in IndexedDB (only if marked offline or only has blob url)
+  if (track.isCachedOffline || !track.url || track.url.startsWith('blob:')) {
+    try {
+      const blob = await getAudioBlob(track.id);
+      if (blob && blob.size > 20000) {
+        // Evict oldest entry if pool is full
+        if (activeBlobUrls.size >= MAX_ACTIVE_BLOB_URLS) {
+          const oldestKey = activeBlobUrls.keys().next().value;
+          if (oldestKey) {
+            const oldUrl = activeBlobUrls.get(oldestKey);
+            if (oldUrl) {
+              try {
+                URL.revokeObjectURL(oldUrl);
+              } catch {}
+              activeBlobUrls.delete(oldestKey);
+            }
+          }
+        }
+        const url = URL.createObjectURL(blob);
+        activeBlobUrls.set(track.id, url);
+        return url;
+      }
+    } catch (err) {
+      console.warn('IndexedDB blob retrieval warning:', err);
+    }
+  }
+
+  // 4. Fallback if filePath exists
   if (track.filePath && track.filePath.trim().length > 0) {
     return `/api/library/stream?file=${encodeURIComponent(track.filePath)}`;
   }
 
-  // If track has a blob URL and no other fallback, return it
+  // 5. Fallback for any remaining URL
   if (track.url && track.url.trim().length > 0) {
     return track.url;
   }

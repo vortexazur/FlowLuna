@@ -1,7 +1,7 @@
 {
   "name": "flowluna",
   "private": true,
-  "version": "1.2.1",
+  "version": "1.2.2",
   "license": "GPL-3.0-or-later",
   "description": "Lecteur audio haute fidélité native Windows avec égaliseur 10 bandes, cache hors-ligne et extraction yt-dlp/ffmpeg",
   "author": "vortexazur",

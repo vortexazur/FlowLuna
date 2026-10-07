@@ -70,6 +70,24 @@ const ACCENT_ACTIVE_TAB: Record<AccentColor, string> = {
   cyan: 'bg-cyan-500/15 text-cyan-400 border-cyan-500/40',
 };
 
+const ACCENT_SUBTLE_BTN: Record<AccentColor, string> = {
+  emerald: 'bg-emerald-950/80 hover:bg-emerald-900 text-emerald-300 border-emerald-500/30',
+  violet: 'bg-violet-950/80 hover:bg-violet-900 text-violet-300 border-violet-500/30',
+  blue: 'bg-blue-950/80 hover:bg-blue-900 text-blue-300 border-blue-500/30',
+  amber: 'bg-amber-950/80 hover:bg-amber-900 text-amber-300 border-amber-500/30',
+  rose: 'bg-rose-950/80 hover:bg-rose-900 text-rose-300 border-rose-500/30',
+  cyan: 'bg-cyan-950/80 hover:bg-cyan-900 text-cyan-300 border-cyan-500/30',
+};
+
+const ACCENT_TEXT: Record<AccentColor, string> = {
+  emerald: 'text-emerald-400',
+  violet: 'text-violet-400',
+  blue: 'text-blue-400',
+  amber: 'text-amber-400',
+  rose: 'text-rose-400',
+  cyan: 'text-cyan-400',
+};
+
 const SHORTCUT_GROUPS = [
   {
     title: 'Lecture & Navigation',
@@ -1342,7 +1360,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
               <div className="flex flex-col gap-3.5 bg-neutral-900/60 p-4.5 rounded-xl border border-neutral-800">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
-                    <HardDrive className="w-4 h-4 text-emerald-400" />
+                    <HardDrive className={`w-4 h-4 ${ACCENT_TEXT[settings.accent] || 'text-emerald-400'}`} />
                     <span className="text-xs uppercase tracking-wider text-neutral-300 font-bold">Bibliothèque & Détection Musicale PC</span>
                   </div>
                   <div className="flex items-center gap-2">
@@ -1350,9 +1368,11 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                       type="button"
                       onClick={handleScanMusicNow}
                       disabled={isScanningSettings}
-                      className="px-3 py-1.5 rounded-xl text-xs font-semibold bg-emerald-950/80 hover:bg-emerald-900 text-emerald-300 border border-emerald-500/30 flex items-center gap-2 transition-all cursor-pointer disabled:opacity-50 shadow-xs"
+                      className={`px-3 py-1.5 rounded-xl text-xs font-semibold border flex items-center gap-2 transition-all cursor-pointer disabled:opacity-50 shadow-xs ${
+                        ACCENT_SUBTLE_BTN[settings.accent] || ACCENT_SUBTLE_BTN.emerald
+                      }`}
                     >
-                      <RefreshCw className={`w-3.5 h-3.5 ${isScanningSettings ? 'animate-spin text-emerald-400' : 'text-emerald-400'}`} />
+                      <RefreshCw className={`w-3.5 h-3.5 ${isScanningSettings ? 'animate-spin' : ''} ${ACCENT_TEXT[settings.accent] || 'text-emerald-400'}`} />
                       <span>{isScanningSettings ? 'Scan...' : 'Scanner le PC'}</span>
                     </button>
 
