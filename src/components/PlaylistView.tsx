@@ -79,6 +79,15 @@ const ACCENT_BORDER_L: Record<AccentColor, string> = {
   cyan: 'border-l-4 border-l-cyan-500 bg-cyan-500/10 dark:bg-cyan-950/25',
 };
 
+const ACCENT_SUBTLE_HOVER_BG: Record<AccentColor, string> = {
+  emerald: 'hover:bg-emerald-950/40 text-emerald-400',
+  violet: 'hover:bg-violet-950/40 text-violet-400',
+  blue: 'hover:bg-blue-950/40 text-blue-400',
+  amber: 'hover:bg-amber-950/40 text-amber-400',
+  rose: 'hover:bg-rose-950/40 text-rose-400',
+  cyan: 'hover:bg-cyan-950/40 text-cyan-400',
+};
+
 export const PlaylistView: React.FC<PlaylistViewProps> = ({
   playlist,
   tracks,
@@ -232,7 +241,7 @@ export const PlaylistView: React.FC<PlaylistViewProps> = ({
           {/* Hover Edit Overlay */}
           {!playlist.isSmart && onUpdatePlaylist && (
             <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex flex-col items-center justify-center gap-1.5 text-white">
-              <Palette className="w-6 h-6 text-emerald-400" />
+              <Palette className={`w-6 h-6 ${ACCENT_TEXT[accent] || 'text-emerald-400'}`} />
               <span className="text-xs font-bold text-center px-2">Personnaliser l'icône & style</span>
             </div>
           )}
@@ -296,7 +305,7 @@ export const PlaylistView: React.FC<PlaylistViewProps> = ({
             <span>•</span>
             <span>~{totalMinutes} minutes d'écoute</span>
             <span>•</span>
-            <span className="text-emerald-400 flex items-center gap-1 font-semibold">
+            <span className={`${ACCENT_TEXT[accent] || 'text-emerald-400'} flex items-center gap-1 font-semibold`}>
               <CheckCircle2 className="w-3.5 h-3.5" />
               Prêt pour hors-ligne
             </span>
@@ -363,7 +372,7 @@ export const PlaylistView: React.FC<PlaylistViewProps> = ({
                     }}
                     className="w-full text-left px-3 py-2 rounded-lg text-xs hover:bg-neutral-800 text-neutral-200 font-medium flex items-center gap-2.5 transition-colors cursor-pointer"
                   >
-                    <Palette className="w-4 h-4 text-emerald-400" />
+                    <Palette className={`w-4 h-4 ${ACCENT_TEXT[accent] || 'text-emerald-400'}`} />
                     <span>Personnaliser l'icône & style</span>
                   </button>
 
@@ -380,7 +389,7 @@ export const PlaylistView: React.FC<PlaylistViewProps> = ({
                   >
                     {playlist.isPinned !== false ? (
                       <>
-                        <Pin className="w-4 h-4 text-emerald-400 fill-current" />
+                        <Pin className={`w-4 h-4 fill-current ${ACCENT_TEXT[accent] || 'text-emerald-400'}`} />
                         <span>Visible dans le menu de gauche</span>
                       </>
                     ) : (
@@ -402,9 +411,9 @@ export const PlaylistView: React.FC<PlaylistViewProps> = ({
                     setIsHeaderMenuOpen(false);
                     handleOpenExportPlaylist();
                   }}
-                  className="w-full text-left px-3 py-2 rounded-lg text-xs hover:bg-neutral-800 text-emerald-400 font-medium flex items-center gap-2.5 transition-colors cursor-pointer"
+                  className={`w-full text-left px-3 py-2 rounded-lg text-xs hover:bg-neutral-800 font-medium flex items-center gap-2.5 transition-colors cursor-pointer ${ACCENT_TEXT[accent] || 'text-emerald-400'}`}
                 >
-                  <FolderDown className="w-4 h-4 text-emerald-400" />
+                  <FolderDown className={`w-4 h-4 ${ACCENT_TEXT[accent] || 'text-emerald-400'}`} />
                   <span>Exporter sur PC ({tracks.length})</span>
                 </button>
               )}
@@ -684,9 +693,11 @@ export const PlaylistView: React.FC<PlaylistViewProps> = ({
               setMenuAnchor(null);
               handleOpenExportSingle(t);
             }}
-            className="w-full text-left px-3 py-2 rounded-lg text-xs hover:bg-emerald-950/40 text-emerald-400 font-medium flex items-center gap-2.5 transition-colors cursor-pointer"
+            className={`w-full text-left px-3 py-2 rounded-lg text-xs font-medium flex items-center gap-2.5 transition-colors cursor-pointer ${
+              ACCENT_SUBTLE_HOVER_BG[accent] || 'hover:bg-emerald-950/40 text-emerald-400'
+            }`}
           >
-            <FolderDown className="w-4 h-4 text-emerald-400" />
+            <FolderDown className={`w-4 h-4 ${ACCENT_TEXT[accent] || 'text-emerald-400'}`} />
             <span>Exporter ce morceau sur PC...</span>
           </button>
 

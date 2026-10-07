@@ -47,6 +47,24 @@ const ACCENT_BTN: Record<AccentColor, string> = {
   cyan: 'bg-cyan-500 hover:bg-cyan-400 text-neutral-950 font-bold',
 };
 
+const ACCENT_BADGE: Record<AccentColor, string> = {
+  emerald: 'bg-emerald-500/20 text-emerald-400',
+  violet: 'bg-violet-500/20 text-violet-400',
+  blue: 'bg-blue-500/20 text-blue-400',
+  amber: 'bg-amber-500/20 text-amber-400',
+  rose: 'bg-rose-500/20 text-rose-400',
+  cyan: 'bg-cyan-500/20 text-cyan-400',
+};
+
+const ACCENT_RANGE: Record<AccentColor, string> = {
+  emerald: 'accent-emerald-500',
+  violet: 'accent-violet-500',
+  blue: 'accent-blue-500',
+  amber: 'accent-amber-500',
+  rose: 'accent-rose-500',
+  cyan: 'accent-cyan-500',
+};
+
 export const EditPlaylistModal: React.FC<EditPlaylistModalProps> = ({
   isOpen,
   onClose,
@@ -436,7 +454,7 @@ export const EditPlaylistModal: React.FC<EditPlaylistModalProps> = ({
             className="flex items-center justify-between p-3 rounded-xl bg-neutral-950/60 border border-neutral-800/80 cursor-pointer hover:bg-neutral-800/40 transition-colors select-none"
           >
             <div className="flex items-center gap-2.5">
-              <div className={`p-1.5 rounded-lg ${isPinned ? 'bg-emerald-500/20 text-emerald-400' : 'bg-neutral-800 text-neutral-500'}`}>
+              <div className={`p-1.5 rounded-lg ${isPinned ? (ACCENT_BADGE[accent] || ACCENT_BADGE.emerald) : 'bg-neutral-800 text-neutral-500'}`}>
                 <Pin className="w-4 h-4" />
               </div>
               <div>
@@ -455,7 +473,7 @@ export const EditPlaylistModal: React.FC<EditPlaylistModalProps> = ({
               type="checkbox"
               checked={isPinned}
               onChange={(e) => setIsPinned(e.target.checked)}
-              className="w-4 h-4 rounded text-emerald-500 bg-neutral-800 border-neutral-700 cursor-pointer"
+              className={`w-4 h-4 rounded bg-neutral-800 border-neutral-700 cursor-pointer ${ACCENT_RANGE[accent] || 'accent-emerald-500'}`}
             />
           </div>
 

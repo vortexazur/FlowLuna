@@ -56,6 +56,51 @@ const ACCENT_BORDER: Record<AccentColor, string> = {
   cyan: 'border-cyan-500/40 hover:border-cyan-500/80',
 };
 
+const ACCENT_TEXT: Record<AccentColor, string> = {
+  emerald: 'text-emerald-400',
+  violet: 'text-violet-400',
+  blue: 'text-blue-400',
+  amber: 'text-amber-400',
+  rose: 'text-rose-400',
+  cyan: 'text-cyan-400',
+};
+
+const ACCENT_HOVER_TEXT: Record<AccentColor, string> = {
+  emerald: 'hover:text-emerald-400',
+  violet: 'hover:text-violet-400',
+  blue: 'hover:text-blue-400',
+  amber: 'hover:text-amber-400',
+  rose: 'hover:text-rose-400',
+  cyan: 'hover:text-cyan-400',
+};
+
+const ACCENT_GROUP_HOVER_TEXT: Record<AccentColor, string> = {
+  emerald: 'group-hover:text-emerald-400',
+  violet: 'group-hover:text-violet-400',
+  blue: 'group-hover:text-blue-400',
+  amber: 'group-hover:text-amber-400',
+  rose: 'group-hover:text-rose-400',
+  cyan: 'group-hover:text-cyan-400',
+};
+
+const ACCENT_BADGE: Record<AccentColor, string> = {
+  emerald: 'bg-emerald-950/85 border-emerald-500/30 text-emerald-400',
+  violet: 'bg-violet-950/85 border-violet-500/30 text-violet-400',
+  blue: 'bg-blue-950/85 border-blue-500/30 text-blue-400',
+  amber: 'bg-amber-950/85 border-amber-500/30 text-amber-400',
+  rose: 'bg-rose-950/85 border-rose-500/30 text-rose-400',
+  cyan: 'bg-cyan-950/85 border-cyan-500/30 text-cyan-400',
+};
+
+const ACCENT_SUBTLE_BTN: Record<AccentColor, string> = {
+  emerald: 'bg-emerald-950/90 border-emerald-500/40 text-emerald-400 hover:bg-emerald-900',
+  violet: 'bg-violet-950/90 border-violet-500/40 text-violet-400 hover:bg-violet-900',
+  blue: 'bg-blue-950/90 border-blue-500/40 text-blue-400 hover:bg-blue-900',
+  amber: 'bg-amber-950/90 border-amber-500/40 text-amber-400 hover:bg-amber-900',
+  rose: 'bg-rose-950/90 border-rose-500/40 text-rose-400 hover:bg-rose-900',
+  cyan: 'bg-cyan-950/90 border-cyan-500/40 text-cyan-400 hover:bg-cyan-900',
+};
+
 const formatDuration = (totalSeconds: number) => {
   const mins = Math.floor(totalSeconds / 60);
   if (mins < 60) return `${mins} min`;
@@ -321,7 +366,9 @@ export const AllPlaylistsView: React.FC<AllPlaylistsViewProps> = ({
                     {/* Pin Status Badge on top left */}
                     <div className="absolute top-2 left-2 pointer-events-none">
                       {isPinned ? (
-                        <span className="px-2 py-0.5 rounded-md bg-emerald-950/85 backdrop-blur-sm border border-emerald-500/30 text-[9px] font-bold text-emerald-400 flex items-center gap-1 shadow-sm">
+                        <span className={`px-2 py-0.5 rounded-md backdrop-blur-sm border text-[9px] font-bold flex items-center gap-1 shadow-sm ${
+                          ACCENT_BADGE[accent] || ACCENT_BADGE.emerald
+                        }`}>
                           <Pin className="w-2.5 h-2.5 fill-current" />
                           <span>Menu</span>
                         </span>
@@ -363,10 +410,10 @@ export const AllPlaylistsView: React.FC<AllPlaylistsViewProps> = ({
                               onUpdatePlaylist({ ...pl, isPinned: nextState });
                             }
                           }}
-                          className={`p-1.5 rounded-lg transition-all shadow-md ${
+                          className={`p-1.5 rounded-lg transition-all shadow-md border ${
                             isPinned
-                              ? 'bg-emerald-950/90 border border-emerald-500/40 text-emerald-400 hover:bg-emerald-900'
-                              : 'bg-neutral-900/95 border border-neutral-700 text-neutral-300 hover:text-white hover:bg-neutral-800'
+                              ? (ACCENT_SUBTLE_BTN[accent] || ACCENT_SUBTLE_BTN.emerald)
+                              : 'bg-neutral-900/95 border-neutral-700 text-neutral-300 hover:text-white hover:bg-neutral-800'
                           }`}
                           title={
                             isPinned
@@ -385,7 +432,9 @@ export const AllPlaylistsView: React.FC<AllPlaylistsViewProps> = ({
                             e.stopPropagation();
                             setPlaylistToEdit(pl);
                           }}
-                          className="p-1.5 rounded-lg bg-neutral-900/95 text-neutral-300 hover:text-emerald-400 hover:bg-neutral-800 transition-all shadow-md border border-neutral-800"
+                          className={`p-1.5 rounded-lg bg-neutral-900/95 text-neutral-300 ${
+                            ACCENT_HOVER_TEXT[accent] || 'hover:text-emerald-400'
+                          } hover:bg-neutral-800 transition-all shadow-md border border-neutral-800`}
                           title="Personnaliser l'icône, couleur & couverture"
                         >
                           <Palette className="w-3.5 h-3.5" />
@@ -411,7 +460,9 @@ export const AllPlaylistsView: React.FC<AllPlaylistsViewProps> = ({
                   <div className="flex flex-col min-w-0">
                     <div className="flex items-center gap-2">
                       <PlaylistIcon playlist={pl} size="xs" />
-                      <h3 className="font-bold text-sm text-white truncate group-hover:text-emerald-400 transition-colors">
+                      <h3 className={`font-bold text-sm text-white truncate transition-colors ${
+                        ACCENT_GROUP_HOVER_TEXT[accent] || 'group-hover:text-emerald-400'
+                      }`}>
                         {pl.title}
                       </h3>
                     </div>
@@ -423,7 +474,7 @@ export const AllPlaylistsView: React.FC<AllPlaylistsViewProps> = ({
                       {pl.id === 'playlist-favorites' ? (
                         <span className="text-rose-400 font-sans font-medium">Favoris</span>
                       ) : isPinned ? (
-                        <span className="text-emerald-500 font-sans font-medium">Menu</span>
+                        <span className={`font-sans font-medium ${ACCENT_TEXT[accent] || 'text-emerald-500'}`}>Menu</span>
                       ) : (
                         <span className="text-neutral-500 font-sans">Masquée</span>
                       )}

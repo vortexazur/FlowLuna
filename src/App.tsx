@@ -1688,7 +1688,7 @@ export default function App() {
       style={glassStyle}
       className={`w-screen h-screen flex flex-col overflow-hidden transition-colors duration-200 relative ${
         playerSettings.theme === 'light'
-          ? (isAcrylic ? 'light text-slate-900' : 'light bg-slate-50/90 text-slate-900')
+          ? (isAcrylic ? 'light text-slate-900' : 'light bg-slate-100/60 text-slate-900')
           : (isAcrylic ? 'dark text-neutral-100' : 'dark bg-neutral-950 text-neutral-100')
       }`}
     >
@@ -1696,7 +1696,7 @@ export default function App() {
       <div
         className="absolute inset-0 pointer-events-none overflow-hidden transition-opacity duration-700 z-0"
         style={{
-          opacity: isAcrylic ? 0 : Math.max(0.25, glassFactor),
+          opacity: isAcrylic ? 0 : Math.max(0.40, glassFactor),
         }}
       >
         <div
@@ -1763,7 +1763,17 @@ export default function App() {
           style={{
             background:
               playerSettings.theme === 'light'
-                ? 'radial-gradient(circle, rgba(253, 186, 116, 0.25) 0%, transparent 70%)'
+                ? (playerSettings.accent === 'cyan'
+                    ? 'radial-gradient(circle, rgba(56, 189, 248, 0.22) 0%, transparent 70%)'
+                    : playerSettings.accent === 'emerald'
+                    ? 'radial-gradient(circle, rgba(52, 211, 153, 0.22) 0%, transparent 70%)'
+                    : playerSettings.accent === 'violet'
+                    ? 'radial-gradient(circle, rgba(192, 132, 252, 0.22) 0%, transparent 70%)'
+                    : playerSettings.accent === 'blue'
+                    ? 'radial-gradient(circle, rgba(96, 165, 250, 0.22) 0%, transparent 70%)'
+                    : playerSettings.accent === 'amber'
+                    ? 'radial-gradient(circle, rgba(251, 191, 36, 0.22) 0%, transparent 70%)'
+                    : 'radial-gradient(circle, rgba(251, 113, 133, 0.22) 0%, transparent 70%)')
                 : 'radial-gradient(circle, rgba(168, 85, 247, 0.25) 0%, transparent 70%)',
           }}
         />

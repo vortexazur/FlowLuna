@@ -562,32 +562,6 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
         </div>
 
         <div className="flex items-center gap-2.5">
-          {musicTracks.length > 0 && (
-            <>
-              <button
-                type="button"
-                id="library-play-all-btn"
-                onClick={() => handlePlayAllTracks(false)}
-                className={`px-3.5 py-2.5 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition-all shadow-xs cursor-pointer ${ACCENT_BTN[accent]}`}
-                title="Tout lire depuis le début"
-              >
-                <Play className="w-3.5 h-3.5 fill-current ml-0.5" />
-                <span>Tout lire</span>
-              </button>
-
-              <button
-                type="button"
-                id="library-shuffle-all-btn"
-                onClick={() => handlePlayAllTracks(true)}
-                className="px-3.5 py-2.5 rounded-xl text-xs font-semibold flex items-center gap-1.5 border border-amber-500/30 bg-amber-950/60 hover:bg-amber-900/60 text-amber-300 hover:text-amber-100 transition-all shadow-xs cursor-pointer"
-                title="Tout lire en mode aléatoire"
-              >
-                <Shuffle className="w-3.5 h-3.5 text-amber-400" />
-                <span>Aléatoire</span>
-              </button>
-            </>
-          )}
-
           {/* Bouton rapide: Scanner le PC */}
           <button
             type="button"
@@ -677,17 +651,33 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
                 </button>
 
                 {musicTracks.length > 0 && (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setIsHeaderMenuOpen(false);
-                      handlePlayAllTracks(true);
-                    }}
-                    className="w-full text-left px-3 py-2 rounded-lg text-xs hover:bg-neutral-800 text-neutral-200 font-medium flex items-center gap-2.5 transition-colors cursor-pointer"
-                  >
-                    <Shuffle className="w-4 h-4 text-amber-400" />
-                    <span>Tout lire en aléatoire</span>
-                  </button>
+                  <>
+                    <button
+                      type="button"
+                      id="library-menu-play-all-btn"
+                      onClick={() => {
+                        setIsHeaderMenuOpen(false);
+                        handlePlayAllTracks(false);
+                      }}
+                      className="w-full text-left px-3 py-2 rounded-lg text-xs hover:bg-neutral-800 text-neutral-200 font-medium flex items-center gap-2.5 transition-colors cursor-pointer"
+                    >
+                      <Play className={`w-4 h-4 fill-current ${ACCENT_TEXT[accent] || 'text-emerald-400'}`} />
+                      <span>Tout lire</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      id="library-menu-shuffle-all-btn"
+                      onClick={() => {
+                        setIsHeaderMenuOpen(false);
+                        handlePlayAllTracks(true);
+                      }}
+                      className="w-full text-left px-3 py-2 rounded-lg text-xs hover:bg-neutral-800 text-neutral-200 font-medium flex items-center gap-2.5 transition-colors cursor-pointer"
+                    >
+                      <Shuffle className="w-4 h-4 text-amber-400" />
+                      <span>Tout lire en aléatoire</span>
+                    </button>
+                  </>
                 )}
 
                 <div className="h-px bg-neutral-800 my-0.5" />

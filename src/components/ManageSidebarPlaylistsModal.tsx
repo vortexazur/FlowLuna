@@ -46,6 +46,24 @@ const ACCENT_CHECK: Record<AccentColor, string> = {
   cyan: 'bg-cyan-500 border-cyan-500 text-neutral-950',
 };
 
+const ACCENT_TEXT: Record<AccentColor, string> = {
+  emerald: 'text-emerald-400',
+  violet: 'text-violet-400',
+  blue: 'text-blue-400',
+  amber: 'text-amber-400',
+  rose: 'text-rose-400',
+  cyan: 'text-cyan-400',
+};
+
+const ACCENT_BADGE: Record<AccentColor, string> = {
+  emerald: 'text-emerald-400 bg-emerald-500/10 border-emerald-500/20',
+  violet: 'text-violet-400 bg-violet-500/10 border-violet-500/20',
+  blue: 'text-blue-400 bg-blue-500/10 border-blue-500/20',
+  amber: 'text-amber-400 bg-amber-500/10 border-amber-500/20',
+  rose: 'text-rose-400 bg-rose-500/10 border-rose-500/20',
+  cyan: 'text-cyan-400 bg-cyan-500/10 border-cyan-500/20',
+};
+
 export const ManageSidebarPlaylistsModal: React.FC<ManageSidebarPlaylistsModalProps> = ({
   isOpen,
   onClose,
@@ -177,7 +195,7 @@ export const ManageSidebarPlaylistsModal: React.FC<ManageSidebarPlaylistsModalPr
 
           <div className="flex items-center justify-between text-xs text-neutral-400">
             <div className="flex items-center gap-1.5 font-medium">
-              <Pin className="w-3.5 h-3.5 text-emerald-400" />
+              <Pin className={`w-3.5 h-3.5 ${ACCENT_TEXT[accent] || 'text-emerald-400'}`} />
               <span>
                 <strong className={visibleCount >= MAX_SIDEBAR_PINNED ? 'text-amber-400' : 'text-white'}>
                   {visibleCount} / {MAX_SIDEBAR_PINNED}
@@ -276,7 +294,9 @@ export const ManageSidebarPlaylistsModal: React.FC<ManageSidebarPlaylistsModalPr
                           {pl.title}
                         </span>
                         {isPinned ? (
-                          <span className="flex items-center gap-1 text-[10px] font-medium text-emerald-400 px-1.5 py-0.5 rounded bg-emerald-500/10 border border-emerald-500/20">
+                          <span className={`flex items-center gap-1 text-[10px] font-medium px-1.5 py-0.5 rounded border ${
+                            ACCENT_BADGE[accent] || 'text-emerald-400 bg-emerald-500/10 border-emerald-500/20'
+                          }`}>
                             <Pin className="w-2.5 h-2.5" />
                             Épinglée
                           </span>
