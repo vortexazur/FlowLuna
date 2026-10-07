@@ -1,4 +1,5 @@
 @import "tailwindcss";
+@custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *, .dark, .dark *));
 @import "./components/MiniPlayerPiP.css";
 
 /* Custom Scrollbar Styles */
@@ -1067,6 +1068,129 @@ html.light .bg-red-600 * {
 [data-theme="light"] #library-actions-menu-btn:hover,
 [data-theme="light"] #playlist-actions-menu-btn:hover {
   background-color: #ffffff !important;
+}
+
+/* Sidebar High Contrast Light Theme Overrides */
+[data-theme="light"] #app-sidebar {
+  color: #0f172a !important;
+}
+
+[data-theme="light"] #app-sidebar .font-black.tracking-tight {
+  color: #0f172a !important;
+}
+
+[data-theme="light"] #app-sidebar button:not([class*="border-r-2"]):not([class*="bg-emerald"]):not([class*="bg-violet"]):not([class*="bg-blue"]):not([class*="bg-amber"]):not([class*="bg-rose"]):not([class*="bg-cyan"]) {
+  color: #1e293b;
+}
+
+[data-theme="light"] #app-sidebar button:not([class*="border-r-2"]):hover {
+  color: #000000 !important;
+}
+
+/* Sidebar Quick Action & Hardware Buttons in Light Theme */
+[data-theme="light"] #sidebar-open-file-btn,
+[data-theme="light"] #sidebar-equalizer-btn,
+[data-theme="light"] #sidebar-settings-btn {
+  background-color: rgba(255, 255, 255, 0.90) !important;
+  border-color: #cbd5e1 !important;
+  color: #0f172a !important;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05) !important;
+}
+
+[data-theme="light"] #sidebar-open-file-btn span,
+[data-theme="light"] #sidebar-equalizer-btn span,
+[data-theme="light"] #sidebar-settings-btn span {
+  color: #0f172a !important;
+}
+
+[data-theme="light"] #sidebar-open-file-btn:hover,
+[data-theme="light"] #sidebar-equalizer-btn:hover,
+[data-theme="light"] #sidebar-settings-btn:hover {
+  background-color: #ffffff !important;
+  color: #000000 !important;
+  border-color: #94a3b8 !important;
+}
+
+/* Tracklist (Library & Playlist) Title & Metadata Contrast */
+[data-theme="light"] #library-view tbody tr td .font-semibold,
+[data-theme="light"] #playlist-view tbody tr td .font-semibold,
+[data-theme="light"] .track-row-optimized .font-semibold,
+[data-theme="light"] .track-card-optimized .font-semibold {
+  color: #0f172a !important;
+}
+
+[data-theme="light"] #library-view tbody tr:hover td .font-semibold,
+[data-theme="light"] #playlist-view tbody tr:hover td .font-semibold,
+[data-theme="light"] .track-card-optimized:hover .font-semibold {
+  color: #000000 !important;
+}
+
+[data-theme="light"] #library-view tbody tr td .text-neutral-400,
+[data-theme="light"] #playlist-view tbody tr td .text-neutral-400 {
+  color: #475569 !important;
+}
+
+/* Videos & Downloader Titles */
+[data-theme="light"] #videos-view h1,
+[data-theme="light"] #downloader-view h1 {
+  color: #0f172a !important;
+}
+
+[data-theme="light"] #videos-view p,
+[data-theme="light"] #downloader-view p {
+  color: #475569 !important;
+}
+
+/* Downloader View High Contrast Light Theme */
+[data-theme="light"] #downloader-view label span:first-child {
+  color: #0f172a !important;
+}
+
+[data-theme="light"] #downloader-view label span:last-child {
+  color: #475569 !important;
+}
+
+[data-theme="light"] #downloader-view input[type="text"] {
+  background-color: #ffffff !important;
+  border-color: #cbd5e1 !important;
+  color: #0f172a !important;
+}
+
+[data-theme="light"] #downloader-inspect-btn:disabled {
+  background-color: #f1f5f9 !important;
+  border-color: #cbd5e1 !important;
+  color: #334155 !important;
+  opacity: 1 !important;
+}
+
+[data-theme="light"] #downloader-inspect-btn:disabled svg {
+  color: #334155 !important;
+}
+
+/* Manage Sidebar Playlists Modal Light Mode Styling */
+[data-theme="light"] #manage-sidebar-playlists-card {
+  background-color: #ffffff !important;
+  border-color: #e2e8f0 !important;
+  color: #0f172a !important;
+}
+
+[data-theme="light"] #manage-sidebar-playlists-card h3 {
+  color: #0f172a !important;
+}
+
+[data-theme="light"] #manage-sidebar-playlists-card p {
+  color: #475569 !important;
+}
+
+[data-theme="light"] #manage-sidebar-playlists-card input {
+  background-color: #f8fafc !important;
+  border-color: #cbd5e1 !important;
+  color: #0f172a !important;
+}
+
+[data-theme="light"] #manage-sidebar-playlists-card .border-t {
+  background-color: #f8fafc !important;
+  border-top-color: #e2e8f0 !important;
 }
 
 /* Multi-Selection Banner in Library */

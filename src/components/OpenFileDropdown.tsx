@@ -230,19 +230,21 @@ export const OpenFileDropdown: React.FC<OpenFileDropdownProps> = ({
 
       {/* Button Styled in frosted glass / acrylic theme */}
       <div
-        className={`group flex items-stretch rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 dark:border-white/10 transition-all text-neutral-700 dark:text-neutral-200 hover:text-black dark:hover:text-white shadow-xs backdrop-blur-md ${
-          isOpen ? 'ring-1 ring-white/20 bg-white/10' : ''
+        id="sidebar-open-file-btn"
+        className={`group flex items-stretch rounded-xl bg-white/80 hover:bg-white dark:bg-white/5 dark:hover:bg-white/10 border border-neutral-300/80 dark:border-white/10 transition-all text-neutral-900 dark:text-neutral-200 hover:text-black dark:hover:text-white shadow-xs backdrop-blur-md ${
+          isOpen ? 'ring-1 ring-neutral-400 dark:ring-white/20 bg-white dark:bg-white/10' : ''
         }`}
       >
         {/* Main Action: Ouvrir un fichier */}
         <button
           type="button"
           onClick={handleOpenFileClick}
-          className="flex items-center gap-2.5 px-3 py-2 text-xs font-semibold text-neutral-700 dark:text-neutral-200 hover:text-black dark:hover:text-white transition-colors cursor-pointer select-none rounded-l-xl"
+          className="flex items-center gap-2.5 px-3 py-2 text-xs font-semibold text-neutral-900 dark:text-neutral-200 hover:text-black dark:hover:text-white transition-colors cursor-pointer select-none rounded-l-xl"
         >
-          {/* Fluent/Screenbox Outline Folder Icon with AuraWave Amber Accent */}
+          {/* Fluent/Screenbox Outline Folder Icon with User Accent */}
           <svg
-            className="w-4 h-4 text-amber-400 shrink-0 transition-transform group-hover:scale-105"
+            className="w-4 h-4 shrink-0 transition-transform group-hover:scale-105"
+            style={{ color: 'var(--primary)' }}
             viewBox="0 0 24 24"
             fill="none"
             stroke="currentColor"
@@ -252,28 +254,28 @@ export const OpenFileDropdown: React.FC<OpenFileDropdownProps> = ({
           >
             <path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 8 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z" />
           </svg>
-          <span className="whitespace-nowrap">Ouvrir un fichier</span>
+          <span className="whitespace-nowrap font-semibold">Ouvrir un fichier</span>
         </button>
 
         {/* Vertical divider */}
-        <div className="w-px my-1.5 bg-white/10 transition-colors" />
+        <div className="w-px my-1.5 bg-neutral-300 dark:bg-white/10 transition-colors" />
 
         {/* Chevron Dropdown Toggle */}
         <button
           type="button"
           onClick={() => setIsOpen((prev) => !prev)}
           aria-expanded={isOpen}
-          className="px-2.5 flex items-center justify-center text-neutral-500 dark:text-neutral-400 hover:text-neutral-900 dark:hover:text-white hover:bg-white/10 rounded-r-xl transition-colors cursor-pointer select-none"
+          className="px-2.5 flex items-center justify-center text-neutral-600 dark:text-neutral-400 hover:text-neutral-900 dark:hover:text-white hover:bg-black/5 dark:hover:bg-white/10 rounded-r-xl transition-colors cursor-pointer select-none"
         >
           <ChevronDown
             className={`w-3.5 h-3.5 transition-transform duration-200 ${
               isOpen
                 ? computedPlacement === 'up'
-                  ? 'rotate-0 text-white'
-                  : 'rotate-180 text-white'
+                  ? 'rotate-0 text-neutral-900 dark:text-white'
+                  : 'rotate-180 text-neutral-900 dark:text-white'
                 : computedPlacement === 'up'
-                ? 'rotate-180 text-neutral-400'
-                : 'rotate-0 text-neutral-400'
+                ? 'rotate-180 text-neutral-500 dark:text-neutral-400'
+                : 'rotate-0 text-neutral-500 dark:text-neutral-400'
             }`}
           />
         </button>
@@ -282,23 +284,24 @@ export const OpenFileDropdown: React.FC<OpenFileDropdownProps> = ({
       {/* Screenbox / Fluent Dropdown Menu matching mockup, seamlessly styled with glass */}
       {isOpen && (
         <div
-          className={`absolute left-0 right-0 sm:right-auto sm:min-w-[240px] z-[100] glass-modal bg-neutral-900/90 border border-white/10 shadow-2xl rounded-xl p-1.5 backdrop-blur-2xl ${
+          className={`absolute left-0 right-0 sm:right-auto sm:min-w-[240px] z-[100] glass-modal bg-white/95 dark:bg-neutral-900/90 border border-neutral-200 dark:border-white/10 shadow-2xl rounded-xl p-1.5 backdrop-blur-2xl ${
             computedPlacement === 'up'
               ? 'bottom-full mb-2 animate-in fade-in slide-in-from-bottom-2 duration-150'
               : 'top-full mt-2 animate-in fade-in slide-in-from-top-2 duration-150'
           }`}
           style={{
-            boxShadow: '0 16px 36px -4px rgba(0, 0, 0, 0.75), 0 4px 16px -2px rgba(0, 0, 0, 0.5)',
+            boxShadow: '0 16px 36px -4px rgba(0, 0, 0, 0.25), 0 4px 16px -2px rgba(0, 0, 0, 0.15)',
           }}
         >
           {/* Option 1: Ouvrir un fichier (Audio ou Vidéo) */}
           <button
             type="button"
             onClick={handleOpenFileClick}
-            className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-xs font-medium text-neutral-700 dark:text-neutral-200 hover:bg-white/10 hover:text-black dark:hover:text-white transition-colors cursor-pointer text-left select-none group"
+            className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-xs font-medium text-neutral-900 dark:text-neutral-200 hover:bg-neutral-100 dark:hover:bg-white/10 hover:text-black dark:hover:text-white transition-colors cursor-pointer text-left select-none group"
           >
             <svg
-              className="w-4 h-4 text-amber-400 shrink-0 transition-transform group-hover:scale-110"
+              className="w-4 h-4 shrink-0 transition-transform group-hover:scale-110"
+              style={{ color: 'var(--primary)' }}
               viewBox="0 0 24 24"
               fill="none"
               stroke="currentColor"
@@ -309,8 +312,8 @@ export const OpenFileDropdown: React.FC<OpenFileDropdownProps> = ({
               <path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 8 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z" />
             </svg>
             <div className="flex flex-col">
-              <span className="font-semibold text-neutral-900 dark:text-neutral-100">Ouvrir un fichier</span>
-              <span className="text-[10px] text-neutral-500 dark:text-neutral-400">Audio (MP3, FLAC...) ou Vidéo (MP4, MKV...)</span>
+              <span className="font-bold text-neutral-950 dark:text-neutral-100 text-xs">Ouvrir un fichier</span>
+              <span className="text-[11px] text-neutral-700 dark:text-neutral-400 font-medium">Audio (MP3, FLAC...) ou Vidéo (MP4, MKV...)</span>
             </div>
           </button>
 
@@ -318,10 +321,11 @@ export const OpenFileDropdown: React.FC<OpenFileDropdownProps> = ({
           <button
             type="button"
             onClick={handleOpenFolderClick}
-            className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-xs font-medium text-neutral-700 dark:text-neutral-200 hover:bg-white/10 hover:text-black dark:hover:text-white transition-colors cursor-pointer text-left select-none group mt-0.5"
+            className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-xs font-medium text-neutral-900 dark:text-neutral-200 hover:bg-neutral-100 dark:hover:bg-white/10 hover:text-black dark:hover:text-white transition-colors cursor-pointer text-left select-none group mt-0.5"
           >
             <svg
-              className="w-4 h-4 text-amber-400 shrink-0 transition-transform group-hover:scale-110"
+              className="w-4 h-4 shrink-0 transition-transform group-hover:scale-110"
+              style={{ color: 'var(--primary)' }}
               viewBox="0 0 24 24"
               fill="none"
               stroke="currentColor"
@@ -334,8 +338,8 @@ export const OpenFileDropdown: React.FC<OpenFileDropdownProps> = ({
               <path d="M8 14h5" />
             </svg>
             <div className="flex flex-col">
-              <span className="font-semibold text-neutral-900 dark:text-neutral-100">Ouvrir un dossier</span>
-              <span className="text-[10px] text-neutral-500 dark:text-neutral-400">Scanner et ajouter tout un répertoire</span>
+              <span className="font-bold text-neutral-950 dark:text-neutral-100 text-xs">Ouvrir un dossier</span>
+              <span className="text-[11px] text-neutral-700 dark:text-neutral-400 font-medium">Scanner et ajouter tout un répertoire</span>
             </div>
           </button>
         </div>

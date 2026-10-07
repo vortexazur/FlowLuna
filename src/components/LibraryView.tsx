@@ -991,11 +991,11 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
                         </div>
                         <div className="min-w-0 flex-1">
                           <div className={`font-semibold truncate transition-colors ${
-                            isCurrentTrack ? `${ACCENT_TEXT[accent]} font-bold` : 'text-neutral-200 group-hover:text-white'
+                            isCurrentTrack ? `${ACCENT_TEXT[accent]} font-bold` : 'text-neutral-900 dark:text-neutral-200 group-hover:text-black dark:group-hover:text-white'
                           }`}>
                             {track.title}
                           </div>
-                          <div className={`truncate text-[11px] ${isCurrentTrack ? 'text-neutral-300 font-medium' : 'text-neutral-400'}`}>
+                          <div className={`truncate text-[11px] ${isCurrentTrack ? 'text-neutral-700 dark:text-neutral-300 font-medium' : 'text-neutral-600 dark:text-neutral-400'}`}>
                             {track.artist}
                           </div>
                         </div>
@@ -1202,13 +1202,13 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
                   <div className="min-w-0 flex-1">
                     <div
                       className={`font-semibold text-xs truncate transition-colors ${
-                        isCurrentTrack ? `${ACCENT_TEXT[accent]} font-bold` : 'text-neutral-100 group-hover:text-white'
+                        isCurrentTrack ? `${ACCENT_TEXT[accent]} font-bold` : 'text-neutral-900 dark:text-neutral-100 group-hover:text-black dark:group-hover:text-white'
                       }`}
                       title={track.title}
                     >
                       {track.title}
                     </div>
-                    <div className="text-[11px] text-neutral-400 truncate mt-0.5" title={track.artist}>
+                    <div className="text-[11px] text-neutral-600 dark:text-neutral-400 truncate mt-0.5" title={track.artist}>
                       {track.artist}
                     </div>
                     <div className="flex items-center justify-between text-[10px] text-neutral-500 font-mono mt-1">

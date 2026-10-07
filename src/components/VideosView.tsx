@@ -74,19 +74,19 @@ export const VideosView: React.FC<VideosViewProps> = ({
       />
 
       {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-white/10 pb-6">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-neutral-200 dark:border-white/10 pb-6">
         <div className="flex items-center gap-3.5">
-          <div className="p-3 rounded-2xl bg-sky-500/15 border border-sky-500/30 text-sky-400 shadow-sm backdrop-blur-md">
+          <div className="p-3 rounded-2xl bg-sky-500/10 dark:bg-sky-500/15 border border-sky-500/20 dark:border-sky-500/30 text-sky-600 dark:text-sky-400 shadow-sm backdrop-blur-md">
             <Film className="w-6 h-6" />
           </div>
           <div>
             <h1 className="text-2xl font-black text-neutral-900 dark:text-white tracking-tight flex items-center gap-2.5">
               <span>Lecteur Vidéo</span>
-              <span className="text-xs font-mono font-semibold px-2 py-0.5 rounded-full bg-sky-500/15 border border-sky-500/30 text-sky-400">
+              <span className="text-xs font-mono font-semibold px-2 py-0.5 rounded-full bg-sky-500/10 dark:bg-sky-500/15 border border-sky-500/20 dark:border-sky-500/30 text-sky-700 dark:text-sky-400">
                 {videoTracks.length} {videoTracks.length > 1 ? 'vidéos' : 'vidéo'}
               </span>
             </h1>
-            <p className="text-xs text-neutral-500 dark:text-neutral-400 mt-0.5">
+            <p className="text-xs text-neutral-600 dark:text-neutral-400 mt-0.5 font-medium">
               Lecture fluide MP4, WebM, MKV, MOV avec son Hi-Fi et égaliseur matériel
             </p>
           </div>

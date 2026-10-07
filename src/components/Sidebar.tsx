@@ -46,21 +46,21 @@ interface SidebarProps {
 }
 
 const ACCENT_ACTIVE: Record<AccentColor, string> = {
-  emerald: 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 font-bold border-r-2 border-emerald-500',
-  violet: 'bg-violet-500/15 text-violet-600 dark:text-violet-400 font-bold border-r-2 border-violet-500',
-  blue: 'bg-blue-500/15 text-blue-600 dark:text-blue-400 font-bold border-r-2 border-blue-500',
-  amber: 'bg-amber-500/15 text-amber-600 dark:text-amber-400 font-bold border-r-2 border-amber-500',
-  rose: 'bg-rose-500/15 text-rose-600 dark:text-rose-400 font-bold border-r-2 border-rose-500',
-  cyan: 'bg-cyan-500/15 text-cyan-600 dark:text-cyan-400 font-bold border-r-2 border-cyan-500',
+  emerald: 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-400 font-bold border-r-2 border-emerald-500',
+  violet: 'bg-violet-500/15 text-violet-700 dark:text-violet-400 font-bold border-r-2 border-violet-500',
+  blue: 'bg-blue-500/15 text-blue-700 dark:text-blue-400 font-bold border-r-2 border-blue-500',
+  amber: 'bg-amber-500/15 text-amber-700 dark:text-amber-400 font-bold border-r-2 border-amber-500',
+  rose: 'bg-rose-500/15 text-rose-700 dark:text-rose-400 font-bold border-r-2 border-rose-500',
+  cyan: 'bg-cyan-500/15 text-cyan-700 dark:text-cyan-400 font-bold border-r-2 border-cyan-500',
 };
 
 const ACCENT_TEXT: Record<AccentColor, string> = {
-  emerald: 'text-emerald-600 dark:text-emerald-400',
-  violet: 'text-violet-600 dark:text-violet-400',
-  blue: 'text-blue-600 dark:text-blue-400',
-  amber: 'text-amber-600 dark:text-amber-400',
-  rose: 'text-rose-600 dark:text-rose-400',
-  cyan: 'text-cyan-600 dark:text-cyan-400',
+  emerald: 'text-emerald-700 dark:text-emerald-400',
+  violet: 'text-violet-700 dark:text-violet-400',
+  blue: 'text-blue-700 dark:text-blue-400',
+  amber: 'text-amber-700 dark:text-amber-400',
+  rose: 'text-rose-700 dark:text-rose-400',
+  cyan: 'text-cyan-700 dark:text-cyan-400',
 };
 
 export const Sidebar: React.FC<SidebarProps> = ({
@@ -118,17 +118,17 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
   const navItemClass = (viewId: string) => {
     const isActive = currentView === viewId;
-    return `w-full flex items-center gap-2.5 px-2.5 py-1.5 rounded-lg text-xs font-medium transition-colors text-left ${
+    return `w-full flex items-center gap-2.5 px-2.5 py-1.5 rounded-lg text-xs font-semibold transition-colors text-left ${
       isActive
         ? ACCENT_ACTIVE[accent]
-        : 'text-neutral-400 hover:text-neutral-100 hover:bg-neutral-800/40'
+        : 'text-neutral-800 dark:text-neutral-400 hover:text-neutral-950 dark:hover:text-neutral-100 hover:bg-black/5 dark:hover:bg-white/5'
     }`;
   };
 
   return (
     <aside
       id="app-sidebar"
-      className="w-64 h-full glass-sidebar border-r border-white/10 dark:border-white/10 flex flex-col justify-between select-none flex-shrink-0 z-10"
+      className="w-64 h-full glass-sidebar border-r border-neutral-200/80 dark:border-white/10 flex flex-col justify-between select-none flex-shrink-0 z-10"
     >
       <div className="flex flex-col gap-2.5 p-2.5 overflow-y-auto scrollbar-none">
         {/* App Title & Status */}
@@ -141,7 +141,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 className="w-full h-full object-cover"
               />
             </div>
-            <span className="font-extrabold text-base tracking-tight text-neutral-900 dark:text-white">
+            <span className="font-black text-base tracking-tight text-neutral-900 dark:text-white select-none">
               FlowLuna
             </span>
           </div>
@@ -167,7 +167,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
         {/* Primary Navigation */}
         <div className="flex flex-col gap-1">
-          <span className="text-[10px] uppercase font-bold text-neutral-400 px-3 mb-1 tracking-wider">
+          <span className="text-[10px] uppercase font-bold text-neutral-600 dark:text-neutral-400 px-3 mb-1 tracking-wider">
             {t.mainMenu}
           </span>
 
@@ -224,7 +224,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
           </button>
 
           {/* Séparateur comme sur la capture */}
-          <div className="my-1.5 border-t border-neutral-800/90 mx-1" />
+          <div className="my-1.5 border-t border-neutral-200/80 dark:border-neutral-800/90 mx-1" />
 
           {/* Bouton File d'attente */}
           {onOpenQueue && (
@@ -235,15 +235,15 @@ export const Sidebar: React.FC<SidebarProps> = ({
               className={`w-full flex items-center justify-between px-2.5 py-1.5 rounded-lg text-xs font-medium transition-colors text-left ${
                 isQueueOpen
                   ? ACCENT_ACTIVE[accent]
-                  : 'text-neutral-400 hover:text-neutral-100 hover:bg-neutral-800/40'
+                  : 'text-neutral-700 dark:text-neutral-400 hover:text-neutral-900 dark:hover:text-neutral-100 hover:bg-black/5 dark:hover:bg-white/5'
               }`}
             >
               <div className="flex items-center gap-2.5">
-                <ListMusic className="w-4 h-4 text-emerald-400" />
+                <ListMusic className="w-4 h-4 text-emerald-500 dark:text-emerald-400" />
                 <span>{t.queue}</span>
               </div>
               {queueLength !== undefined && queueLength > 0 && (
-                <span className="text-[10px] font-mono px-1.5 py-0.2 rounded bg-emerald-950/80 text-emerald-300 border border-emerald-500/20 font-bold">
+                <span className="text-[10px] font-mono px-1.5 py-0.2 rounded bg-emerald-500/15 dark:bg-emerald-950/80 text-emerald-700 dark:text-emerald-300 border border-emerald-500/25 font-bold">
                   {queueLength}
                 </span>
               )}
@@ -254,13 +254,13 @@ export const Sidebar: React.FC<SidebarProps> = ({
         {/* Playlists */}
         <div className="flex flex-col gap-1">
           <div className="flex items-center justify-between px-3 mb-1">
-            <span className="text-[10px] uppercase font-bold text-neutral-400 tracking-wider">{t.playlists}</span>
+            <span className="text-[10px] uppercase font-bold text-neutral-600 dark:text-neutral-400 tracking-wider">{t.playlists}</span>
             <div className="flex items-center gap-1">
               <button
                 type="button"
                 id="manage-sidebar-playlists-btn"
                 onClick={handleOpenManageSidebar}
-                className="p-1 rounded text-neutral-400 hover:text-white hover:bg-neutral-800 transition-colors"
+                className="p-1 rounded text-neutral-500 hover:text-neutral-900 dark:text-neutral-400 dark:hover:text-white hover:bg-black/5 dark:hover:bg-neutral-800 transition-colors"
                 title="Gérer les playlists affichées dans le menu latéral"
               >
                 <SlidersHorizontal className="w-3.5 h-3.5" />
@@ -269,7 +269,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 type="button"
                 id="new-playlist-btn"
                 onClick={onCreatePlaylist}
-                className="p-1 rounded text-neutral-400 hover:text-white hover:bg-neutral-800 transition-colors"
+                className="p-1 rounded text-neutral-500 hover:text-neutral-900 dark:text-neutral-400 dark:hover:text-white hover:bg-black/5 dark:hover:bg-neutral-800 transition-colors"
                 title="Créer une nouvelle playlist"
               >
                 <Plus className="w-3.5 h-3.5" />
@@ -286,29 +286,29 @@ export const Sidebar: React.FC<SidebarProps> = ({
               className={`w-full flex items-center justify-between px-2.5 py-1.5 rounded-lg text-xs transition-colors text-left group ${
                 currentView === 'playlist-playlist-favorites'
                   ? ACCENT_ACTIVE[accent]
-                  : 'text-neutral-300 hover:text-neutral-100 hover:bg-neutral-800/40'
+                  : 'text-neutral-800 dark:text-neutral-300 hover:text-neutral-950 dark:hover:text-neutral-100 hover:bg-black/5 dark:hover:bg-white/5'
               }`}
             >
               <div className="flex items-center gap-2.5 min-w-0 pr-1">
                 <div className="w-5 h-5 rounded-md flex items-center justify-center flex-shrink-0 bg-rose-500/15 text-rose-500 border border-rose-500/20 shadow-xs">
                   <Heart className="w-3.5 h-3.5 fill-rose-500/50 text-rose-500" />
                 </div>
-                <span className="truncate font-medium group-hover:text-white transition-colors">
+                <span className="truncate font-semibold group-hover:text-neutral-950 dark:group-hover:text-white transition-colors">
                   Favoris
                 </span>
               </div>
-              <span className="text-[10px] font-mono text-neutral-500 flex-shrink-0">
+              <span className="text-[10px] font-mono text-neutral-600 dark:text-neutral-400 font-semibold flex-shrink-0">
                 {favCount}
               </span>
             </button>
 
             {visiblePlaylists.length === 0 && customPlaylists.length > 0 ? (
-              <div className="px-3 py-2 text-center text-neutral-500 text-[11px] bg-neutral-900/40 rounded-lg border border-neutral-800/40 flex flex-col items-center gap-1.5 my-1">
+              <div className="px-3 py-2 text-center text-neutral-700 dark:text-neutral-400 text-[11px] bg-white/40 dark:bg-neutral-900/40 rounded-lg border border-neutral-300/60 dark:border-neutral-800/40 flex flex-col items-center gap-1.5 my-1">
                 <span>Aucune playlist personnalisée épinglée</span>
                 <button
                   type="button"
                   onClick={handleOpenManageSidebar}
-                  className="text-[10px] text-sky-400 hover:underline font-medium"
+                  className="text-[10px] text-sky-600 dark:text-sky-400 hover:underline font-medium"
                 >
                   Choisir les playlists visibles
                 </button>
@@ -326,16 +326,16 @@ export const Sidebar: React.FC<SidebarProps> = ({
                     className={`w-full flex items-center justify-between px-2.5 py-1.5 rounded-lg text-xs transition-colors text-left group ${
                       isActive
                         ? ACCENT_ACTIVE[accent]
-                        : 'text-neutral-400 hover:text-neutral-100 hover:bg-neutral-800/40'
+                        : 'text-neutral-800 dark:text-neutral-400 hover:text-neutral-950 dark:hover:text-neutral-100 hover:bg-black/5 dark:hover:bg-white/5'
                     }`}
                   >
                     <div className="flex items-center gap-2.5 min-w-0 pr-1">
                       <PlaylistIcon playlist={pl} size="sm" showCoverIfAvailable={true} />
-                      <span className="truncate font-medium group-hover:text-white transition-colors">
+                      <span className="truncate font-semibold group-hover:text-neutral-950 dark:group-hover:text-white transition-colors">
                         {pl.title}
                       </span>
                     </div>
-                    <span className="text-[10px] font-mono text-neutral-500 flex-shrink-0">
+                    <span className="text-[10px] font-mono text-neutral-600 dark:text-neutral-400 font-semibold flex-shrink-0">
                       {pl.trackIds.length}
                     </span>
                   </button>
@@ -347,7 +347,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
       </div>
 
       {/* Bottom Actions & Hardware Tools */}
-      <div className="p-3 border-t border-white/10 dark:border-white/10 flex flex-col gap-2 bg-transparent">
+      <div className="p-3 border-t border-neutral-200/80 dark:border-white/10 flex flex-col gap-2 bg-transparent">
         {/* Screenbox Fluent "Ouvrir un fichier" / "Ouvrir un dossier" */}
         <OpenFileDropdown
           onOpenFiles={onImportFiles}
@@ -363,9 +363,9 @@ export const Sidebar: React.FC<SidebarProps> = ({
             type="button"
             id="sidebar-equalizer-btn"
             onClick={onOpenEqualizer}
-            className="flex items-center justify-center gap-1.5 px-2 py-1.5 rounded-xl text-xs font-semibold bg-white/5 hover:bg-white/10 text-neutral-700 dark:text-neutral-200 hover:text-black dark:hover:text-white border border-white/10 dark:border-white/10 transition-all shadow-xs backdrop-blur-md whitespace-nowrap cursor-pointer"
+            className="flex items-center justify-center gap-1.5 px-2 py-1.5 rounded-xl text-xs font-semibold bg-white/80 hover:bg-white dark:bg-white/5 dark:hover:bg-white/10 text-neutral-900 dark:text-neutral-200 hover:text-black dark:hover:text-white border border-neutral-300/80 dark:border-white/10 transition-all shadow-xs backdrop-blur-md whitespace-nowrap cursor-pointer"
           >
-            <Sliders className="w-3.5 h-3.5 text-purple-400 shrink-0" />
+            <Sliders className="w-3.5 h-3.5 text-purple-500 dark:text-purple-400 shrink-0" />
             <span className="truncate">{t.equalizer}</span>
           </button>
 
@@ -373,9 +373,9 @@ export const Sidebar: React.FC<SidebarProps> = ({
             type="button"
             id="sidebar-settings-btn"
             onClick={onOpenSettings}
-            className="flex items-center justify-center gap-1.5 px-2 py-1.5 rounded-xl text-xs font-semibold bg-white/5 hover:bg-white/10 text-neutral-700 dark:text-neutral-200 hover:text-black dark:hover:text-white border border-white/10 dark:border-white/10 transition-all shadow-xs backdrop-blur-md whitespace-nowrap cursor-pointer"
+            className="flex items-center justify-center gap-1.5 px-2 py-1.5 rounded-xl text-xs font-semibold bg-white/80 hover:bg-white dark:bg-white/5 dark:hover:bg-white/10 text-neutral-900 dark:text-neutral-200 hover:text-black dark:hover:text-white border border-neutral-300/80 dark:border-white/10 transition-all shadow-xs backdrop-blur-md whitespace-nowrap cursor-pointer"
           >
-            <Settings className="w-3.5 h-3.5 text-sky-400 shrink-0" />
+            <Settings className="w-3.5 h-3.5 text-sky-500 dark:text-sky-400 shrink-0" />
             <span className="truncate">{t.openSettings}</span>
           </button>
         </div>

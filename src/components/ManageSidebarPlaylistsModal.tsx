@@ -149,23 +149,23 @@ export const ManageSidebarPlaylistsModal: React.FC<ManageSidebarPlaylistsModalPr
   const modalContent = (
     <div
       id="manage-sidebar-playlists-overlay"
-      className="fixed inset-0 z-[9999] flex items-center justify-center p-4 bg-black/85 backdrop-blur-md animate-in fade-in select-none"
+      className="fixed inset-0 z-[9999] flex items-center justify-center p-4 bg-black/60 dark:bg-black/85 backdrop-blur-md animate-in fade-in select-none"
       onClick={onClose}
     >
       <div
         id="manage-sidebar-playlists-card"
-        className="w-full max-w-lg max-h-[85vh] bg-[#14141f] border border-neutral-700/80 rounded-2xl shadow-2xl overflow-hidden flex flex-col text-neutral-100 animate-in zoom-in-95 duration-150"
+        className="w-full max-w-lg max-h-[85vh] bg-white dark:bg-[#14141f] border border-neutral-200 dark:border-neutral-700/80 rounded-2xl shadow-2xl overflow-hidden flex flex-col text-neutral-900 dark:text-neutral-100 animate-in zoom-in-95 duration-150"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
-        <div className="flex items-center justify-between px-5 py-4 border-b border-neutral-800 bg-[#0d0d16]">
+        <div className="flex items-center justify-between px-5 py-4 border-b border-neutral-200 dark:border-neutral-800 bg-neutral-50 dark:bg-[#0d0d16]">
           <div className="flex items-center gap-3">
-            <div className="p-2 rounded-xl bg-neutral-800 text-sky-400 border border-neutral-700/60 shadow-xs">
+            <div className="p-2 rounded-xl bg-sky-50 dark:bg-neutral-800 text-sky-600 dark:text-sky-400 border border-sky-200 dark:border-neutral-700/60 shadow-xs">
               <SlidersHorizontal className="w-5 h-5" />
             </div>
             <div>
-              <h3 className="font-bold text-base text-white">Playlists du Menu Latéral</h3>
-              <p className="text-xs text-neutral-400">
+              <h3 className="font-bold text-base text-neutral-900 dark:text-white">Playlists du Menu Latéral</h3>
+              <p className="text-xs text-neutral-600 dark:text-neutral-400">
                 Choisissez jusqu'à 3 playlists à afficher en plus des Favoris
               </p>
             </div>
@@ -173,7 +173,7 @@ export const ManageSidebarPlaylistsModal: React.FC<ManageSidebarPlaylistsModalPr
           <button
             type="button"
             onClick={onClose}
-            className="p-1.5 text-neutral-400 hover:text-white rounded-lg hover:bg-neutral-800 transition-colors"
+            className="p-1.5 text-neutral-500 hover:text-neutral-900 dark:text-neutral-400 dark:hover:text-white rounded-lg hover:bg-neutral-200/60 dark:hover:bg-neutral-800 transition-colors cursor-pointer"
             title="Fermer"
           >
             <X className="w-5 h-5" />
@@ -181,23 +181,23 @@ export const ManageSidebarPlaylistsModal: React.FC<ManageSidebarPlaylistsModalPr
         </div>
 
         {/* Search & Quick Action Toolbar */}
-        <div className="p-4 border-b border-neutral-800 bg-[#10101a] flex flex-col gap-3">
+        <div className="p-4 border-b border-neutral-200 dark:border-neutral-800 bg-white dark:bg-[#10101a] flex flex-col gap-3">
           <div className="relative">
-            <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-neutral-500" />
+            <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-neutral-400" />
             <input
               type="text"
               placeholder="Rechercher une playlist..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full pl-9 pr-3 py-2 rounded-xl bg-neutral-900 border border-neutral-800 text-xs text-white placeholder-neutral-500 focus:outline-none focus:border-neutral-600 transition-colors"
+              className="w-full pl-9 pr-3 py-2 rounded-xl bg-neutral-100 dark:bg-neutral-900 border border-neutral-300 dark:border-neutral-800 text-xs text-neutral-900 dark:text-white placeholder-neutral-500 focus:outline-none focus:border-neutral-400 dark:focus:border-neutral-600 transition-colors"
             />
           </div>
 
-          <div className="flex items-center justify-between text-xs text-neutral-400">
+          <div className="flex items-center justify-between text-xs text-neutral-600 dark:text-neutral-400">
             <div className="flex items-center gap-1.5 font-medium">
-              <Pin className={`w-3.5 h-3.5 ${ACCENT_TEXT[accent] || 'text-emerald-400'}`} />
+              <Pin className={`w-3.5 h-3.5 ${ACCENT_TEXT[accent] || 'text-emerald-500'}`} />
               <span>
-                <strong className={visibleCount >= MAX_SIDEBAR_PINNED ? 'text-amber-400' : 'text-white'}>
+                <strong className={visibleCount >= MAX_SIDEBAR_PINNED ? 'text-amber-600 dark:text-amber-400 font-bold' : 'text-neutral-900 dark:text-white font-bold'}>
                   {visibleCount} / {MAX_SIDEBAR_PINNED}
                 </strong> épinglée{visibleCount > 1 ? 's' : ''} (max {MAX_SIDEBAR_PINNED} + Favoris)
               </span>
@@ -207,7 +207,7 @@ export const ManageSidebarPlaylistsModal: React.FC<ManageSidebarPlaylistsModalPr
               <button
                 type="button"
                 onClick={handleSelectFirst3}
-                className="px-2.5 py-1 rounded-lg bg-neutral-800 hover:bg-neutral-700 text-[11px] text-neutral-200 font-medium transition-colors border border-neutral-700/50 cursor-pointer"
+                className="px-2.5 py-1 rounded-lg bg-neutral-100 hover:bg-neutral-200 dark:bg-neutral-800 dark:hover:bg-neutral-700 text-[11px] text-neutral-800 dark:text-neutral-200 font-semibold transition-colors border border-neutral-300 dark:border-neutral-700/50 cursor-pointer"
                 title="Épingler les 3 premières playlists"
               >
                 3 premières
@@ -215,7 +215,7 @@ export const ManageSidebarPlaylistsModal: React.FC<ManageSidebarPlaylistsModalPr
               <button
                 type="button"
                 onClick={handleDeselectAll}
-                className="px-2.5 py-1 rounded-lg bg-neutral-800 hover:bg-neutral-700 text-[11px] text-neutral-300 font-medium transition-colors border border-neutral-700/50 cursor-pointer"
+                className="px-2.5 py-1 rounded-lg bg-neutral-100 hover:bg-neutral-200 dark:bg-neutral-800 dark:hover:bg-neutral-700 text-[11px] text-neutral-800 dark:text-neutral-300 font-semibold transition-colors border border-neutral-300 dark:border-neutral-700/50 cursor-pointer"
               >
                 Tout masquer
               </button>
@@ -225,15 +225,15 @@ export const ManageSidebarPlaylistsModal: React.FC<ManageSidebarPlaylistsModalPr
 
         {/* Warning banner when limit reached */}
         {warningMessage && (
-          <div className="px-4 py-2.5 bg-amber-500/15 border-b border-amber-500/30 text-amber-300 text-xs flex items-center justify-between gap-2 animate-in fade-in duration-150">
+          <div className="px-4 py-2.5 bg-amber-500/15 border-b border-amber-500/30 text-amber-800 dark:text-amber-300 text-xs flex items-center justify-between gap-2 animate-in fade-in duration-150">
             <div className="flex items-center gap-2">
-              <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0" />
+              <AlertTriangle className="w-4 h-4 text-amber-500 shrink-0" />
               <span>{warningMessage}</span>
             </div>
             <button
               type="button"
               onClick={() => setWarningMessage(null)}
-              className="text-amber-400 hover:text-white text-xs px-1 font-bold"
+              className="text-amber-600 dark:text-amber-400 hover:text-black dark:hover:text-white text-xs px-1 font-bold"
             >
               ✕
             </button>
@@ -241,15 +241,15 @@ export const ManageSidebarPlaylistsModal: React.FC<ManageSidebarPlaylistsModalPr
         )}
 
         {/* Playlist List */}
-        <div className="flex-1 overflow-y-auto p-4 space-y-2 max-h-[50vh] bg-[#14141f]">
+        <div className="flex-1 overflow-y-auto p-4 space-y-2 max-h-[50vh] bg-neutral-100/70 dark:bg-[#14141f]">
           {customPlaylists.length === 0 ? (
-            <div className="py-12 text-center text-neutral-400 flex flex-col items-center justify-center gap-3">
-              <div className="w-12 h-12 rounded-2xl bg-neutral-800/80 border border-neutral-700/50 flex items-center justify-center text-neutral-400">
+            <div className="py-12 text-center text-neutral-600 dark:text-neutral-400 flex flex-col items-center justify-center gap-3">
+              <div className="w-12 h-12 rounded-2xl bg-neutral-200 dark:bg-neutral-800/80 border border-neutral-300 dark:border-neutral-700/50 flex items-center justify-center text-neutral-600 dark:text-neutral-400">
                 <ListMusic className="w-6 h-6" />
               </div>
               <div className="flex flex-col items-center gap-1">
-                <p className="text-sm font-semibold text-white">Aucune playlist créée</p>
-                <p className="text-xs text-neutral-400 max-w-xs leading-relaxed">
+                <p className="text-sm font-semibold text-neutral-900 dark:text-white">Aucune playlist créée</p>
+                <p className="text-xs text-neutral-600 dark:text-neutral-400 max-w-xs leading-relaxed">
                   Vous n'avez pas encore de playlist personnalisée. Créez-en une pour pouvoir l'épingler dans votre menu latéral.
                 </p>
               </div>
@@ -269,8 +269,8 @@ export const ManageSidebarPlaylistsModal: React.FC<ManageSidebarPlaylistsModalPr
             </div>
           ) : filteredPlaylists.length === 0 ? (
             <div className="py-10 text-center text-neutral-500 flex flex-col items-center gap-2">
-              <Search className="w-8 h-8 text-neutral-600" />
-              <p className="text-xs">Aucune playlist ne correspond à « {searchQuery} »</p>
+              <Search className="w-8 h-8 text-neutral-400 dark:text-neutral-600" />
+              <p className="text-xs text-neutral-600 dark:text-neutral-400">Aucune playlist ne correspond à « {searchQuery} »</p>
             </div>
           ) : (
             filteredPlaylists.map((pl) => {
@@ -282,32 +282,32 @@ export const ManageSidebarPlaylistsModal: React.FC<ManageSidebarPlaylistsModalPr
                   onClick={() => handleToggle(pl)}
                   className={`flex items-center justify-between p-3 rounded-xl border transition-all cursor-pointer ${
                     isPinned
-                      ? 'bg-neutral-800/90 border-neutral-700 hover:bg-neutral-800'
-                      : 'bg-neutral-900/60 border-neutral-800 opacity-60 hover:opacity-90 hover:bg-neutral-900'
+                      ? 'bg-white dark:bg-neutral-800/90 border-neutral-300 dark:border-neutral-700 shadow-xs hover:border-neutral-400 dark:hover:bg-neutral-800'
+                      : 'bg-white/60 dark:bg-neutral-900/60 border-neutral-200 dark:border-neutral-800 opacity-70 hover:opacity-100 hover:bg-white dark:hover:bg-neutral-900'
                   }`}
                 >
                   <div className="flex items-center gap-3 min-w-0 pr-2">
                     <PlaylistIcon playlist={pl} size="sm" showCoverIfAvailable={true} />
                     <div className="flex flex-col min-w-0">
                       <div className="flex items-center gap-2">
-                        <span className="font-semibold text-xs text-white truncate">
+                        <span className="font-bold text-xs text-neutral-900 dark:text-white truncate">
                           {pl.title}
                         </span>
                         {isPinned ? (
-                          <span className={`flex items-center gap-1 text-[10px] font-medium px-1.5 py-0.5 rounded border ${
-                            ACCENT_BADGE[accent] || 'text-emerald-400 bg-emerald-500/10 border-emerald-500/20'
+                          <span className={`flex items-center gap-1 text-[10px] font-semibold px-1.5 py-0.5 rounded border ${
+                            ACCENT_BADGE[accent] || 'text-emerald-600 bg-emerald-500/15 border-emerald-500/30'
                           }`}>
                             <Pin className="w-2.5 h-2.5" />
                             Épinglée
                           </span>
                         ) : (
-                          <span className="flex items-center gap-1 text-[10px] font-medium text-neutral-500 px-1.5 py-0.5 rounded bg-neutral-800 border border-neutral-700">
+                          <span className="flex items-center gap-1 text-[10px] font-medium text-neutral-600 dark:text-neutral-400 px-1.5 py-0.5 rounded bg-neutral-100 dark:bg-neutral-800 border border-neutral-300 dark:border-neutral-700">
                             <PinOff className="w-2.5 h-2.5" />
                             Masquée
                           </span>
                         )}
                       </div>
-                      <span className="text-[10px] text-neutral-400 truncate">
+                      <span className="text-[10px] text-neutral-600 dark:text-neutral-400 font-medium truncate">
                         {pl.trackIds.length} morceau{pl.trackIds.length > 1 ? 'x' : ''}
                         {pl.description ? ` • ${pl.description}` : ''}
                       </span>
@@ -323,7 +323,7 @@ export const ManageSidebarPlaylistsModal: React.FC<ManageSidebarPlaylistsModalPr
                         handleToggle(pl);
                       }}
                       className={`w-6 h-6 rounded-lg flex items-center justify-center border transition-all cursor-pointer ${
-                        isPinned ? ACCENT_CHECK[accent] : 'border-neutral-700 bg-neutral-900 text-transparent'
+                        isPinned ? ACCENT_CHECK[accent] : 'border-neutral-300 dark:border-neutral-700 bg-neutral-100 dark:bg-neutral-900 text-transparent'
                       }`}
                     >
                       <Check className="w-3.5 h-3.5 stroke-[3]" />
@@ -336,12 +336,12 @@ export const ManageSidebarPlaylistsModal: React.FC<ManageSidebarPlaylistsModalPr
         </div>
 
         {/* Info banner & Footer */}
-        <div className="p-4 border-t border-neutral-800 bg-[#0d0d16] flex flex-col gap-3">
-          <div className="flex items-start gap-2 text-[11px] text-neutral-400 bg-neutral-900 p-2.5 rounded-xl border border-neutral-800">
-            <Info className="w-4 h-4 text-sky-400 flex-shrink-0 mt-0.5" />
+        <div className="p-4 border-t border-neutral-200 dark:border-neutral-800 bg-neutral-50 dark:bg-[#0d0d16] flex flex-col gap-3">
+          <div className="flex items-start gap-2 text-[11px] text-neutral-700 dark:text-neutral-400 bg-sky-50 dark:bg-neutral-900 p-2.5 rounded-xl border border-sky-200 dark:border-neutral-800">
+            <Info className="w-4 h-4 text-sky-600 dark:text-sky-400 flex-shrink-0 mt-0.5" />
             <p className="leading-relaxed">
-              Vous pouvez épingler au maximum <strong className="text-white font-medium">3 playlists</strong> dans le menu latéral (en plus des Favoris). Toutes vos playlists restent accessibles depuis{' '}
-              <strong className="text-white font-medium">« Toutes les Playlists »</strong>.
+              Vous pouvez épingler au maximum <strong className="text-neutral-900 dark:text-white font-semibold">3 playlists</strong> dans le menu latéral (en plus des Favoris). Toutes vos playlists restent accessibles depuis{' '}
+              <strong className="text-neutral-900 dark:text-white font-semibold">« Toutes les Playlists »</strong>.
             </p>
           </div>
 
@@ -353,9 +353,9 @@ export const ManageSidebarPlaylistsModal: React.FC<ManageSidebarPlaylistsModalPr
                   onClose();
                   onNavigate('playlists');
                 }}
-                className="text-xs text-neutral-400 hover:text-white flex items-center gap-1.5 transition-colors group cursor-pointer"
+                className="text-xs text-neutral-700 hover:text-neutral-950 dark:text-neutral-400 dark:hover:text-white flex items-center gap-1.5 transition-colors group cursor-pointer font-semibold"
               >
-                <ListMusic className="w-4 h-4 text-sky-400 group-hover:scale-110 transition-transform" />
+                <ListMusic className="w-4 h-4 text-sky-600 dark:text-sky-400 group-hover:scale-110 transition-transform" />
                 <span className="group-hover:underline">Voir toutes les playlists</span>
               </button>
             ) : (
@@ -370,7 +370,7 @@ export const ManageSidebarPlaylistsModal: React.FC<ManageSidebarPlaylistsModalPr
                     onClose();
                     onCreatePlaylist();
                   }}
-                  className="px-3 py-2 rounded-xl text-xs bg-neutral-800 hover:bg-neutral-700 text-neutral-200 transition-colors flex items-center gap-1.5 border border-neutral-700/50 cursor-pointer"
+                  className="px-3 py-2 rounded-xl text-xs bg-neutral-200/80 hover:bg-neutral-200 dark:bg-neutral-800 dark:hover:bg-neutral-700 text-neutral-900 dark:text-neutral-200 transition-colors flex items-center gap-1.5 border border-neutral-300 dark:border-neutral-700/50 cursor-pointer font-semibold"
                 >
                   <FolderPlus className="w-3.5 h-3.5" />
                   Nouvelle playlist

@@ -179,8 +179,8 @@ export const QueueDrawer: React.FC<QueueDrawerProps> = ({
                   </button>
 
                   <div className="flex-1 min-w-0" onClick={() => onSelectTrack(realIndex)}>
-                    <h5 className="text-xs font-semibold text-neutral-200 truncate cursor-pointer">{track.title}</h5>
-                    <p className="text-[11px] text-neutral-400 truncate">{track.artist}</p>
+                    <h5 className="text-xs font-semibold text-neutral-800 dark:text-neutral-200 hover:text-black dark:hover:text-white truncate cursor-pointer">{track.title}</h5>
+                    <p className="text-[11px] text-neutral-600 dark:text-neutral-400 truncate">{track.artist}</p>
                   </div>
 
                   {/* Move Up/Down Controls */}

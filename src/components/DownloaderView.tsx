@@ -445,33 +445,33 @@ export const DownloaderView: React.FC<DownloaderViewProps> = ({
   return (
     <div id="downloader-view" className="flex-1 h-full overflow-y-auto p-6 md:p-8 flex flex-col gap-6 select-none glass-main">
       {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-white/10 pb-6">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-neutral-200 dark:border-white/10 pb-6">
         <div className="flex items-center gap-3.5">
-          <div className="p-3 rounded-2xl bg-red-500/15 border border-red-500/30 text-red-400 shadow-sm backdrop-blur-md">
+          <div className="p-3 rounded-2xl bg-red-500/10 dark:bg-red-500/15 border border-red-500/20 dark:border-red-500/30 text-red-600 dark:text-red-400 shadow-sm backdrop-blur-md">
             <Download className="w-6 h-6" />
           </div>
           <div>
             <h1 className="text-2xl font-black text-neutral-900 dark:text-white tracking-tight flex items-center gap-2.5">
               <span>Téléchargeur Média</span>
-              <span className="text-xs font-mono font-semibold px-2 py-0.5 rounded-full bg-red-500/15 border border-red-500/30 text-red-400">
+              <span className="text-xs font-mono font-semibold px-2 py-0.5 rounded-full bg-red-500/10 dark:bg-red-500/15 border border-red-500/20 dark:border-red-500/30 text-red-700 dark:text-red-400">
                 yt-dlp & FFmpeg
               </span>
             </h1>
-            <p className="text-xs text-neutral-500 dark:text-neutral-400 mt-0.5">
+            <p className="text-xs text-neutral-600 dark:text-neutral-400 mt-0.5 font-medium">
               Téléchargez et convertissez vos musiques et vidéos en haute fidélité
             </p>
           </div>
         </div>
 
         {/* Tab Switcher */}
-        <div className="flex items-center gap-1.5 bg-white/5 dark:bg-white/5 p-1 rounded-xl border border-white/10 backdrop-blur-md self-start sm:self-auto">
+        <div className="flex items-center gap-1.5 bg-neutral-200/80 dark:bg-white/5 p-1 rounded-xl border border-neutral-300 dark:border-white/10 backdrop-blur-md self-start sm:self-auto">
           <button
             type="button"
             onClick={() => setActiveTab('single')}
-            className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
+            className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
               activeTab === 'single'
-                ? 'bg-white/15 dark:bg-white/20 text-neutral-900 dark:text-white shadow-xs font-bold'
-                : 'text-neutral-500 dark:text-neutral-400 hover:text-neutral-900 dark:hover:text-white'
+                ? 'bg-white shadow-xs text-neutral-900 border border-neutral-300/80 dark:bg-white/20 dark:text-white dark:border-transparent'
+                : 'text-neutral-700 dark:text-neutral-400 hover:text-neutral-950 dark:hover:text-white font-semibold'
             }`}
           >
             Lien Unique
@@ -479,10 +479,10 @@ export const DownloaderView: React.FC<DownloaderViewProps> = ({
           <button
             type="button"
             onClick={() => setActiveTab('batch')}
-            className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
+            className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
               activeTab === 'batch'
-                ? 'bg-white/15 dark:bg-white/20 text-neutral-900 dark:text-white shadow-xs font-bold'
-                : 'text-neutral-500 dark:text-neutral-400 hover:text-neutral-900 dark:hover:text-white'
+                ? 'bg-white shadow-xs text-neutral-900 border border-neutral-300/80 dark:bg-white/20 dark:text-white dark:border-transparent'
+                : 'text-neutral-700 dark:text-neutral-400 hover:text-neutral-950 dark:hover:text-white font-semibold'
             }`}
           >
             Par Lots
@@ -490,13 +490,13 @@ export const DownloaderView: React.FC<DownloaderViewProps> = ({
           <button
             type="button"
             onClick={() => setActiveTab('history')}
-            className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer flex items-center gap-1.5 ${
+            className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
               activeTab === 'history'
-                ? 'bg-white/15 dark:bg-white/20 text-neutral-900 dark:text-white shadow-xs font-bold'
-                : 'text-neutral-500 dark:text-neutral-400 hover:text-neutral-900 dark:hover:text-white'
+                ? 'bg-white shadow-xs text-neutral-900 border border-neutral-300/80 dark:bg-white/20 dark:text-white dark:border-transparent'
+                : 'text-neutral-700 dark:text-neutral-400 hover:text-neutral-950 dark:hover:text-white font-semibold'
             }`}
           >
-            <Clock className="w-3.5 h-3.5 text-red-400" />
+            <Clock className="w-3.5 h-3.5 text-red-600 dark:text-red-400" />
             <span>Historique ({history.length})</span>
           </button>
         </div>
@@ -506,10 +506,10 @@ export const DownloaderView: React.FC<DownloaderViewProps> = ({
       {activeTab === 'single' && (
         <div className="space-y-6">
           {/* Main Input Bar */}
-          <div className="p-4 rounded-2xl glass-card border border-white/10 shadow-xl space-y-3 backdrop-blur-xl">
-            <label className="text-xs font-bold text-neutral-800 dark:text-neutral-200 flex items-center gap-2">
-              <span>Collez l'URL de votre vidéo ou musique</span>
-              <span className="text-[10px] text-neutral-500 dark:text-neutral-400 font-normal">
+          <div className="p-4 rounded-2xl glass-card border border-neutral-200/80 dark:border-white/10 shadow-xl space-y-3 backdrop-blur-xl">
+            <label className="text-xs font-bold text-neutral-900 dark:text-neutral-200 flex items-center gap-2">
+              <span className="font-extrabold text-neutral-950 dark:text-white">Collez l'URL de votre vidéo ou musique</span>
+              <span className="text-[11px] text-neutral-700 dark:text-neutral-400 font-medium">
                 (YouTube, TikTok, SoundCloud, Instagram, X/Twitter, Vimeo...)
               </span>
             </label>
@@ -528,7 +528,7 @@ export const DownloaderView: React.FC<DownloaderViewProps> = ({
                     }
                   }}
                   placeholder="https://www.youtube.com/watch?v=... ou tiktok, soundcloud, x.com"
-                  className="w-full pl-4 pr-24 py-3 rounded-xl bg-black/30 dark:bg-black/40 border border-white/10 text-xs text-neutral-900 dark:text-white placeholder-neutral-500 focus:outline-none focus:ring-1 focus:ring-red-500/50 transition-all font-mono backdrop-blur-md"
+                  className="w-full pl-4 pr-24 py-3 rounded-xl bg-white dark:bg-black/40 border border-neutral-300 dark:border-white/10 text-xs text-neutral-900 dark:text-white placeholder-neutral-500 focus:outline-none focus:ring-1 focus:ring-red-500/50 transition-all font-mono shadow-xs backdrop-blur-md"
                 />
 
                 <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-1.5">
@@ -540,7 +540,7 @@ export const DownloaderView: React.FC<DownloaderViewProps> = ({
                         setInspectedMedia(null);
                         setInspectError(null);
                       }}
-                      className="px-2 py-1 text-[10px] text-neutral-500 dark:text-neutral-300 hover:text-neutral-900 dark:hover:text-white bg-white/10 hover:bg-white/20 rounded-md cursor-pointer transition-colors"
+                      className="px-2 py-1 text-[10px] text-neutral-600 dark:text-neutral-300 hover:text-neutral-950 dark:hover:text-white bg-neutral-100 dark:bg-white/10 hover:bg-neutral-200 dark:hover:bg-white/20 rounded-md cursor-pointer transition-colors border border-neutral-300/60 dark:border-transparent font-medium"
                     >
                       Effacer
                     </button>
@@ -548,7 +548,7 @@ export const DownloaderView: React.FC<DownloaderViewProps> = ({
                     <button
                       type="button"
                       onClick={handlePasteFromClipboard}
-                      className="px-2 py-1 text-[10px] text-neutral-500 dark:text-neutral-300 hover:text-neutral-900 dark:hover:text-white bg-white/10 hover:bg-white/20 rounded-md cursor-pointer flex items-center gap-1 transition-colors"
+                      className="px-2 py-1 text-[10px] text-neutral-600 dark:text-neutral-300 hover:text-neutral-950 dark:hover:text-white bg-neutral-100 dark:bg-white/10 hover:bg-neutral-200 dark:hover:bg-white/20 rounded-md cursor-pointer flex items-center gap-1 transition-colors border border-neutral-300/60 dark:border-transparent font-medium"
                     >
                       <Copy className="w-3 h-3" />
                       Coller
@@ -559,23 +559,24 @@ export const DownloaderView: React.FC<DownloaderViewProps> = ({
 
               <button
                 type="button"
+                id="downloader-inspect-btn"
                 onClick={() => handleInspectUrl()}
                 disabled={!inputUrl.trim() || isInspecting}
-                className={`w-full sm:w-auto px-5 py-3 rounded-xl text-xs font-bold flex items-center justify-center gap-2 shadow-md transition-all cursor-pointer ${
+                className={`w-full sm:w-auto px-5 py-3 rounded-xl text-xs font-bold flex items-center justify-center gap-2 shadow-sm transition-all cursor-pointer ${
                   !inputUrl.trim() || isInspecting
-                    ? 'opacity-50 cursor-not-allowed bg-white/10 text-neutral-500'
-                    : 'bg-red-600 hover:bg-red-500 text-white shadow-red-950/50'
+                    ? 'cursor-not-allowed bg-neutral-200/90 dark:bg-white/10 text-neutral-800 dark:text-neutral-400 border border-neutral-300 dark:border-white/10 font-bold'
+                    : 'bg-red-600 hover:bg-red-500 text-white shadow-md'
                 }`}
               >
                 {isInspecting ? (
                   <>
-                    <RefreshCw className="w-4 h-4 animate-spin text-white" />
+                    <RefreshCw className="w-4 h-4 animate-spin text-neutral-800 dark:text-white" />
                     <span>Analyse yt-dlp...</span>
                   </>
                 ) : (
                   <>
-                    <Search className="w-4 h-4" />
-                    <span>Analyser le média</span>
+                    <Search className={`w-4 h-4 shrink-0 ${!inputUrl.trim() || isInspecting ? 'text-neutral-700 dark:text-neutral-300' : 'text-white'}`} />
+                    <span className="font-bold">Analyser le média</span>
                   </>
                 )}
               </button>

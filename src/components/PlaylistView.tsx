@@ -536,11 +536,11 @@ export const PlaylistView: React.FC<PlaylistViewProps> = ({
                         </div>
                         <div className="min-w-0">
                           <div className={`font-semibold truncate transition-colors ${
-                            isCurrentTrack ? `${ACCENT_TEXT[accent]} font-bold` : 'text-neutral-200 group-hover:text-white'
+                            isCurrentTrack ? `${ACCENT_TEXT[accent]} font-bold` : 'text-neutral-900 dark:text-neutral-200 group-hover:text-black dark:group-hover:text-white'
                           }`}>
                             {track.title}
                           </div>
-                          <div className={`truncate text-[11px] ${isCurrentTrack ? 'text-neutral-300 font-medium' : 'text-neutral-400'}`}>
+                          <div className={`truncate text-[11px] ${isCurrentTrack ? 'text-neutral-700 dark:text-neutral-300 font-medium' : 'text-neutral-600 dark:text-neutral-400'}`}>
                             {track.artist}
                           </div>
                         </div>
