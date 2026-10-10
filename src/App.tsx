@@ -80,6 +80,8 @@ const DEFAULT_PLAYER_SETTINGS: PlayerSettings = {
   compactPlayerGhost: false,
   autoSkipOpening: false,
   marathonConfig: DEFAULT_MARATHON_CONFIG,
+  videoSkipForwardInterval: 10,
+  videoAspectRatio: 'contain',
 };
 
 const DEFAULT_EQ_SETTINGS: EqualizerSettings = {
@@ -143,7 +145,7 @@ export default function App() {
   const [playerSettings, setPlayerSettings] = useState<PlayerSettings>(DEFAULT_PLAYER_SETTINGS);
   const [equalizerSettings, setEqualizerSettings] = useState<EqualizerSettings>(DEFAULT_EQ_SETTINGS);
   const [settingsInitialTab, setSettingsInitialTab] = useState<
-    'appearance' | 'audio' | 'general' | 'system' | 'shortcuts'
+    'appearance' | 'audio' | 'video' | 'general' | 'system' | 'shortcuts'
   >('appearance');
 
   // Application Updates State
@@ -1875,6 +1877,8 @@ export default function App() {
         onToggleAutoSkip={(enabled) => handleUpdatePlayerSettings({ ...playerSettings, autoSkipOpening: enabled })}
         marathonConfig={playerSettings.marathonConfig}
         onUpdateMarathonConfig={(newCfg) => handleUpdatePlayerSettings({ ...playerSettings, marathonConfig: newCfg })}
+        videoSkipForwardInterval={playerSettings.videoSkipForwardInterval ?? 10}
+        videoAspectRatio={playerSettings.videoAspectRatio ?? 'contain'}
       />
 
       {/* Exclusive Floating Widget Mode: when active, the player becomes ONLY the floating widget */}

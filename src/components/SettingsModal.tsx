@@ -19,6 +19,7 @@ import {
   FolderPlus,
   Radio,
   Film,
+  Tv,
   Sliders,
   Download,
   ArrowUpCircle,
@@ -128,7 +129,7 @@ const SHORTCUT_GROUPS = [
   },
 ];
 
-type SettingsTab = 'appearance' | 'audio' | 'general' | 'system' | 'shortcuts';
+type SettingsTab = 'appearance' | 'audio' | 'video' | 'general' | 'system' | 'shortcuts';
 
 interface ToggleSwitchProps {
   id?: string;
@@ -473,6 +474,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   const TABS = [
     { id: 'appearance' as SettingsTab, label: 'Apparence', icon: Sparkles },
     { id: 'audio' as SettingsTab, label: 'Audio & Écoute', icon: Volume2 },
+    { id: 'video' as SettingsTab, label: 'Vidéo', icon: Film },
     { id: 'general' as SettingsTab, label: 'Général & Système', icon: Globe },
     { id: 'system' as SettingsTab, label: 'Moteurs & Fichiers', icon: Cpu },
     { id: 'shortcuts' as SettingsTab, label: 'Raccourcis Clavier', icon: Keyboard },
@@ -1109,11 +1111,167 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                   accent={accent}
                 />
               </div>
+            </div>
+          )}
 
-              {/* Saut Automatique des Openings (Auto-Skip) */}
+          {/* TAB : VIDÉO & LECTURE */}
+          {activeTab === 'video' && (
+            <div className="flex flex-col gap-5 animate-in fade-in duration-150">
+              {/* En-tête de section */}
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <Film className="w-4 h-4 text-sky-400" />
+                  <span className="text-xs uppercase tracking-wider text-neutral-300 font-bold">
+                    Paramètres Vidéo & Pas de Lecture
+                  </span>
+                </div>
+              </div>
+
+              {/* 1. Pas de saut temporel (Skip forward) */}
+              <div className="flex flex-col gap-3.5 bg-neutral-900/60 p-4.5 rounded-xl border border-neutral-800 hover:border-neutral-700/60 transition-colors">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <span className="font-semibold text-neutral-200 block text-xs">
+                      Intervalle d'avance rapide (Skip forward)
+                    </span>
+                    <span className="text-neutral-400 text-[11px] leading-relaxed">
+                      Définit le pas temporel en secondes lors d'une avance rapide (flèche droite →, bouton avance rapide ou double-clic droit).
+                    </span>
+                  </div>
+                  <span className="text-xs font-mono font-bold px-2.5 py-0.5 rounded-full bg-sky-950/80 text-sky-400 border border-sky-500/30 whitespace-nowrap">
+                    {settings.videoSkipForwardInterval ?? 10}s{' '}
+                    {(settings.videoSkipForwardInterval ?? 10) === 10
+                      ? '(Par défaut)'
+                      : (settings.videoSkipForwardInterval ?? 10) >= 60
+                      ? `(${Math.floor((settings.videoSkipForwardInterval ?? 10) / 60)} min${
+                          (settings.videoSkipForwardInterval ?? 10) % 60 > 0
+                            ? ` ${(settings.videoSkipForwardInterval ?? 10) % 60}s`
+                            : ''
+                        })`
+                      : ''}
+                  </span>
+                </div>
+
+                <div className="flex flex-col gap-2.5 pt-1">
+                  <div className="flex items-center gap-3">
+                    <span className="text-[11px] font-mono text-neutral-500 font-semibold w-8">5s</span>
+                    <input
+                      type="range"
+                      min={5}
+                      max={90}
+                      step={5}
+                      value={settings.videoSkipForwardInterval ?? 10}
+                      onChange={(e) => updateSetting('videoSkipForwardInterval', parseInt(e.target.value, 10))}
+                      className="flex-1 h-2 bg-neutral-800 rounded-lg appearance-none cursor-pointer accent-sky-400"
+                    />
+                    <span className="text-[11px] font-mono text-sky-400 font-bold w-16 text-right">90s (1m30)</span>
+                  </div>
+
+                  {/* Raccourcis / Préréglages rapides */}
+                  <div className="grid grid-cols-3 sm:grid-cols-6 gap-2 pt-1">
+                    {[
+                      { value: 5, label: '5s' },
+                      { value: 10, label: '10s (Défaut)' },
+                      { value: 15, label: '15s' },
+                      { value: 30, label: '30s' },
+                      { value: 60, label: '60s (1 min)' },
+                      { value: 90, label: '90s (1m30)' },
+                    ].map((preset) => {
+                      const isActive = (settings.videoSkipForwardInterval ?? 10) === preset.value;
+                      return (
+                        <button
+                          key={preset.value}
+                          type="button"
+                          onClick={() => updateSetting('videoSkipForwardInterval', preset.value)}
+                          className={`py-1.5 px-2 rounded-lg text-[11px] font-medium transition-all text-center cursor-pointer border ${
+                            isActive
+                              ? 'border-sky-500/60 bg-sky-500/20 text-sky-200 font-bold shadow-xs ring-1 ring-sky-500/30'
+                              : 'border-neutral-800 bg-neutral-900/60 text-neutral-400 hover:text-neutral-200 hover:border-neutral-700'
+                          }`}
+                        >
+                          {preset.label}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              </div>
+
+              {/* 2. Format & Ratio d'affichage (Aspect Ratio) */}
+              <div className="flex flex-col gap-3.5 bg-neutral-900/60 p-4.5 rounded-xl border border-neutral-800 hover:border-neutral-700/60 transition-colors">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <Tv className="w-4 h-4 text-sky-400" />
+                    <span className="font-semibold text-neutral-200 block text-xs">
+                      Ratio & Format d'affichage (Aspect Ratio)
+                    </span>
+                  </div>
+                  <span className="text-xs font-mono font-bold px-2.5 py-0.5 rounded-full bg-sky-950/80 text-sky-400 border border-sky-500/30 uppercase">
+                    {settings.videoAspectRatio ?? 'contain'}
+                  </span>
+                </div>
+                <p className="text-neutral-400 text-[11px] leading-relaxed">
+                  Détermine la mise à l'échelle de la vidéo à l'écran : ajuster avec barres d'adaptation, remplir sans bandes noires ou forcer le ratio 16:9.
+                </p>
+
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 pt-1">
+                  {[
+                    {
+                      id: 'contain' as const,
+                      label: 'Ajuster (Contain)',
+                      desc: 'Conserve les proportions originales sans déformation (recommandé).',
+                      badge: 'Défaut',
+                    },
+                    {
+                      id: 'cover' as const,
+                      label: 'Remplir (Cover)',
+                      desc: 'Occupe tout l\'écran sans bandes noires avec léger zoom centré.',
+                      badge: 'Immersif',
+                    },
+                    {
+                      id: '16-9' as const,
+                      label: 'Format 16:9',
+                      desc: 'Force le ratio panoramique standard 16:9 sur tout contenu vidéo.',
+                      badge: '16:9',
+                    },
+                  ].map((option) => {
+                    const isSelected = (settings.videoAspectRatio ?? 'contain') === option.id;
+                    return (
+                      <button
+                        key={option.id}
+                        type="button"
+                        onClick={() => updateSetting('videoAspectRatio', option.id)}
+                        className={`p-3 rounded-xl border flex flex-col justify-between text-left transition-all cursor-pointer gap-2 ${
+                          isSelected
+                            ? 'bg-neutral-800/90 border-sky-400/60 text-white ring-1 ring-sky-400/40 shadow-xs'
+                            : 'bg-neutral-950/60 border-neutral-800 text-neutral-400 hover:text-white hover:border-neutral-700'
+                        }`}
+                      >
+                        <div className="flex items-center justify-between">
+                          <span className="text-xs font-bold text-neutral-200">{option.label}</span>
+                          <span
+                            className={`text-[10px] font-mono px-1.5 py-0.5 rounded ${
+                              isSelected ? 'bg-sky-500/20 text-sky-300 font-bold' : 'text-neutral-500'
+                            }`}
+                          >
+                            {option.badge}
+                          </span>
+                        </div>
+                        <span className="text-[11px] text-neutral-400 leading-tight">
+                          {option.desc}
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* 3. Saut Automatique des Openings (Auto-Skip) */}
               <div className="flex items-center justify-between bg-neutral-900/60 p-4 rounded-xl border border-neutral-800 hover:border-neutral-700/60 transition-colors">
                 <div>
-                  <span className="font-semibold text-neutral-200 block text-xs">Saut automatique des intros & génériques (Auto-Skip)</span>
+                  <span className="font-semibold text-neutral-200 block text-xs">
+                    Saut automatique des intros & génériques (Auto-Skip)
+                  </span>
                   <span className="text-neutral-400 text-[11px] leading-relaxed">
                     Passe automatiquement les openings détectés (via chapitres, Aniskip ou empreinte acoustique).
                   </span>
@@ -1125,7 +1283,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                 />
               </div>
 
-              {/* Mode Marathon (Auto-Chain & Smart Transitions) */}
+              {/* 4. Mode Marathon (Auto-Chain & Smart Transitions) */}
               <div className="flex flex-col gap-3.5 bg-neutral-900/60 p-4.5 rounded-xl border border-neutral-800">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
@@ -1762,7 +1920,11 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                           key={sc.key}
                           className="flex items-center justify-between p-3 rounded-xl bg-neutral-900/60 border border-neutral-800 hover:border-neutral-700/80 transition-colors"
                         >
-                          <span className="text-xs text-neutral-300">{sc.desc}</span>
+                          <span className="text-xs text-neutral-300">
+                            {sc.key === 'Double-tap / Clic' && group.title.includes('Vidéo')
+                              ? `Reculer (-10s à gauche) / Avancer (+${settings.videoSkipForwardInterval ?? 10}s à droite)`
+                              : sc.desc}
+                          </span>
                           <kbd className="font-mono px-2.5 py-1 rounded-lg bg-neutral-950 border border-neutral-700/80 text-neutral-200 text-xs font-semibold shadow-xs">
                             {sc.key}
                           </kbd>

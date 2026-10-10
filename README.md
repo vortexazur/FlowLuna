@@ -4,7 +4,7 @@
   <img src="public/logo.jpg" alt="FlowLuna Logo" width="160" style="border-radius: 20px; margin-bottom: 12px;" />
 
   <p>
-    <a href="https://github.com/vortexazur/FlowLuna/releases"><img src="https://img.shields.io/badge/version-1.2.5-emerald.svg?style=for-the-badge" alt="Version" /></a>
+    <a href="https://github.com/vortexazur/FlowLuna/releases"><img src="https://img.shields.io/badge/version-1.2.6-emerald.svg?style=for-the-badge" alt="Version" /></a>
     <a href="https://github.com/vortexazur/FlowLuna"><img src="https://img.shields.io/badge/platform-Windows%2010%20%7C%2011%20x64-blue.svg?style=for-the-badge&logo=windows" alt="Platform" /></a>
     <a href="https://dotnet.microsoft.com/"><img src="https://img.shields.io/badge/.NET-9.0-512BD4.svg?style=for-the-badge&logo=dotnet" alt=".NET 9" /></a>
     <a href="https://developer.microsoft.com/microsoft-edge/webview2/"><img src="https://img.shields.io/badge/WebView2-Evergreen-0078D7.svg?style=for-the-badge&logo=microsoftedge" alt="WebView2" /></a>

@@ -5,7 +5,6 @@ import {
   Volume2,
   VolumeX,
   Maximize,
-  Minimize,
   Maximize2,
   RotateCcw,
   RotateCw,
@@ -14,7 +13,6 @@ import {
   PictureInPicture,
   X,
   Gauge,
-  Tv,
   Film,
   Sparkles,
   ChevronDown,
@@ -27,13 +25,13 @@ import {
   ListFilter,
   Zap,
 } from 'lucide-react';
-import { Track, AccentColor, MarathonConfig } from '../types';
+import { Track, AccentColor, MarathonConfig, VideoAspectRatio } from '../types';
 import { SkipOpeningButton } from './SkipOpeningButton';
 import { MarathonCountdownOverlay } from './MarathonCountdownOverlay';
 import { useMarathonController } from '../hooks/useMarathonController';
 
 export type VideoDisplayMode = 'theater' | 'pip' | 'hidden';
-export type VideoAspectRatio = 'contain' | 'cover' | '16-9';
+export type { VideoAspectRatio };
 
 interface VideoPlayerProps {
   currentTrack: Track | null;
@@ -66,6 +64,8 @@ interface VideoPlayerProps {
   onToggleAutoSkip?: (enabled: boolean) => void;
   marathonConfig?: MarathonConfig;
   onUpdateMarathonConfig?: (config: MarathonConfig) => void;
+  videoSkipForwardInterval?: number;
+  videoAspectRatio?: VideoAspectRatio;
 }
 
 export const VideoPlayer: React.FC<VideoPlayerProps> = ({
@@ -99,9 +99,10 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
   onToggleAutoSkip,
   marathonConfig,
   onUpdateMarathonConfig,
+  videoSkipForwardInterval = 10,
+  videoAspectRatio = 'contain',
 }) => {
   const [areControlsVisible, setAreControlsVisible] = useState(true);
-  const [aspectRatio, setAspectRatio] = useState<VideoAspectRatio>('contain');
   const [playbackSpeed, setPlaybackSpeed] = useState<number>(1);
   const [isSpeedMenuOpen, setIsSpeedMenuOpen] = useState(false);
   const [isHovered, setIsHovered] = useState(false);
@@ -276,7 +277,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
       } else if (e.code === 'ArrowRight') {
         e.preventDefault();
         e.stopPropagation();
-        triggerSeek(10);
+        triggerSeek(videoSkipForwardInterval);
       } else if (e.code === 'ArrowUp') {
         e.preventDefault();
         e.stopPropagation();
@@ -328,6 +329,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
     volume,
     onTogglePlay,
     triggerSeek,
+    videoSkipForwardInterval,
     onVolumeChange,
     onToggleMute,
     onSetVideoMode,
@@ -373,7 +375,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
       if (zone === 'left') {
         triggerSeek(-10);
       } else if (zone === 'right') {
-        triggerSeek(10);
+        triggerSeek(videoSkipForwardInterval);
       } else {
         toggleBrowserFullscreen();
       }
@@ -405,7 +407,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
       if (zone === 'left') {
         triggerSeek(-10);
       } else if (zone === 'right') {
-        triggerSeek(10);
+        triggerSeek(videoSkipForwardInterval);
       } else {
         toggleBrowserFullscreen();
       }
@@ -436,20 +438,14 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
     setIsSpeedMenuOpen(false);
   };
 
-  const cycleAspectRatio = () => {
-    if (aspectRatio === 'contain') setAspectRatio('cover');
-    else if (aspectRatio === 'cover') setAspectRatio('16-9');
-    else setAspectRatio('contain');
-  };
-
   // If there's no track or it's not a video, keep the video element mounted but off-screen
   const isHidden = !isVideo || videoMode === 'hidden';
 
   // Video object-fit style
   const videoObjectFitClass =
-    aspectRatio === 'cover'
+    videoAspectRatio === 'cover'
       ? 'object-cover'
-      : aspectRatio === '16-9'
+      : videoAspectRatio === '16-9'
       ? 'object-fill aspect-video'
       : 'object-contain';
 
@@ -574,9 +570,9 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
                 type="button"
                 onClick={(e) => {
                   e.stopPropagation();
-                  triggerSeek(10);
+                  triggerSeek(videoSkipForwardInterval);
                 }}
-                title="Avancer de 10 secondes (Double-tap droite ou →)"
+                title={`Avancer de ${videoSkipForwardInterval} secondes (Double-tap droite ou →)`}
                 className={`w-12 h-12 md:w-14 md:h-14 rounded-full bg-neutral-900/85 hover:bg-neutral-800 border text-white flex items-center justify-center shadow-2xl backdrop-blur-md cursor-pointer transition-all duration-200 ${
                   rightIndicatorActive
                     ? 'scale-125 bg-neutral-800 border-sky-400 text-sky-400 ring-4 ring-sky-500/30'
@@ -815,26 +811,6 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
 
               {/* Top Action Buttons */}
               <div className="flex items-center gap-2">
-                {/* Native Picture in Picture */}
-                <button
-                  type="button"
-                  onClick={handleNativePiP}
-                  title="Image dans l'image (Fenêtre flottante OS)"
-                  className="p-2 rounded-xl bg-neutral-900/80 hover:bg-neutral-800 border border-neutral-700/70 text-neutral-300 hover:text-white transition-colors cursor-pointer"
-                >
-                  <PictureInPicture className="w-4 h-4" />
-                </button>
-
-                {/* Switch to Floating Mini Player */}
-                <button
-                  type="button"
-                  onClick={() => onSetVideoMode('pip')}
-                  title="Réduire en lecteur flottant"
-                  className="p-2 rounded-xl bg-neutral-900/80 hover:bg-neutral-800 border border-neutral-700/70 text-neutral-300 hover:text-white transition-colors cursor-pointer"
-                >
-                  <Minimize className="w-4 h-4" />
-                </button>
-
                 {/* Close Video (revert to audio only) */}
                 <button
                   type="button"
@@ -950,12 +926,12 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
                     )}
                   </button>
 
-                  {/* Forward 10s */}
+                  {/* Forward */}
                   <button
                     type="button"
-                    onClick={() => triggerSeek(10)}
+                    onClick={() => triggerSeek(videoSkipForwardInterval)}
                     className="p-2 rounded-lg text-neutral-300 hover:text-white hover:bg-white/10 transition-colors cursor-pointer"
-                    title="Avancer de 10 secondes (Double-tap droite ou →)"
+                    title={`Avancer de ${videoSkipForwardInterval} secondes (Double-tap droite ou →)`}
                   >
                     <RotateCw className="w-4 h-4" />
                   </button>
@@ -1000,19 +976,8 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
                   </span>
                 </div>
 
-                {/* Right: Aspect ratio, Speed, Fullscreen */}
+                {/* Right: Speed, Fullscreen */}
                 <div className="flex items-center gap-2">
-                  {/* Aspect ratio switch */}
-                  <button
-                    type="button"
-                    onClick={cycleAspectRatio}
-                    className="px-2.5 py-1.5 rounded-lg text-xs font-mono font-semibold bg-neutral-900/80 hover:bg-neutral-800 border border-neutral-700/60 text-neutral-300 hover:text-white transition-colors cursor-pointer flex items-center gap-1.5"
-                    title="Changer le ratio d'affichage (Ajuster / Remplir / 16:9)"
-                  >
-                    <Tv className="w-3.5 h-3.5 text-sky-400" />
-                    <span className="uppercase text-[11px]">{aspectRatio}</span>
-                  </button>
-
                   {/* Playback Speed Dropdown */}
                   <div className="relative">
                     <button
@@ -1044,16 +1009,6 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
                       </div>
                     )}
                   </div>
-
-                  {/* Native Picture in Picture */}
-                  <button
-                    type="button"
-                    onClick={handleNativePiP}
-                    className="p-2 rounded-lg text-neutral-300 hover:text-white hover:bg-white/10 transition-colors cursor-pointer"
-                    title="Mode Image dans l'image"
-                  >
-                    <PictureInPicture className="w-4 h-4" />
-                  </button>
 
                   {/* Browser Fullscreen */}
                   <button

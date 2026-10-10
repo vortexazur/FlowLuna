@@ -1,4 +1,4 @@
-export const APP_VERSION = '1.2.5';
+export const APP_VERSION = '1.2.6';
 
 export type MediaFormat =
   | 'mp3'
@@ -154,6 +154,8 @@ export type AccentColor =
 
 export type CompactPlayerDock = 'bottom' | 'top' | 'floating';
 
+export type VideoAspectRatio = 'contain' | 'cover' | '16-9';
+
 export type BackdropEffect = 'glass' | 'acrylic' | 'mica';
 
 export type LanguageCode = 'fr' | 'en' | 'es' | 'de' | 'it' | 'pt' | 'ja' | 'zh' | 'ru';
@@ -206,4 +208,6 @@ export interface PlayerSettings {
   playbackSpeed?: number; // 0.5 to 2.0
   autoSkipOpening?: boolean; // Saut automatique des génériques/openings (Auto-skip)
   marathonConfig?: MarathonConfig; // Mode Marathon (Auto-chain & transitions intelligentes)
+  videoSkipForwardInterval?: number; // Intervalle d'avance rapide en secondes (5s à 90s, step 5s, défaut 10s)
+  videoAspectRatio?: VideoAspectRatio; // Ratio d'affichage vidéo ('contain', 'cover', '16-9')
 }
