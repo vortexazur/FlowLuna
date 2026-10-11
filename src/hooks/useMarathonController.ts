@@ -77,6 +77,7 @@ export function useMarathonController({
   const hasSkippedEdRef = useRef<boolean>(false);
   const hasTriggeredTransitionRef = useRef<boolean>(false);
   const isCancelledRef = useRef<boolean>(false);
+  const isSeekingRef = useRef<boolean>(false);
   const countdownEndTimeRef = useRef<number>(0);
   const countdownIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const toastTimeoutRef = useRef<NodeJS.Timeout | null>(null);
@@ -163,6 +164,7 @@ export function useMarathonController({
     hasSkippedEdRef.current = false;
     hasTriggeredTransitionRef.current = false;
     isCancelledRef.current = false;
+    isSeekingRef.current = false;
     if (countdownIntervalRef.current) {
       clearInterval(countdownIntervalRef.current);
       countdownIntervalRef.current = null;
@@ -248,11 +250,15 @@ export function useMarathonController({
 
   // Manual Action: Skip Opening
   const skipOpening = useCallback(() => {
-    if (!markers?.op) return;
+    if (!markers?.op || isSeekingRef.current) return;
+    isSeekingRef.current = true;
     hasSkippedOpRef.current = true;
     onSeek(markers.op.end);
     setIsOpButtonVisible(false);
     showToast('Opening passé');
+    setTimeout(() => {
+      isSeekingRef.current = false;
+    }, 500);
   }, [markers?.op, onSeek, showToast]);
 
   // Toggle Marathon Mode enabled
@@ -320,30 +326,42 @@ export function useMarathonController({
       }
     }
 
-    // 2. Auto-Skip OP (Rule 1)
-    if (markers?.op && !hasSkippedOpRef.current) {
-      const { start: opStart, end: opEnd } = markers.op;
+    // 2. Auto-Skip OP (Garde-fous stricts : jamais d'auto-skip en heuristique ou si drift détecté)
+    if (markers?.op) {
+      const { start: opStart, end: opEnd, source: opSource } = markers.op;
       const isInsideOp = currentTime >= opStart && currentTime < opEnd;
 
       if (isInsideOp) {
         const isFirstEpisode = episodeNumber === 1;
-        // Si Marathon est activé : on respecte skipFirstEpisodeOp
-        // Si Marathon est désactivé mais autoSkipOpening est activé : on saute
-        const shouldAutoSkip = config.enabled
-          ? !isFirstEpisode || config.skipFirstEpisodeOp
+        // Configuration utilisateur autorisant le saut
+        const isConfiguredToAutoSkip = config.enabled
+          ? (!isFirstEpisode || config.skipFirstEpisodeOp)
           : autoSkipOpening;
 
-        if (shouldAutoSkip) {
-          hasSkippedOpRef.current = true;
-          onSeek(opEnd);
-          setIsOpButtonVisible(false);
-          showToast('Opening passé automatiquement');
+        // Règle stricte :
+        // - Interdiction d'auto-skip sans confirmation si source === 'heuristic'
+        // - Interdiction d'auto-skip sans confirmation si driftDetected === true
+        const canAutoSkipOp =
+          isConfiguredToAutoSkip &&
+          opSource !== 'heuristic' &&
+          !markers.driftDetected;
+
+        if (canAutoSkipOp) {
+          if (!isSeekingRef.current && !hasSkippedOpRef.current) {
+            isSeekingRef.current = true;
+            hasSkippedOpRef.current = true;
+            onSeek(opEnd);
+            setIsOpButtonVisible(false);
+            showToast('Opening passé automatiquement');
+            setTimeout(() => {
+              isSeekingRef.current = false;
+            }, 500);
+          }
         } else {
-          // Sur l'épisode 1 quand skipFirstEpisodeOp est faux : on propose le bouton manuel
+          // Dans tous les cas d'incertitude (heuristique, drift) ou premier épisode manuel :
+          // forcer l'affichage du bouton manuel même si autoSkipOpening: true
           setIsOpButtonVisible(true);
         }
-      } else if (currentTime >= opEnd) {
-        setIsOpButtonVisible(false);
       } else {
         setIsOpButtonVisible(false);
       }
@@ -365,10 +383,14 @@ export function useMarathonController({
           // Cas B : Présence d'un teaser ou scène post-crédits
           if (config.playPostCreditsScene) {
             // Sauter l'ED pour aller directement au teaser
-            if (config.skipEnding && isInsideEd && !hasSkippedEdRef.current) {
+            if (config.skipEnding && isInsideEd && !hasSkippedEdRef.current && !isSeekingRef.current) {
+              isSeekingRef.current = true;
               hasSkippedEdRef.current = true;
               onSeek(edEnd);
               showToast('Ending passé (Lecture du teaser / scène post-crédits)');
+              setTimeout(() => {
+                isSeekingRef.current = false;
+              }, 500);
             }
             // Transition dès la fin du teaser / fin de la vidéo
             const isNearPostCreditsEnd =

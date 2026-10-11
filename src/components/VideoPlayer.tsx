@@ -6,6 +6,7 @@ import {
   VolumeX,
   Maximize,
   Maximize2,
+  Minimize,
   RotateCcw,
   RotateCw,
   SkipBack,
@@ -51,6 +52,7 @@ interface VideoPlayerProps {
   onNext: () => void;
   videoMode: VideoDisplayMode;
   onSetVideoMode: (mode: VideoDisplayMode) => void;
+  onClose?: () => void;
   accent: AccentColor;
   videoRef: React.RefObject<HTMLVideoElement | null>;
   queue?: Track[];
@@ -66,6 +68,7 @@ interface VideoPlayerProps {
   onUpdateMarathonConfig?: (config: MarathonConfig) => void;
   videoSkipForwardInterval?: number;
   videoAspectRatio?: VideoAspectRatio;
+  wheelSeekStep?: number;
 }
 
 export const VideoPlayer: React.FC<VideoPlayerProps> = ({
@@ -86,6 +89,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
   onNext,
   videoMode,
   onSetVideoMode,
+  onClose,
   accent,
   videoRef,
   queue = [],
@@ -101,6 +105,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
   onUpdateMarathonConfig,
   videoSkipForwardInterval = 10,
   videoAspectRatio = 'contain',
+  wheelSeekStep = 5,
 }) => {
   const [areControlsVisible, setAreControlsVisible] = useState(true);
   const [playbackSpeed, setPlaybackSpeed] = useState<number>(1);
@@ -152,11 +157,11 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
   const rightIndicatorTimerRef = useRef<NodeJS.Timeout | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Click & Touch debouncing for double-tap / click detection
+  // Click, Touch & Wheel debouncing
   const clickTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-  const lastTapLeftRef = useRef<number>(0);
-  const lastTapRightRef = useRef<number>(0);
-  const lastTapCenterRef = useRef<number>(0);
+  const lastTapRef = useRef<number>(0);
+  const lastWheelTimeRef = useRef<number>(0);
+  const [isFullscreen, setIsFullscreen] = useState<boolean>(false);
 
   const isVideo = !!currentTrack?.isVideo;
 
@@ -255,6 +260,23 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
     };
   }, [videoMode, isPlaying, isSpeedMenuOpen, isQueueOpen]);
 
+  const triggerClickAnim = (type: 'play' | 'pause') => {
+    setClickAnim(type);
+    setTimeout(() => setClickAnim(null), 500);
+  };
+
+  const toggleFullscreen = useCallback(() => {
+    if (videoMode === 'pip') {
+      onSetVideoMode('theater');
+      return;
+    }
+    if (!document.fullscreenElement) {
+      containerRef.current?.requestFullscreen?.().catch(() => {});
+    } else {
+      document.exitFullscreen?.().catch(() => {});
+    }
+  }, [videoMode, onSetVideoMode]);
+
   // Keyboard shortcuts when in theater mode
   useEffect(() => {
     if (videoMode !== 'theater') return;
@@ -291,7 +313,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
         onToggleMute();
       } else if (e.key === 'f' || e.key === 'F') {
         e.stopPropagation();
-        toggleBrowserFullscreen();
+        toggleFullscreen();
       } else if (e.key === 's' || e.key === 'S') {
         e.stopPropagation();
         if (skipInterval) {
@@ -313,6 +335,8 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
           setIsQueueOpen(false);
         } else if (isSpeedMenuOpen) {
           setIsSpeedMenuOpen(false);
+        } else if (document.fullscreenElement) {
+          document.exitFullscreen?.().catch(() => {});
         } else {
           onSetVideoMode('pip');
         }
@@ -343,38 +367,83 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
     onNext,
     queue,
     currentTrackIndex,
+    toggleFullscreen,
   ]);
 
-  const triggerClickAnim = (type: 'play' | 'pause') => {
-    setClickAnim(type);
-    setTimeout(() => setClickAnim(null), 500);
-  };
 
-  const toggleBrowserFullscreen = () => {
-    if (!document.fullscreenElement) {
-      containerRef.current?.requestFullscreen?.().catch(() => {});
-    } else {
+  // Déchargement complet et fermeture du lecteur vidéo (reset du store média et sortie du plein écran)
+  const handleClose = useCallback(() => {
+    if (document.fullscreenElement) {
       document.exitFullscreen?.().catch(() => {});
     }
-  };
-
-  // Sync videoMode when fullscreen is exited natively (e.g. pressing Escape)
-  React.useEffect(() => {
-    const handleFullscreenChange = () => {
-      if (!document.fullscreenElement && videoMode === 'theater') {
-        onSetVideoMode('hidden');
+    if (videoRef.current) {
+      try {
+        videoRef.current.pause();
+        videoRef.current.removeAttribute('src');
+        videoRef.current.load();
+      } catch (err) {
+        console.warn('Erreur lors du déchargement vidéo:', err);
       }
+    }
+    onSetVideoMode('hidden');
+    onClose?.();
+  }, [onSetVideoMode, onClose, videoRef]);
+
+  // Synchronisation de l'état de plein écran natif (F ou Escape)
+  useEffect(() => {
+    const handleFullscreenChange = () => {
+      setIsFullscreen(!!document.fullscreenElement);
     };
     document.addEventListener('fullscreenchange', handleFullscreenChange);
     return () => document.removeEventListener('fullscreenchange', handleFullscreenChange);
-  }, [videoMode, onSetVideoMode]);
+  }, []);
 
-  // Lateral and central click / double-click / double-tap handling
-  const handleZoneClick = (zone: 'left' | 'center' | 'right', e: React.MouseEvent) => {
+  // Détection si le lecteur vidéo doit être masqué / libéré
+  const isHidden = !currentTrack || !isVideo || videoMode === 'hidden';
+
+  // Navigation temporelle à la molette (Wheel Seek) avec throttle et preventDefault()
+  useEffect(() => {
+    const container = containerRef.current;
+    if (!container || isHidden) return;
+
+    const handleWheel = (e: WheelEvent) => {
+      // Laisser défiler normalement si le curseur est dans la file d'attente
+      if ((e.target as HTMLElement)?.closest('.custom-scrollbar, .overflow-y-auto')) {
+        return;
+      }
+      e.preventDefault();
+      e.stopPropagation();
+
+      const now = Date.now();
+      if (now - lastWheelTimeRef.current < 100) {
+        return;
+      }
+      lastWheelTimeRef.current = now;
+
+      const delta = e.deltaY !== 0 ? e.deltaY : -e.deltaX;
+      if (delta < 0) {
+        triggerSeek(wheelSeekStep);
+      } else if (delta > 0) {
+        triggerSeek(-wheelSeekStep);
+      }
+    };
+
+    container.addEventListener('wheel', handleWheel, { passive: false });
+    return () => {
+      container.removeEventListener('wheel', handleWheel);
+    };
+  }, [isHidden, wheelSeekStep, triggerSeek]);
+
+  // Arbitrage du simple clic (Play/Pause) vs double-clic (Plein écran) sur le flux vidéo
+  const handleStreamClick = (e: React.MouseEvent) => {
     e.stopPropagation();
 
     if (isQueueOpen) {
       setIsQueueOpen(false);
+      return;
+    }
+    if (isSpeedMenuOpen) {
+      setIsSpeedMenuOpen(false);
       return;
     }
 
@@ -383,20 +452,15 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
         clearTimeout(clickTimeoutRef.current);
         clickTimeoutRef.current = null;
       }
-      if (zone === 'left') {
-        triggerSeek(-10);
-      } else if (zone === 'right') {
-        triggerSeek(videoSkipForwardInterval);
-      } else {
-        toggleBrowserFullscreen();
-      }
+      toggleFullscreen();
       return;
     }
 
     if (e.detail === 1) {
       if (clickTimeoutRef.current) clearTimeout(clickTimeoutRef.current);
       clickTimeoutRef.current = setTimeout(() => {
-        if (!areControlsVisible) {
+        clickTimeoutRef.current = null;
+        if (videoMode === 'theater' && !areControlsVisible) {
           setAreControlsVisible(true);
         } else {
           onTogglePlay();
@@ -406,25 +470,27 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
     }
   };
 
-  const handleZoneTouchEnd = (zone: 'left' | 'center' | 'right', e: React.TouchEvent) => {
+  const handleStreamDoubleClick = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (clickTimeoutRef.current) {
+      clearTimeout(clickTimeoutRef.current);
+      clickTimeoutRef.current = null;
+    }
+    toggleFullscreen();
+  };
+
+  const handleStreamTouchEnd = (e: React.TouchEvent) => {
     const now = Date.now();
-    const tapRef = zone === 'left' ? lastTapLeftRef : zone === 'right' ? lastTapRightRef : lastTapCenterRef;
-    if (now - tapRef.current < 300) {
+    if (now - lastTapRef.current < 300) {
       e.preventDefault();
       if (clickTimeoutRef.current) {
         clearTimeout(clickTimeoutRef.current);
         clickTimeoutRef.current = null;
       }
-      if (zone === 'left') {
-        triggerSeek(-10);
-      } else if (zone === 'right') {
-        triggerSeek(videoSkipForwardInterval);
-      } else {
-        toggleBrowserFullscreen();
-      }
-      tapRef.current = 0;
+      toggleFullscreen();
+      lastTapRef.current = 0;
     } else {
-      tapRef.current = now;
+      lastTapRef.current = now;
     }
   };
 
@@ -449,9 +515,6 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
     setIsSpeedMenuOpen(false);
   };
 
-  // If there's no track or it's not a video, keep the video element mounted but off-screen
-  const isHidden = !isVideo || videoMode === 'hidden';
-
   // Video object-fit style
   const videoObjectFitClass =
     videoAspectRatio === 'cover'
@@ -460,20 +523,36 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
       ? 'object-fill aspect-video'
       : 'object-contain';
 
+  // Si le lecteur est inactif/fermé : démonter tout le décor/overlay et préserver uniquement la balise média
+  if (isHidden) {
+    return (
+      <div className="hidden pointer-events-none" aria-hidden="true">
+        <video
+          ref={videoRef as any}
+          className="hidden"
+          playsInline
+          preload="auto"
+          crossOrigin="anonymous"
+          onPlay={onPlay}
+          onPause={onPause}
+          onError={onError}
+        />
+      </div>
+    );
+  }
+
   return (
     <div
       ref={containerRef}
       onMouseEnter={() => setIsHovered(true)}
       onMouseLeave={() => setIsHovered(false)}
       className={`transition-all duration-300 select-none ${
-        isHidden
-          ? 'fixed -top-[9999px] -left-[9999px] w-1 h-1 opacity-0 pointer-events-none'
-          : videoMode === 'theater'
+        videoMode === 'theater'
           ? 'fixed inset-0 z-50 bg-black flex flex-col justify-between overflow-hidden animate-in fade-in duration-200'
           : 'fixed bottom-28 right-6 z-40 w-80 md:w-96 aspect-video rounded-2xl shadow-2xl border border-neutral-800 bg-neutral-950 overflow-hidden group hover:border-neutral-700 hover:shadow-cyan-950/20 transition-all animate-in slide-in-from-bottom-5 duration-200'
       }`}
       style={
-        videoMode === 'pip' && !isHidden
+        videoMode === 'pip'
           ? {
               boxShadow: '0 20px 45px -8px rgba(0, 0, 0, 0.9), 0 8px 18px -4px rgba(0, 0, 0, 0.7)',
             }
@@ -482,20 +561,10 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
     >
       {/* Video Media Screen Container */}
       <div
-        className="relative w-full h-full flex items-center justify-center bg-black overflow-hidden"
-        onClick={() => {
-          if (videoMode === 'pip') {
-            onTogglePlay();
-            triggerClickAnim(isPlaying ? 'pause' : 'play');
-          } else if (isQueueOpen) {
-            setIsQueueOpen(false);
-          }
-        }}
-        onDoubleClick={() => {
-          if (videoMode === 'pip') {
-            onSetVideoMode('theater');
-          }
-        }}
+        className="relative w-full h-full flex items-center justify-center bg-black overflow-hidden cursor-pointer"
+        onClick={handleStreamClick}
+        onDoubleClick={handleStreamDoubleClick}
+        onTouchEnd={handleStreamTouchEnd}
       >
         {/* The single persistent video element attached to audio pipeline */}
         <video
@@ -527,23 +596,6 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
         {/* ============================================================ */}
         {videoMode === 'theater' && (
           <>
-            {/* Lateral and Center Touch / Click Zones (double-tap / clic rapide +/- 10s) */}
-            <div
-              className="absolute top-16 bottom-24 left-0 w-1/4 md:w-1/3 z-20 cursor-pointer"
-              onClick={(e) => handleZoneClick('left', e)}
-              onTouchEnd={(e) => handleZoneTouchEnd('left', e)}
-            />
-            <div
-              className="absolute top-16 bottom-24 right-0 w-1/4 md:w-1/3 z-20 cursor-pointer"
-              onClick={(e) => handleZoneClick('right', e)}
-              onTouchEnd={(e) => handleZoneTouchEnd('right', e)}
-            />
-            <div
-              className="absolute top-16 bottom-24 left-1/4 md:left-1/3 right-1/4 md:right-1/3 z-10 cursor-pointer"
-              onClick={(e) => handleZoneClick('center', e)}
-              onTouchEnd={(e) => handleZoneTouchEnd('center', e)}
-            />
-
             {/* Left Lateral Skip Indicator (Image 3) */}
             <div
               className={`absolute left-4 md:left-6 top-1/2 -translate-y-1/2 z-30 transition-all duration-300 ${
@@ -822,11 +874,21 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
 
               {/* Top Action Buttons */}
               <div className="flex items-center gap-2">
-                {/* Close Video (revert to audio only) */}
+                {/* Fullscreen Button */}
                 <button
                   type="button"
-                  onClick={() => onSetVideoMode('hidden')}
-                  title="Fermer la vidéo (Écouter l'audio en arrière-plan)"
+                  onClick={toggleFullscreen}
+                  title={isFullscreen ? 'Quitter le plein écran (F)' : 'Plein écran (F)'}
+                  className="p-2 rounded-xl bg-neutral-900/80 hover:bg-neutral-800 border border-neutral-700/70 text-neutral-300 hover:text-white transition-colors cursor-pointer"
+                >
+                  {isFullscreen ? <Minimize className="w-4 h-4" /> : <Maximize className="w-4 h-4" />}
+                </button>
+
+                {/* Close Video (revert and stop) */}
+                <button
+                  type="button"
+                  onClick={handleClose}
+                  title="Fermer la vidéo"
                   className="p-2 rounded-xl bg-neutral-900/80 hover:bg-red-950/80 hover:text-red-400 border border-neutral-700/70 text-neutral-300 transition-colors cursor-pointer"
                 >
                   <X className="w-4 h-4" />
@@ -834,7 +896,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
               </div>
             </div>
 
-            {/* Bouton d'action flottant "Passer l'opening" (Étape 2) */}
+            {/* Bouton d'action flottant "Passer l'opening" (Étape 2 & 4) */}
             <SkipOpeningButton
               isVisible={isSkipButtonVisible}
               interval={skipInterval}
@@ -842,6 +904,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
               autoSkipEnabled={!!autoSkipOpening}
               onToggleAutoSkip={(enabled) => onToggleAutoSkip?.(enabled)}
               autoSkippedToast={marathonToast}
+              driftDetected={markers?.driftDetected}
             />
 
             {/* Overlay Compte à Rebours Mode Marathon (Étape 3) */}
@@ -866,28 +929,68 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
             >
               {/* Progress Scrubber */}
               <div className="relative group/scrubber flex items-center">
-                {/* Repère visuel de l'opening détecté sur la timeline */}
-                {skipInterval && duration > 0 && (
-                  <div
-                    className="absolute h-1.5 group-hover/scrubber:h-2.5 rounded-lg bg-sky-400/50 pointer-events-none z-10 transition-all shadow-xs"
-                    style={{
-                      left: `${Math.max(0, Math.min(100, (skipInterval.start / duration) * 100))}%`,
-                      width: `${Math.max(0.5, Math.min(100, ((skipInterval.end - skipInterval.start) / duration) * 100))}%`,
-                    }}
-                    title={`Opening : ${formatTime(skipInterval.start)} - ${formatTime(skipInterval.end)}`}
-                  />
-                )}
-                {/* Repère visuel de l'ending détecté sur la timeline (Étape 3) */}
-                {markers?.ed && duration > 0 && (
-                  <div
-                    className="absolute h-1.5 group-hover/scrubber:h-2.5 rounded-lg bg-purple-400/50 pointer-events-none z-10 transition-all shadow-xs"
-                    style={{
-                      left: `${Math.max(0, Math.min(100, (markers.ed.start / duration) * 100))}%`,
-                      width: `${Math.max(0.5, Math.min(100, ((markers.ed.end - markers.ed.start) / duration) * 100))}%`,
-                    }}
-                    title={`Ending : ${formatTime(markers.ed.start)} - ${formatTime(markers.ed.end)}`}
-                  />
-                )}
+                {/* Repère visuel de l'opening détecté sur la timeline (avec motif hachuré / opacité 30% si incertain) */}
+                {skipInterval && duration > 0 && (() => {
+                  const isOpUncertain = skipInterval.source === 'heuristic' || !!markers?.driftDetected;
+                  return (
+                    <div
+                      className={`absolute h-1.5 group-hover/scrubber:h-2.5 rounded-lg pointer-events-none z-10 transition-all shadow-xs ${
+                        isOpUncertain
+                          ? 'opacity-30 border border-dashed border-amber-400/60'
+                          : 'bg-sky-400/50'
+                      }`}
+                      style={{
+                        left: `${Math.max(0, Math.min(100, (skipInterval.start / duration) * 100))}%`,
+                        width: `${Math.max(0.5, Math.min(100, ((skipInterval.end - skipInterval.start) / duration) * 100))}%`,
+                        ...(isOpUncertain
+                          ? {
+                              backgroundImage:
+                                skipInterval.source === 'heuristic'
+                                  ? 'repeating-linear-gradient(45deg, rgba(100, 116, 139, 0.5), rgba(100, 116, 139, 0.5) 4px, transparent 4px, transparent 8px)'
+                                  : 'repeating-linear-gradient(45deg, rgba(245, 158, 11, 0.5), rgba(245, 158, 11, 0.5) 4px, transparent 4px, transparent 8px)',
+                            }
+                          : {}),
+                      }}
+                      title={`Opening (${
+                        isOpUncertain
+                          ? markers?.driftDetected
+                            ? 'Décalage possible'
+                            : 'Incertain'
+                          : 'Vérifié'
+                      }) : ${formatTime(skipInterval.start)} - ${formatTime(skipInterval.end)}`}
+                    />
+                  );
+                })()}
+                {/* Repère visuel de l'ending détecté sur la timeline (avec motif hachuré / opacité 30% si incertain) */}
+                {markers?.ed && duration > 0 && (() => {
+                  const isEdUncertain = markers.ed.source === 'heuristic' || !!markers?.driftDetected;
+                  return (
+                    <div
+                      className={`absolute h-1.5 group-hover/scrubber:h-2.5 rounded-lg pointer-events-none z-10 transition-all shadow-xs ${
+                        isEdUncertain
+                          ? 'opacity-30 border border-dashed border-purple-400/60'
+                          : 'bg-purple-400/50'
+                      }`}
+                      style={{
+                        left: `${Math.max(0, Math.min(100, (markers.ed.start / duration) * 100))}%`,
+                        width: `${Math.max(0.5, Math.min(100, ((markers.ed.end - markers.ed.start) / duration) * 100))}%`,
+                        ...(isEdUncertain
+                          ? {
+                              backgroundImage:
+                                'repeating-linear-gradient(45deg, rgba(168, 85, 247, 0.5), rgba(168, 85, 247, 0.5) 4px, transparent 4px, transparent 8px)',
+                            }
+                          : {}),
+                      }}
+                      title={`Ending (${
+                        isEdUncertain
+                          ? markers?.driftDetected
+                            ? 'Décalage possible'
+                            : 'Incertain'
+                          : 'Vérifié'
+                      }) : ${formatTime(markers.ed.start)} - ${formatTime(markers.ed.end)}`}
+                    />
+                  );
+                })()}
                 <input
                   type="range"
                   min={0}
@@ -1024,11 +1127,11 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
                   {/* Browser Fullscreen */}
                   <button
                     type="button"
-                    onClick={toggleBrowserFullscreen}
+                    onClick={toggleFullscreen}
                     className="p-2 rounded-lg text-neutral-300 hover:text-white hover:bg-white/10 transition-colors cursor-pointer"
-                    title="Plein écran (F)"
+                    title={isFullscreen ? 'Quitter le plein écran (F)' : 'Plein écran (F)'}
                   >
-                    <Maximize className="w-4 h-4" />
+                    {isFullscreen ? <Minimize className="w-4 h-4" /> : <Maximize className="w-4 h-4" />}
                   </button>
                 </div>
               </div>
@@ -1055,8 +1158,8 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
                 {/* Maximize to Theater */}
                 <button
                   type="button"
-                  onClick={() => onSetVideoMode('theater')}
-                  title="Agrandir en mode cinéma"
+                  onClick={toggleFullscreen}
+                  title="Agrandir en plein écran (Mode cinéma)"
                   className="p-1 rounded-md bg-black/60 hover:bg-neutral-800 text-white cursor-pointer"
                 >
                   <Maximize2 className="w-3.5 h-3.5" />
@@ -1073,8 +1176,8 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
                 {/* Close/Hide Video */}
                 <button
                   type="button"
-                  onClick={() => onSetVideoMode('hidden')}
-                  title="Fermer la vidéo (Écouter l'audio)"
+                  onClick={handleClose}
+                  title="Fermer la vidéo"
                   className="p-1 rounded-md bg-black/60 hover:bg-red-900/80 text-white cursor-pointer"
                 >
                   <X className="w-3.5 h-3.5" />

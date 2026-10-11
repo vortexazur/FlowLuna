@@ -1,4 +1,4 @@
-export const APP_VERSION = '1.2.8';
+export const APP_VERSION = '1.2.9';
 
 export type MediaFormat =
   | 'mp3'
@@ -52,11 +52,15 @@ export interface VideoChapter {
   endTime: number;
 }
 
+export type SkipSource = 'chapter' | 'api' | 'heuristic';
+export type SkipConfidence = 'high' | 'moderate' | 'low';
+
 export interface SkipInterval {
   start: number; // en secondes
   end: number;   // en secondes
   type: 'op' | 'ed';
-  source: 'chapter' | 'api' | 'audio_fingerprint';
+  source: SkipSource;
+  confidence: SkipConfidence;
   title?: string;
 }
 
@@ -71,6 +75,8 @@ export interface VideoSkipMarkers {
   ed: SkipInterval | null;
   hasPostCredits: boolean;
   postCreditsStart?: number;
+  driftDetected?: boolean;        // true si écart significatif entre durée vidéo et référence API (> 4s)
+  referenceDuration?: number;     // durée théorique fournie par l'API
 }
 
 export interface MarathonConfig {
@@ -210,4 +216,5 @@ export interface PlayerSettings {
   marathonConfig?: MarathonConfig; // Mode Marathon (Auto-chain & transitions intelligentes)
   videoSkipForwardInterval?: number; // Intervalle d'avance rapide en secondes (5s à 90s, step 5s, défaut 10s)
   videoAspectRatio?: VideoAspectRatio; // Ratio d'affichage vidéo ('contain', 'cover', '16-9')
+  wheelSeekStep?: number; // Pas de navigation temporelle à la molette en secondes (défaut 5s)
 }

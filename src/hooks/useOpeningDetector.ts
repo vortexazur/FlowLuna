@@ -121,7 +121,8 @@ export function useOpeningDetector({
     const isInsideOpening = currentTime >= start && currentTime < end;
 
     if (isInsideOpening) {
-      if (autoSkipEnabled) {
+      const canAutoSkip = autoSkipEnabled && currentInterval.source !== 'heuristic';
+      if (canAutoSkip) {
         // Éviter les boucles de saut si déjà sauté pour cette vidéo
         const trackKey = `${track?.id || track?.title}_${start}`;
         if (lastAutoSkippedForTrackRef.current !== trackKey) {
@@ -138,7 +139,7 @@ export function useOpeningDetector({
           }, 2500);
         }
       } else {
-        // Mode manuel : afficher le bouton flottant
+        // Mode manuel ou Heuristique incertaine : afficher le bouton flottant
         if (!isVisible) {
           setIsVisible(true);
         }

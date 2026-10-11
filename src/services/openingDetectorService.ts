@@ -1,4 +1,6 @@
-import { SkipInterval, Track, VideoChapter, VideoSkipMarkers } from '../types';
+import { SkipConfidence, SkipInterval, SkipSource, Track, VideoChapter, VideoSkipMarkers } from '../types';
+
+export const ANIME_SKIP_CLIENT_ID = 'DLyfrLMiQc3xCgAMvXo3Bzd80OzwkGq';
 
 export interface AnimeParseResult {
   cleanTitle: string;
@@ -51,21 +53,50 @@ export function parseAnimeTitleAndEpisode(rawTitle: string): AnimeParseResult {
 }
 
 /**
- * Cache local des skip intervals et marqueurs
+ * Cache local enrichi : stocke les marqueurs, la durée du fichier et un horodatage
  */
-function getCachedMarkers(cacheKey: string): VideoSkipMarkers | null {
+export interface CachedMarkersData {
+  markers: VideoSkipMarkers;
+  duration: number;
+  timestamp: number;
+}
+
+function getCachedMarkers(cacheKey: string, currentDuration?: number): VideoSkipMarkers | null {
   try {
     const raw = localStorage.getItem(`flowluna_markers_${cacheKey}`);
     if (raw) {
-      return JSON.parse(raw);
+      const parsed = JSON.parse(raw);
+      if (parsed && parsed.markers) {
+        // Validation de la durée du fichier pour invalider si le fichier a changé
+        if (
+          typeof currentDuration === 'number' &&
+          currentDuration > 0 &&
+          typeof parsed.duration === 'number' &&
+          parsed.duration > 0
+        ) {
+          if (Math.abs(parsed.duration - currentDuration) > 2) {
+            return null; // Durée incohérente -> invalidation du cache
+          }
+        }
+        return parsed.markers;
+      }
+      // Rétro-compatibilité avec l'ancien format direct
+      if (parsed && (parsed.op !== undefined || parsed.ed !== undefined)) {
+        return parsed;
+      }
     }
   } catch {}
   return null;
 }
 
-function setCachedMarkers(cacheKey: string, markers: VideoSkipMarkers): void {
+function setCachedMarkers(cacheKey: string, markers: VideoSkipMarkers, duration: number): void {
   try {
-    localStorage.setItem(`flowluna_markers_${cacheKey}`, JSON.stringify(markers));
+    const data: CachedMarkersData = {
+      markers,
+      duration: Math.round(duration * 10) / 10,
+      timestamp: Date.now(),
+    };
+    localStorage.setItem(`flowluna_markers_${cacheKey}`, JSON.stringify(data));
   } catch {}
 }
 
@@ -136,6 +167,7 @@ export async function resolveChaptersMarkers(
           end: chap.endTime,
           type: 'op',
           source: 'chapter',
+          confidence: 'high',
           title: chap.title,
         };
       }
@@ -146,6 +178,7 @@ export async function resolveChaptersMarkers(
           end: chap.endTime,
           type: 'ed',
           source: 'chapter',
+          confidence: 'high',
           title: chap.title,
         };
       }
@@ -230,32 +263,61 @@ async function resolveAnimeMalId(cleanTitle: string): Promise<number | null> {
 }
 
 /**
- * Niveau 2 : API Communautaire Aniskip (OP et ED)
+ * Niveau 2 (Option A) : API Communautaire Aniskip (OP et ED avec Drift Check)
  */
 export async function resolveAniskipMarkers(
   cleanTitle: string,
   episodeNumber: number,
   duration: number
-): Promise<{ op: SkipInterval | null; ed: SkipInterval | null; hasPostCredits: boolean; postCreditsStart?: number }> {
+): Promise<{
+  op: SkipInterval | null;
+  ed: SkipInterval | null;
+  hasPostCredits: boolean;
+  postCreditsStart?: number;
+  driftDetected?: boolean;
+  referenceDuration?: number;
+}> {
   let op: SkipInterval | null = null;
   let ed: SkipInterval | null = null;
   let hasPostCredits = false;
   let postCreditsStart: number | undefined;
+  let referenceDuration: number | undefined;
+  let driftDetected = false;
 
   const malId = await resolveAnimeMalId(cleanTitle);
-  if (!malId) return { op: null, ed: null, hasPostCredits: false };
+  if (!malId) {
+    // Si pas de MAL ID, tenter Anime-Skip directement
+    return resolveAnimeSkipMarkers(cleanTitle, episodeNumber, duration);
+  }
 
   try {
     const epLen = Math.max(0, Math.round(duration || 1440));
     const aniskipUrl = `https://api.aniskip.com/v2/skip-times/${malId}/${episodeNumber}?types=op&types=ed&episodeLength=${epLen}`;
     
     const resp = await fetch(aniskipUrl);
-    if (!resp.ok) return { op: null, ed: null, hasPostCredits: false };
+    if (!resp.ok) {
+      return resolveAnimeSkipMarkers(cleanTitle, episodeNumber, duration);
+    }
 
     const data = await resp.json();
     if (!data.found || !Array.isArray(data.results) || data.results.length === 0) {
-      return { op: null, ed: null, hasPostCredits: false };
+      return resolveAnimeSkipMarkers(cleanTitle, episodeNumber, duration);
     }
+
+    // Récupérer la durée théorique fournie par l'API (Drift Check)
+    for (const item of data.results) {
+      const epLength = Number(item.episodeLength);
+      if (!isNaN(epLength) && epLength > 0 && !referenceDuration) {
+        referenceDuration = epLength;
+      }
+    }
+
+    // Contrôle de dérive temporelle : écart > 4.0 secondes
+    if (referenceDuration && duration > 0) {
+      driftDetected = Math.abs(referenceDuration - duration) > 4.0;
+    }
+
+    const confidence: SkipConfidence = driftDetected ? 'moderate' : 'high';
 
     for (const item of data.results) {
       const start = Number(item.interval?.startTime);
@@ -267,7 +329,8 @@ export async function resolveAniskipMarkers(
             end: Math.round(end * 10) / 10,
             type: 'op',
             source: 'api',
-            title: 'Opening (Aniskip)',
+            confidence,
+            title: driftDetected ? 'Opening (Aniskip - Décalage possible)' : 'Opening (Aniskip)',
           };
         } else if (item.skipType === 'ed' && !ed) {
           ed = {
@@ -275,7 +338,8 @@ export async function resolveAniskipMarkers(
             end: Math.round(end * 10) / 10,
             type: 'ed',
             source: 'api',
-            title: 'Ending (Aniskip)',
+            confidence,
+            title: driftDetected ? 'Ending (Aniskip - Décalage possible)' : 'Ending (Aniskip)',
           };
         }
       }
@@ -285,15 +349,154 @@ export async function resolveAniskipMarkers(
       hasPostCredits = true;
       postCreditsStart = ed.end;
     }
-  } catch {}
+  } catch (err) {
+    console.warn('[Aniskip] Erreur requête Aniskip, repli sur Anime-Skip :', err);
+    return resolveAnimeSkipMarkers(cleanTitle, episodeNumber, duration);
+  }
 
-  return { op, ed, hasPostCredits, postCreditsStart };
+  return { op, ed, hasPostCredits, postCreditsStart, driftDetected, referenceDuration };
 }
 
 /**
- * Niveau 3 : Analyse Acoustique / Heuristique (Fallback)
+ * Niveau 2 (Option B) : API Anime-Skip GraphQL (Client ID dédié)
  */
-export async function resolveAcousticMarkers(
+export async function resolveAnimeSkipMarkers(
+  cleanTitle: string,
+  episodeNumber: number,
+  duration: number
+): Promise<{
+  op: SkipInterval | null;
+  ed: SkipInterval | null;
+  hasPostCredits: boolean;
+  postCreditsStart?: number;
+  driftDetected?: boolean;
+  referenceDuration?: number;
+}> {
+  try {
+    const searchController = new AbortController();
+    const timeout = setTimeout(() => searchController.abort(), 3500);
+
+    const searchQuery = `
+      query ($search: String!) {
+        searchShows(search: $search, limit: 1) {
+          id
+          name
+        }
+      }
+    `;
+
+    const searchResp = await fetch('https://api.anime-skip.com/graphql', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Client-ID': ANIME_SKIP_CLIENT_ID,
+      },
+      body: JSON.stringify({ query: searchQuery, variables: { search: cleanTitle } }),
+      signal: searchController.signal,
+    });
+    clearTimeout(timeout);
+
+    if (!searchResp.ok) return { op: null, ed: null, hasPostCredits: false, driftDetected: false };
+
+    const searchData = await searchResp.json();
+    const show = searchData.data?.searchShows?.[0];
+    if (!show?.id) return { op: null, ed: null, hasPostCredits: false, driftDetected: false };
+
+    const epController = new AbortController();
+    const epTimeout = setTimeout(() => epController.abort(), 3500);
+
+    const epQuery = `
+      query ($showId: String!, $number: Float!) {
+        show(id: $showId) {
+          episodes(number: $number) {
+            id
+            number
+            duration
+            timestamps {
+              at
+              type {
+                name
+              }
+            }
+          }
+        }
+      }
+    `;
+
+    const epResp = await fetch('https://api.anime-skip.com/graphql', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Client-ID': ANIME_SKIP_CLIENT_ID,
+      },
+      body: JSON.stringify({ query: epQuery, variables: { showId: show.id, number: episodeNumber } }),
+      signal: epController.signal,
+    });
+    clearTimeout(epTimeout);
+
+    if (!epResp.ok) return { op: null, ed: null, hasPostCredits: false, driftDetected: false };
+
+    const epData = await epResp.json();
+    const episode = epData.data?.show?.episodes?.[0];
+    if (!episode) return { op: null, ed: null, hasPostCredits: false, driftDetected: false };
+
+    const referenceDuration: number | undefined = episode.duration ? Number(episode.duration) : undefined;
+    let driftDetected = false;
+    if (referenceDuration && duration > 0) {
+      driftDetected = Math.abs(referenceDuration - duration) > 4.0;
+    }
+    const confidence: SkipConfidence = driftDetected ? 'moderate' : 'high';
+
+    let op: SkipInterval | null = null;
+    let ed: SkipInterval | null = null;
+    let hasPostCredits = false;
+    let postCreditsStart: number | undefined;
+
+    const timestamps: Array<{ at: number; type?: { name?: string } }> = episode.timestamps || [];
+    timestamps.sort((a, b) => a.at - b.at);
+
+    for (let i = 0; i < timestamps.length; i++) {
+      const ts = timestamps[i];
+      const typeName = ts.type?.name?.toLowerCase() || '';
+      const nextTs = timestamps[i + 1];
+      const nextAt = nextTs ? nextTs.at : ts.at + 90;
+
+      if (!op && (typeName.includes('op') || typeName.includes('opening'))) {
+        op = {
+          start: Math.round(ts.at * 10) / 10,
+          end: Math.round(nextAt * 10) / 10,
+          type: 'op',
+          source: 'api',
+          confidence,
+          title: driftDetected ? 'Opening (Anime-Skip - Décalage possible)' : 'Opening (Anime-Skip)',
+        };
+      } else if (!ed && (typeName.includes('ed') || typeName.includes('ending'))) {
+        ed = {
+          start: Math.round(ts.at * 10) / 10,
+          end: Math.round(nextAt * 10) / 10,
+          type: 'ed',
+          source: 'api',
+          confidence,
+          title: driftDetected ? 'Ending (Anime-Skip - Décalage possible)' : 'Ending (Anime-Skip)',
+        };
+      }
+    }
+
+    if (ed && duration > 0 && duration - ed.end >= 15) {
+      hasPostCredits = true;
+      postCreditsStart = ed.end;
+    }
+
+    return { op, ed, hasPostCredits, postCreditsStart, driftDetected, referenceDuration };
+  } catch {
+    return { op: null, ed: null, hasPostCredits: false, driftDetected: false };
+  }
+}
+
+/**
+ * Niveau 3 : Refonte Heuristique (Fallback désigné comme incertain, interdiction d'auto-skip à l'aveugle)
+ */
+export async function getHeuristicMarkers(
   videoElement: HTMLVideoElement | null,
   track: Track | null,
   duration: number
@@ -302,7 +505,7 @@ export async function resolveAcousticMarkers(
     return { op: null, ed: null, hasPostCredits: false };
   }
 
-  // Heuristique standard éprouvée sur anime lorsque l'analyse spectrale converge
+  // Heuristique standard éprouvée sur anime en fallback
   let opStart = 60;
   let opDuration = 90;
   if (duration < 600) {
@@ -314,15 +517,16 @@ export async function resolveAcousticMarkers(
     start: opStart,
     end: opStart + opDuration,
     type: 'op',
-    source: 'audio_fingerprint',
-    title: 'Opening (Détection Acoustique)',
+    source: 'heuristic',
+    confidence: 'low',
+    title: 'Opening (Estimation Heuristique)',
   };
 
   let ed: SkipInterval | null = null;
   let hasPostCredits = false;
   let postCreditsStart: number | undefined;
 
-  // Si durée normale (~20-25 min d'épisode)
+  // Si durée standard (~20-25 min d'épisode)
   if (duration >= 600) {
     const edStart = Math.max(op.end + 120, duration - 120);
     const edEnd = Math.min(duration, edStart + 90);
@@ -330,8 +534,9 @@ export async function resolveAcousticMarkers(
       start: edStart,
       end: edEnd,
       type: 'ed',
-      source: 'audio_fingerprint',
-      title: 'Ending (Détection Acoustique)',
+      source: 'heuristic',
+      confidence: 'low',
+      title: 'Ending (Estimation Heuristique)',
     };
 
     if (duration - ed.end >= 15) {
@@ -343,9 +548,12 @@ export async function resolveAcousticMarkers(
   return { op, ed, hasPostCredits, postCreditsStart };
 }
 
+// Alias de rétro-compatibilité pour l'ancien nom de méthode
+export const resolveAcousticMarkers = getHeuristicMarkers;
+
 /**
  * Fonction maîtresse : Résolution complète des marqueurs vidéo en cascade
- * Détecte à la fois Opening, Ending et Scène post-crédits
+ * Détecte à la fois Opening, Ending, Scène post-crédits et contrôle de dérive (drift)
  */
 export async function resolveVideoMarkersCascade(
   videoElement: HTMLVideoElement | null,
@@ -356,18 +564,21 @@ export async function resolveVideoMarkersCascade(
     return { op: null, ed: null, hasPostCredits: false };
   }
 
-  const trackKey = track.id || track.title;
-  const cached = getCachedMarkers(trackKey);
+  const trackKey = track.id || track.filePath || track.title;
+  const actualDuration = duration || track.duration || 0;
+  const cached = getCachedMarkers(trackKey, actualDuration);
   if (cached) return cached;
 
   let op: SkipInterval | null = null;
   let ed: SkipInterval | null = null;
   let hasPostCredits = false;
   let postCreditsStart: number | undefined;
+  let driftDetected = false;
+  let referenceDuration: number | undefined;
 
-  // === Niveau 1 : Chapitres ===
+  // === Niveau 1 : Chapitres intégrés ===
   try {
-    const chapMarkers = await resolveChaptersMarkers(videoElement, track, duration);
+    const chapMarkers = await resolveChaptersMarkers(videoElement, track, actualDuration);
     if (chapMarkers.op) op = chapMarkers.op;
     if (chapMarkers.ed) ed = chapMarkers.ed;
     if (chapMarkers.hasPostCredits) {
@@ -378,36 +589,44 @@ export async function resolveVideoMarkersCascade(
     console.warn('[VideoMarkers] Erreur Niveau 1 (Chapitres):', err);
   }
 
-  // === Niveau 2 : Aniskip API (si OP ou ED manquant) ===
+  // === Niveau 2 : API Communautaire (Aniskip / Anime-Skip) si OP ou ED manquant ===
   if (!op || !ed) {
     try {
       const { cleanTitle, episodeNumber } = parseAnimeTitleAndEpisode(track.title || track.album || '');
       if (cleanTitle) {
-        const apiMarkers = await resolveAniskipMarkers(cleanTitle, episodeNumber, duration || track.duration || 1440);
-        if (!op && apiMarkers.op) op = apiMarkers.op;
-        if (!ed && apiMarkers.ed) ed = apiMarkers.ed;
-        if (apiMarkers.hasPostCredits) {
-          hasPostCredits = true;
-          postCreditsStart = apiMarkers.postCreditsStart;
+        const apiMarkers = await resolveAniskipMarkers(cleanTitle, episodeNumber, actualDuration);
+        if (apiMarkers) {
+          if (!op && apiMarkers.op) op = apiMarkers.op;
+          if (!ed && apiMarkers.ed) ed = apiMarkers.ed;
+          if (apiMarkers.hasPostCredits) {
+            hasPostCredits = true;
+            postCreditsStart = apiMarkers.postCreditsStart;
+          }
+          if (apiMarkers.driftDetected) {
+            driftDetected = true;
+          }
+          if (apiMarkers.referenceDuration) {
+            referenceDuration = apiMarkers.referenceDuration;
+          }
         }
       }
     } catch (err) {
-      console.warn('[VideoMarkers] Erreur Niveau 2 (Aniskip API):', err);
+      console.warn('[VideoMarkers] Erreur Niveau 2 (API):', err);
     }
   }
 
-  // === Niveau 3 : Analyse Acoustique / Heuristique (si toujours manquant) ===
+  // === Niveau 3 : Refonte Heuristique (si toujours manquant) ===
   if (!op || !ed) {
     try {
-      const acoustic = await resolveAcousticMarkers(videoElement, track, duration || track.duration || 1440);
-      if (!op && acoustic.op) op = acoustic.op;
-      if (!ed && acoustic.ed) ed = acoustic.ed;
-      if (acoustic.hasPostCredits) {
+      const heuristic = await getHeuristicMarkers(videoElement, track, actualDuration);
+      if (!op && heuristic.op) op = heuristic.op;
+      if (!ed && heuristic.ed) ed = heuristic.ed;
+      if (heuristic.hasPostCredits && !hasPostCredits) {
         hasPostCredits = true;
-        postCreditsStart = acoustic.postCreditsStart;
+        postCreditsStart = heuristic.postCreditsStart;
       }
     } catch (err) {
-      console.warn('[VideoMarkers] Erreur Niveau 3 (Acoustique):', err);
+      console.warn('[VideoMarkers] Erreur Niveau 3 (Heuristique):', err);
     }
   }
 
@@ -416,9 +635,11 @@ export async function resolveVideoMarkersCascade(
     ed,
     hasPostCredits,
     postCreditsStart,
+    driftDetected,
+    referenceDuration,
   };
 
-  setCachedMarkers(trackKey, result);
+  setCachedMarkers(trackKey, result, actualDuration);
   return result;
 }
 
