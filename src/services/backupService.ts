@@ -92,6 +92,48 @@ export async function exportLibraryArchive(): Promise<{ filename: string; tracks
   };
 }
 
+async function parseJsonAsync(text: string): Promise<any> {
+  // Fast path for small files (< 100KB)
+  if (text.length < 100000) {
+    return JSON.parse(text);
+  }
+
+  if (typeof Worker !== 'undefined' && typeof Blob !== 'undefined' && typeof URL !== 'undefined') {
+    try {
+      return await new Promise((resolve, reject) => {
+        const workerScript = 'self.onmessage=function(e){try{self.postMessage({ok:true,data:JSON.parse(e.data)});}catch(err){self.postMessage({ok:false,err:err.message});}};';
+        const blob = new Blob([workerScript], { type: 'application/javascript' });
+        const blobUrl = URL.createObjectURL(blob);
+        const worker = new Worker(blobUrl);
+
+        worker.onmessage = (event) => {
+          worker.terminate();
+          URL.revokeObjectURL(blobUrl);
+          if (event.data.ok) {
+            resolve(event.data.data);
+          } else {
+            reject(new Error(event.data.err || 'JSON non valide'));
+          }
+        };
+
+        worker.onerror = (err) => {
+          worker.terminate();
+          URL.revokeObjectURL(blobUrl);
+          reject(err);
+        };
+
+        worker.postMessage(text);
+      });
+    } catch {
+      // Fallback if worker creation fails (e.g. CSP)
+    }
+  }
+
+  // Fallback: yield to macrotask to allow UI to breathe
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  return JSON.parse(text);
+}
+
 /**
  * Importe un fichier .json de sauvegarde sur cet appareil.
  * Synchronise les pistes, les playlists et les réglages utilisateur.
@@ -104,7 +146,7 @@ export async function importLibraryArchive(file: File): Promise<{
   const text = await file.text();
   let parsed: any;
   try {
-    parsed = JSON.parse(text);
+    parsed = await parseJsonAsync(text);
   } catch (err) {
     throw new Error('Le fichier sélectionné n\'est pas un fichier JSON valide.');
   }

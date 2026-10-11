@@ -305,7 +305,8 @@ export function injectStylesToWindow(targetWindow: Window) {
     `;
     doc.head.appendChild(pipCustomStyle);
 
-    // Dynamic resize handler for calculating custom scale ratios
+    // Dynamic resize handler for calculating custom scale ratios with rAF throttling
+    let resizeRafId: number | null = null;
     const updateDimensions = () => {
       try {
         const width = targetWindow.innerWidth;
@@ -315,7 +316,15 @@ export function injectStylesToWindow(targetWindow: Window) {
       } catch {}
     };
 
-    targetWindow.addEventListener('resize', updateDimensions);
+    const throttledResize = () => {
+      if (resizeRafId !== null) return;
+      resizeRafId = targetWindow.requestAnimationFrame(() => {
+        resizeRafId = null;
+        updateDimensions();
+      });
+    };
+
+    targetWindow.addEventListener('resize', throttledResize);
     updateDimensions();
 
     // Body container styling

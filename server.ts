@@ -296,9 +296,21 @@ app.use(express.json({ limit: '50mb' }));
 app.use(express.raw({ limit: '100mb', type: ['audio/*', 'application/octet-stream'] }));
 
 app.use((req, res, next) => {
-  res.setHeader('Access-Control-Allow-Origin', '*');
+  const origin = req.headers.origin || '';
+  const allowedOrigins = [
+    'http://localhost',
+    'http://127.0.0.1',
+    'https://localhost',
+    'https://127.0.0.1',
+    'file://',
+  ];
+  const isAllowed = allowedOrigins.some((ao) => origin.startsWith(ao)) || !origin;
+  res.setHeader('Access-Control-Allow-Origin', isAllowed ? (origin || '*') : '');
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+  if (!isAllowed) {
+    return res.status(403).send('Origin not allowed');
+  }
   if (req.method === 'OPTIONS') {
     return res.sendStatus(200);
   }
@@ -468,10 +480,10 @@ function compareSemVer(v1: string, v2: string): number {
 }
 
 app.get('/api/app/check-update', async (req, res) => {
-  const currentVersion = '1.2.6';
+  const currentVersion = '1.2.7';
   try {
     const fetchRes = await fetch('https://api.github.com/repos/vortexazur/FlowLuna/releases/latest', {
-      headers: { 'User-Agent': 'FlowLuna-App/1.2.6' },
+      headers: { 'User-Agent': 'FlowLuna-App/1.2.7' },
     });
     if (fetchRes.ok) {
       const data: any = await fetchRes.json();
@@ -529,7 +541,7 @@ function downloadUpdateFileWithProgress(urlStr: string, destPath: string, maxRed
   }
 
   const client = urlStr.startsWith('https') ? https : http;
-  const req = client.get(urlStr, { headers: { 'User-Agent': 'FlowLuna-App/1.2.6' } }, (res) => {
+  const req = client.get(urlStr, { headers: { 'User-Agent': 'FlowLuna-App/1.2.7' } }, (res) => {
     if (res.statusCode && [301, 302, 303, 307, 308].includes(res.statusCode) && res.headers.location) {
       downloadUpdateFileWithProgress(res.headers.location, destPath, maxRedirects - 1);
       return;
@@ -608,7 +620,7 @@ app.post('/api/app/download-update', express.json(), async (req, res) => {
 
     if (!downloadUrl) {
       const fetchRes = await fetch('https://api.github.com/repos/vortexazur/FlowLuna/releases/latest', {
-        headers: { 'User-Agent': 'FlowLuna-App/1.2.6' },
+        headers: { 'User-Agent': 'FlowLuna-App/1.2.7' },
       });
       if (fetchRes.ok) {
         const data: any = await fetchRes.json();
@@ -622,6 +634,12 @@ app.post('/api/app/download-update', express.json(), async (req, res) => {
 
     if (!downloadUrl) {
       return res.status(400).json({ error: 'Aucun fichier installateur officiel trouvé sur GitHub.' });
+    }
+
+    // Security: only allow downloads from official GitHub release URLs
+    const TRUSTED_URL_PATTERN = /^https:\/\/(?:github\.com\/vortexazur\/FlowLuna\/releases\/download\/|objects\.githubusercontent\.com\/)/i;
+    if (!TRUSTED_URL_PATTERN.test(downloadUrl)) {
+      return res.status(403).json({ error: 'URL de téléchargement non autorisée. Seules les releases GitHub officielles sont acceptées.' });
     }
 
     const updatesDir = path.join(getFlowLunaDataDir(), 'updates');
@@ -660,16 +678,24 @@ app.get('/api/app/update-progress', (req, res) => {
 });
 
 app.post('/api/app/apply-update', express.json(), (req, res) => {
-  const installerPath = req.body?.installerPath || appUpdateState.installerPath;
+  // Security: never trust client-supplied paths — only use the internally tracked installer
+  const installerPath = appUpdateState.installerPath;
   if (!installerPath || !fs.existsSync(installerPath)) {
     return res.status(400).json({ error: 'Fichier installateur introuvable sur le disque.' });
+  }
+
+  // Security: validate the installer is within the trusted updates directory
+  const updatesDir = path.resolve(path.join(getFlowLunaDataDir(), 'updates'));
+  const resolvedInstaller = path.resolve(installerPath);
+  if (!resolvedInstaller.startsWith(updatesDir + path.sep) || path.extname(resolvedInstaller).toLowerCase() !== '.exe') {
+    return res.status(403).json({ error: 'Chemin installateur non autorisé.' });
   }
 
   res.json({ success: true, message: 'Lancement de l’installateur officiel...' });
 
   setTimeout(() => {
     try {
-      const child = spawn(installerPath, [], {
+      const child = spawn(resolvedInstaller, [], {
         detached: true,
         stdio: 'ignore',
       });
@@ -3386,6 +3412,25 @@ app.get('/api/library/stream', (req, res) => {
   }
 
   const resolved = path.resolve(reqFile);
+
+  // Security: only serve files from authorized library directories
+  const allowedDirs = [
+    ...getCustomScannedDirs(),
+    path.join(os.homedir(), 'Music'),
+    path.join(os.homedir(), 'Musique'),
+    path.join(os.homedir(), 'Videos'),
+    path.join(os.homedir(), 'Vidéos'),
+    path.join(os.homedir(), 'Downloads'),
+    path.join(os.homedir(), 'Téléchargements'),
+    path.join(os.homedir(), 'OneDrive', 'Music'),
+    path.join(os.homedir(), 'OneDrive', 'Musique'),
+    getFlowLunaDataDir(),
+  ].map((d) => path.resolve(d));
+  const isInAllowedDir = allowedDirs.some((dir) => resolved.startsWith(dir + path.sep) || resolved === dir);
+  if (!isInAllowedDir) {
+    return res.status(403).send('Accès au fichier non autorisé');
+  }
+
   if (!fs.existsSync(resolved)) {
     return res.status(404).send('Fichier audio introuvable');
   }
@@ -3563,7 +3608,7 @@ app.post('/api/lyrics/cache', express.json(), (req, res) => {
 });
 
 // Vite middleware & Static Serving
-export async function startServer(port: number = PORT): Promise<{ app: express.Express; server: http.Server }> {
+export async function startServer(port: number = PORT): Promise<{ app: express.Express; server: http.Server; port?: number }> {
   const isPackagedOrProd =
     process.env.NODE_ENV === 'production' ||
     Boolean((process as any).resourcesPath) ||
@@ -3604,20 +3649,23 @@ export async function startServer(port: number = PORT): Promise<{ app: express.E
   }
 
   return new Promise((resolve, reject) => {
-    const server = app.listen(port, '127.0.0.1', () => {
-      console.log(`[FlowLuna Server] Running on http://127.0.0.1:${port}`);
-      resolve({ app, server });
-    });
+    const tryPort = (p: number, maxRetries: number) => {
+      const server = app.listen(p, '127.0.0.1', () => {
+        console.log(`[FlowLuna Server] Running on http://127.0.0.1:${p}`);
+        resolve({ app, server, port: p });
+      });
 
-    server.on('error', (err: any) => {
-      if (err.code === 'EADDRINUSE') {
-        console.warn(`[FlowLuna Server] Port ${port} is already in use. Assuming active server.`);
-        resolve({ app, server });
-      } else {
-        console.error(`[FlowLuna Server] Server error:`, err);
-        reject(err);
-      }
-    });
+      server.on('error', (err: any) => {
+        if (err.code === 'EADDRINUSE' && maxRetries > 0) {
+          console.warn(`[FlowLuna Server] Port ${p} is already in use, trying ${p + 1}...`);
+          tryPort(p + 1, maxRetries - 1);
+        } else {
+          console.error(`[FlowLuna Server] Server error:`, err);
+          reject(err);
+        }
+      });
+    };
+    tryPort(port, 9);
   });
 }
 

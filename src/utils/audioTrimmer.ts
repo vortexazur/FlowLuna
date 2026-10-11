@@ -180,9 +180,10 @@ export function trimAndProcessAudioBuffer(options: TrimOptions): TrimResult {
   const sampleRate = sourceBuffer.sampleRate;
   const numChannels = sourceBuffer.numberOfChannels;
 
-  const validStart = Math.max(0, Math.min(startTime, sourceBuffer.duration - 0.1));
-  const validEnd = Math.min(sourceBuffer.duration, Math.max(validStart + 0.1, endTime));
-  const newDuration = validEnd - validStart;
+  const minSlice = Math.min(0.1, sourceBuffer.duration > 0 ? sourceBuffer.duration : 0.1);
+  const validStart = Math.max(0, Math.min(startTime, Math.max(0, sourceBuffer.duration - minSlice)));
+  const validEnd = Math.min(sourceBuffer.duration, Math.max(validStart + minSlice, endTime));
+  const newDuration = Math.max(0, validEnd - validStart);
 
   const startSample = Math.floor(validStart * sampleRate);
   const endSample = Math.floor(validEnd * sampleRate);

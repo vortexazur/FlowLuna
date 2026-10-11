@@ -45,7 +45,7 @@ class AudioEngine {
   }
 
   public isNormalizationActive(): boolean {
-    return true;
+    return this.vlcPlayer.isNormalizationEnabled();
   }
 
   public setStereoWidth(width: number) {
@@ -53,11 +53,11 @@ class AudioEngine {
   }
 
   public getStereoWidth(): number {
-    return 1.0;
+    return this.vlcPlayer.getStereoWidth();
   }
 
   public setPlaybackSpeed(speed: number, preservePitch = true) {
-    this.vlcPlayer.setRate(speed);
+    this.vlcPlayer.setRate(speed, preservePitch);
   }
 
   public applyEqualizer(settings: EqualizerSettings) {

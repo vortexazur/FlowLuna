@@ -215,9 +215,13 @@ export async function saveAudioToPC(
     anchor.click();
 
     setTimeout(() => {
-      document.body.removeChild(anchor);
-      URL.revokeObjectURL(objectUrl);
-    }, 4000);
+      try {
+        if (anchor.parentNode) {
+          document.body.removeChild(anchor);
+        }
+        URL.revokeObjectURL(objectUrl);
+      } catch {}
+    }, 60000);
 
     return {
       success: true,
@@ -379,8 +383,8 @@ export async function exportBatchTracksToPC(options: BatchExportOptions): Promis
     return `${sanitizeFilename(name)}.${ext}`;
   };
 
-  // MODE 1: ZIP Archive
-  if (mode === 'zip' || tracks.length > 1) {
+  // MODE 1: ZIP Archive (only when explicitly requested)
+  if (mode === 'zip') {
     const zip = new JSZip();
     const total = tracks.length;
 
@@ -477,43 +481,48 @@ export async function exportBatchTracksToPC(options: BatchExportOptions): Promis
     return saveRes;
   }
 
-  // MODE 2: Individual single file export
-  const singleTrack = tracks[0];
-  if (onProgress) {
-    onProgress({
-      currentIndex: 1,
-      total: 1,
-      currentTrackTitle: `${singleTrack.artist} - ${singleTrack.title}`,
-      stage: 'converting',
-      percentage: 50,
-    });
+  // MODE 2: Individual file export (single or multiple tracks)
+  const total = tracks.length;
+  let lastSaveRes: any;
+
+  for (let i = 0; i < total; i++) {
+    const track = tracks[i];
+    if (onProgress) {
+      onProgress({
+        currentIndex: i + 1,
+        total,
+        currentTrackTitle: `${track.artist} - ${track.title}`,
+        stage: 'converting',
+        percentage: Math.round(((i) / total) * 90),
+      });
+    }
+
+    const result = await convertTrackToBlob(track, format, bitrate);
+    const fileName = getFormattedName(track, i, result.format);
+
+    if (onProgress) {
+      onProgress({
+        currentIndex: i + 1,
+        total,
+        currentTrackTitle: 'Enregistrement du fichier...',
+        stage: 'saving',
+        percentage: Math.round(((i + 0.5) / total) * 95),
+      });
+    }
+
+    lastSaveRes = await saveAudioToPC(result.blob, fileName, result.format, true);
   }
 
-  const result = await convertTrackToBlob(singleTrack, format, bitrate);
-  const singleFileName = getFormattedName(singleTrack, 0, result.format);
-
   if (onProgress) {
     onProgress({
-      currentIndex: 1,
-      total: 1,
-      currentTrackTitle: 'Enregistrement du fichier...',
-      stage: 'saving',
-      percentage: 90,
-    });
-  }
-
-  const saveRes = await saveAudioToPC(result.blob, singleFileName, result.format, true);
-
-  if (onProgress) {
-    onProgress({
-      currentIndex: 1,
-      total: 1,
+      currentIndex: total,
+      total,
       currentTrackTitle: 'Exportation terminée !',
       stage: 'done',
       percentage: 100,
     });
   }
 
-  return saveRes;
+  return lastSaveRes;
 }
 

@@ -207,6 +207,10 @@ export class VLCMediaPlayer {
     });
 
     this.audioEl.addEventListener('error', (e) => {
+      // Ignore errors triggered by stop() clearing the source
+      if (!this.audioEl?.src || this.audioEl.src === '' || this.audioEl.src === window.location.href) {
+        return;
+      }
       this.setState(VLCState.Error);
       this.emit('encounteredError', e);
     });
@@ -425,10 +429,12 @@ export class VLCMediaPlayer {
     }
   }
 
-  public setRate(rate: number) {
+  public setRate(rate: number, preservePitch = true) {
     this.playbackRate = Math.max(0.25, Math.min(4.0, rate));
     if (this.audioEl) {
-      (this.audioEl as any).preservesPitch = true;
+      (this.audioEl as any).preservesPitch = preservePitch;
+      (this.audioEl as any).mozPreservesPitch = preservePitch;
+      (this.audioEl as any).webkitPreservesPitch = preservePitch;
       this.audioEl.playbackRate = this.playbackRate;
     }
   }
@@ -474,6 +480,10 @@ export class VLCMediaPlayer {
   public setStereoWidth(width: number) {
     this.stereoWidth = Math.max(0, Math.min(2.5, width));
     this.applyStereoWidth();
+  }
+
+  public getStereoWidth(): number {
+    return this.stereoWidth;
   }
 
   private applyStereoWidth() {
@@ -535,6 +545,10 @@ export class VLCMediaPlayer {
 
   public getNormalizationTarget(): 'streaming' | 'replaygain' | 'broadcast' {
     return this.normalizationTarget;
+  }
+
+  public isNormalizationEnabled(): boolean {
+    return this.isNormalizationActive;
   }
 
   public getFrequencyData(array: Uint8Array): void {

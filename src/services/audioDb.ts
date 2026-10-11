@@ -48,15 +48,26 @@ export async function getDB(): Promise<IDBDatabase> {
 const MAX_ACTIVE_BLOB_URLS = 8;
 const activeBlobUrls = new Map<string, string>();
 
+let currentlyPlayingTrackId: string | null = null;
+
+export function setActivePlayingTrackId(trackId: string | null) {
+  currentlyPlayingTrackId = trackId;
+}
+
+export function getActivePlayingTrackId(): string | null {
+  return currentlyPlayingTrackId;
+}
+
 // Memory optimization: revoke old blob URLs safely using LRU cache
 export function revokeTrackBlobUrl(trackId?: string) {
+  const activeId = trackId || currentlyPlayingTrackId;
   while (activeBlobUrls.size > MAX_ACTIVE_BLOB_URLS) {
     const oldestKey = activeBlobUrls.keys().next().value;
     if (!oldestKey) break;
     // Don't evict the specified active track unless necessary
-    if (trackId && oldestKey === trackId && activeBlobUrls.size > 1) {
+    if (activeId && oldestKey === activeId && activeBlobUrls.size > 1) {
       const entries = Array.from(activeBlobUrls.keys());
-      const otherKey = entries.find((k) => k !== trackId);
+      const otherKey = entries.find((k) => k !== activeId);
       if (otherKey) {
         const otherUrl = activeBlobUrls.get(otherKey);
         if (otherUrl) {
@@ -78,7 +89,12 @@ export function revokeTrackBlobUrl(trackId?: string) {
   }
 }
 
-export function forceRevokeTrackBlobUrl(trackId: string) {
+export function forceRevokeTrackBlobUrl(trackId: string, currentPlayingId?: string) {
+  const activeId = currentPlayingId !== undefined ? currentPlayingId : currentlyPlayingTrackId;
+  // Guard: never revoke the blob URL of a track that is actively playing
+  if (activeId && trackId === activeId) {
+    return;
+  }
   const existingUrl = activeBlobUrls.get(trackId);
   if (existingUrl) {
     try {
@@ -133,6 +149,8 @@ export async function getAudioBlob(trackId: string): Promise<Blob | null> {
 }
 
 export async function getTrackPlayableUrl(track: Track): Promise<string> {
+  setActivePlayingTrackId(track.id);
+
   // Check if we have an active blob URL in memory
   if (activeBlobUrls.has(track.id)) {
     const active = activeBlobUrls.get(track.id);
@@ -159,19 +177,8 @@ export async function getTrackPlayableUrl(track: Track): Promise<string> {
     try {
       const blob = await getAudioBlob(track.id);
       if (blob && blob.size > 20000) {
-        // Evict oldest entry if pool is full
-        if (activeBlobUrls.size >= MAX_ACTIVE_BLOB_URLS) {
-          const oldestKey = activeBlobUrls.keys().next().value;
-          if (oldestKey) {
-            const oldUrl = activeBlobUrls.get(oldestKey);
-            if (oldUrl) {
-              try {
-                URL.revokeObjectURL(oldUrl);
-              } catch {}
-              activeBlobUrls.delete(oldestKey);
-            }
-          }
-        }
+        // Evict oldest entry if pool is full, protecting active track
+        revokeTrackBlobUrl(track.id);
         const url = URL.createObjectURL(blob);
         activeBlobUrls.set(track.id, url);
         return url;
@@ -307,7 +314,7 @@ export async function clearAllAudioCache(): Promise<void> {
   if (typeof window !== 'undefined' && 'caches' in window) {
     try {
       const keys = await window.caches.keys();
-      await Promise.all(keys.map((k) => window.caches.delete(k)));
+      await Promise.all(keys.filter((k) => k.startsWith('flowluna')).map((k) => window.caches.delete(k)));
     } catch {
       // ignore
     }
@@ -331,7 +338,7 @@ export async function clearAudioCacheAndResetTracks(
   if (typeof window !== 'undefined' && 'caches' in window) {
     try {
       const keys = await window.caches.keys();
-      await Promise.all(keys.map((k) => window.caches.delete(k)));
+      await Promise.all(keys.filter((k) => k.startsWith('flowluna')).map((k) => window.caches.delete(k)));
     } catch {
       // ignore
     }

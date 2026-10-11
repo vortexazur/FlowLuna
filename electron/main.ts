@@ -19,7 +19,7 @@ if (!isDev) {
 }
 
 const PORT = process.env.PORT || 3000;
-const SERVER_URL = `http://127.0.0.1:${PORT}`;
+let SERVER_URL = `http://127.0.0.1:${PORT}`;
 
 app.name = 'FlowLuna';
 app.setAppUserModelId('com.flowluna.player');
@@ -109,7 +109,11 @@ async function ensureServerRunning(): Promise<void> {
       console.log(`[Electron] Starting embedded server in-process from ${serverScript}`);
       const serverModule = require(serverScript);
       if (typeof serverModule.startServer === 'function') {
-        await serverModule.startServer(Number(PORT));
+        const result = await serverModule.startServer(Number(PORT));
+        if (result?.port && result.port !== Number(PORT)) {
+          SERVER_URL = `http://127.0.0.1:${result.port}`;
+          console.log(`[Electron] Server bound to alternate port ${result.port}`);
+        }
         console.log('[Electron] Server ready');
         return;
       }

@@ -59,13 +59,21 @@ export const TrackTagEditorModal: React.FC<TrackTagEditorModalProps> = ({
   const [isFetchingOnline, setIsFetchingOnline] = useState(false);
   const [fetchStatus, setFetchStatus] = useState<'success' | 'not_found' | 'error' | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const fetchAbortControllerRef = useRef<AbortController | null>(null);
 
   const handleFetchOnlineMetadata = async () => {
     if (!title.trim() && !artist.trim()) return;
+    if (fetchAbortControllerRef.current) {
+      fetchAbortControllerRef.current.abort();
+    }
+    const controller = new AbortController();
+    fetchAbortControllerRef.current = controller;
+    const timeoutId = setTimeout(() => controller.abort(), 10000);
+
     setIsFetchingOnline(true);
     setFetchStatus(null);
     try {
-      const meta = await fetchOnlineMetadata(artist, title);
+      const meta = await fetchOnlineMetadata(artist, title, undefined, controller.signal);
       if (meta) {
         if (meta.title) setTitle(meta.title);
         if (meta.artist && (artist === 'Artiste Local' || !artist.trim())) setArtist(meta.artist);
@@ -80,6 +88,10 @@ export const TrackTagEditorModal: React.FC<TrackTagEditorModalProps> = ({
     } catch {
       setFetchStatus('error');
     } finally {
+      clearTimeout(timeoutId);
+      if (fetchAbortControllerRef.current === controller) {
+        fetchAbortControllerRef.current = null;
+      }
       setIsFetchingOnline(false);
       setTimeout(() => setFetchStatus(null), 4000);
     }
@@ -96,6 +108,12 @@ export const TrackTagEditorModal: React.FC<TrackTagEditorModalProps> = ({
       setCoverUrl(track.coverUrl || '');
       setSavedSuccess(false);
     }
+    return () => {
+      if (fetchAbortControllerRef.current) {
+        fetchAbortControllerRef.current.abort();
+        fetchAbortControllerRef.current = null;
+      }
+    };
   }, [track, isOpen]);
 
   if (!isOpen || !track) return null;

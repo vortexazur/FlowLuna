@@ -78,7 +78,7 @@ export async function extractVideoMetadata(
     const done = (cover?: string, w?: number, h?: number) => {
       if (hasResolved) return;
       hasResolved = true;
-      const dur = Math.round(video.duration || 180);
+      const dur = Math.round(typeof video.duration === 'number' && Number.isFinite(video.duration) && video.duration > 0 ? video.duration : 180);
       cleanup();
       resolve({ duration: dur, coverUrl: cover, width: w, height: h });
     };
@@ -89,7 +89,8 @@ export async function extractVideoMetadata(
 
     video.onloadedmetadata = () => {
       // Seek slightly into the video to avoid initial black frames
-      const seekTarget = Math.min(2.0, (video.duration || 10) * 0.15);
+      const rawDur = typeof video.duration === 'number' && Number.isFinite(video.duration) && video.duration > 0 ? video.duration : 10;
+      const seekTarget = Math.min(2.0, Math.max(0, rawDur * 0.15));
       video.currentTime = seekTarget;
     };
 

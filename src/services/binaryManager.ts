@@ -249,7 +249,7 @@ export async function downloadYtdlpToAppData(): Promise<{ success: boolean; vers
       return new Promise((resolve, reject) => {
         const handleResponse = (res: any) => {
           if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
-            https.get(res.headers.location, handleResponse).on('error', reject);
+            https.get(res.headers.location, { headers: { 'User-Agent': 'FlowLuna-Desktop-Updater' } }, handleResponse).on('error', reject);
             return;
           }
           if (res.statusCode !== 200) {

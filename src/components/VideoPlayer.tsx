@@ -358,6 +358,17 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
     }
   };
 
+  // Sync videoMode when fullscreen is exited natively (e.g. pressing Escape)
+  React.useEffect(() => {
+    const handleFullscreenChange = () => {
+      if (!document.fullscreenElement && videoMode === 'theater') {
+        onSetVideoMode('hidden');
+      }
+    };
+    document.addEventListener('fullscreenchange', handleFullscreenChange);
+    return () => document.removeEventListener('fullscreenchange', handleFullscreenChange);
+  }, [videoMode, onSetVideoMode]);
+
   // Lateral and central click / double-click / double-tap handling
   const handleZoneClick = (zone: 'left' | 'center' | 'right', e: React.MouseEvent) => {
     e.stopPropagation();

@@ -73,8 +73,12 @@ class BackgroundLibraryScanner {
    * Executes a background scan against local server storage and IndexedDB
    */
   public async runScan(isSilent = false, force = false): Promise<Track[]> {
-    if (this.isScanning && !force && this.activeScanPromise) {
-      return this.activeScanPromise;
+    if (this.isScanning && this.activeScanPromise) {
+      if (!force) {
+        return this.activeScanPromise;
+      }
+      // Wait for the current scan to finish before starting a forced new one
+      try { await this.activeScanPromise; } catch { /* ignore */ }
     }
     this.isScanning = true;
     this.activeScanPromise = this.executeScan(isSilent);

@@ -14,48 +14,55 @@ export interface TrackMetadataResult {
 export async function fetchOnlineMetadata(
   artist?: string,
   title?: string,
-  query?: string
+  query?: string,
+  signal?: AbortSignal
 ): Promise<TrackMetadataResult | null> {
-  // 1. Try local FlowLuna server endpoint first (which caches the image to local storage)
+  const internalController = signal ? null : new AbortController();
+  const timeoutId = internalController ? setTimeout(() => internalController.abort(), 10000) : null;
+  const effectiveSignal = signal || internalController?.signal;
+
   try {
-    const params = new URLSearchParams();
-    if (query) params.set('query', query);
-    if (artist && artist !== 'Artiste Local') params.set('artist', artist);
-    if (title) params.set('title', title);
+    // 1. Try local FlowLuna server endpoint first (which caches the image to local storage)
+    try {
+      const params = new URLSearchParams();
+      if (query) params.set('query', query);
+      if (artist && artist !== 'Artiste Local') params.set('artist', artist);
+      if (title) params.set('title', title);
 
-    const res = await fetch(`/api/metadata/search?${params.toString()}`);
-    if (res.ok) {
-      const data = await res.json();
-      if (data.found && data.metadata) {
-        return data.metadata;
+      const res = await fetch(`/api/metadata/search?${params.toString()}`, { signal: effectiveSignal });
+      if (res.ok) {
+        const data = await res.json();
+        if (data.found && data.metadata) {
+          return data.metadata;
+        }
       }
+    } catch (err: any) {
+      if (err?.name === 'AbortError') throw err;
+      // Backend offline or running in standalone web mode
     }
-  } catch {
-    // Backend offline or running in standalone web mode
-  }
 
-  // 2. Direct browser fallback via Apple / iTunes Search API (CORS enabled)
-  try {
-    let searchTerm = query?.trim() || '';
-    if (!searchTerm) {
-      if (artist && artist !== 'Artiste Local' && title) {
-        searchTerm = `${artist} ${title}`;
-      } else if (title) {
-        searchTerm = title;
+    // 2. Direct browser fallback via Apple / iTunes Search API (CORS enabled)
+    try {
+      let searchTerm = query?.trim() || '';
+      if (!searchTerm) {
+        if (artist && artist !== 'Artiste Local' && title) {
+          searchTerm = `${artist} ${title}`;
+        } else if (title) {
+          searchTerm = title;
+        }
       }
-    }
-    if (!searchTerm) return null;
+      if (!searchTerm) return null;
 
-    const cleanTerm = searchTerm
-      .replace(/\b(?:ft\.|feat\.|featuring|official|video|music video|clip|audio|lyrics|paroles|remix|hd|4k)\b/gi, '')
-      .trim();
+      const cleanTerm = searchTerm
+        .replace(/\b(?:ft\.|feat\.|featuring|official|video|music video|clip|audio|lyrics|paroles|remix|hd|4k)\b/gi, '')
+        .trim();
 
-    const targetUrl = `https://itunes.apple.com/search?term=${encodeURIComponent(cleanTerm || searchTerm)}&entity=song&limit=1`;
-    const resp = await fetch(targetUrl);
-    if (!resp.ok) return null;
+      const targetUrl = `https://itunes.apple.com/search?term=${encodeURIComponent(cleanTerm || searchTerm)}&entity=song&limit=1`;
+      const resp = await fetch(targetUrl, { signal: effectiveSignal });
+      if (!resp.ok) return null;
 
-    const data = await resp.json();
-    if (!data.results || data.results.length === 0) return null;
+      const data = await resp.json();
+      if (!data.results || data.results.length === 0) return null;
 
     const item = data.results[0];
     const foundTitle = item.trackName || undefined;
@@ -82,4 +89,9 @@ export async function fetchOnlineMetadata(
   } catch {
     return null;
   }
+} finally {
+  if (timeoutId) {
+    clearTimeout(timeoutId);
+  }
+}
 }

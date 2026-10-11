@@ -242,18 +242,31 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
     }
   }, [initialSearchFocus]);
 
+  const dragCounterRef = React.useRef(0);
+
   const handleDragOver = (e: React.DragEvent) => {
     e.preventDefault();
-    setIsDragOver(true);
+  };
+
+  const handleDragEnter = (e: React.DragEvent) => {
+    e.preventDefault();
+    dragCounterRef.current++;
+    if (dragCounterRef.current === 1) {
+      setIsDragOver(true);
+    }
   };
 
   const handleDragLeave = (e: React.DragEvent) => {
     e.preventDefault();
-    setIsDragOver(false);
+    dragCounterRef.current = Math.max(0, dragCounterRef.current - 1);
+    if (dragCounterRef.current === 0) {
+      setIsDragOver(false);
+    }
   };
 
   const handleDrop = (e: React.DragEvent) => {
     e.preventDefault();
+    dragCounterRef.current = 0;
     setIsDragOver(false);
     if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
       onImportFiles(e.dataTransfer.files);
@@ -380,7 +393,7 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
 
   // Play All & Shuffle handlers for library
   const handlePlayAllTracks = (shuffle: boolean) => {
-    const listToPlay = filtered.length > 0 ? filtered : musicTracks;
+    const listToPlay = searchQuery ? filtered : musicTracks;
     if (listToPlay.length === 0) return;
     if (onPlayAll) {
       onPlayAll(listToPlay, shuffle);
@@ -511,6 +524,7 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
       id="library-view"
       className="p-6 md:p-8 flex flex-col gap-6 select-none w-full relative"
       onDragOver={handleDragOver}
+      onDragEnter={handleDragEnter}
       onDragLeave={handleDragLeave}
       onDrop={handleDrop}
     >
