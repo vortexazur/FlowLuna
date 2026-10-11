@@ -142,7 +142,7 @@ export const AudioTrimmerModal: React.FC<AudioTrimmerModalProps> = ({
         setIsLoadingBuffer(false);
         setStatusMessage({
           type: 'error',
-          text: "Impossible de décoder les données audio de cette piste pour la découpe.",
+          text: err?.message || "Impossible de décoder les données audio de cette piste pour la découpe.",
         });
       });
 

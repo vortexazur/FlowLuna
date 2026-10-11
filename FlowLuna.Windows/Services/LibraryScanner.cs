@@ -147,17 +147,28 @@ public static class LibraryScanner
                     CreateNoWindow = true
                 };
 
-                using var process = Process.Start(psi);
-                if (process != null)
+                using var process = new Process { StartInfo = psi };
+                using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+                process.Start();
+
+                var stdoutTask = process.StandardOutput.ReadToEndAsync(cts.Token);
+                var stderrTask = process.StandardError.ReadToEndAsync(cts.Token);
+
+                try
                 {
-                    var stdout = await process.StandardOutput.ReadToEndAsync();
-                    await process.WaitForExitAsync();
+                    await process.WaitForExitAsync(cts.Token);
+                    var stdout = await stdoutTask;
+                    await stderrTask;
 
                     if (!string.IsNullOrWhiteSpace(stdout))
                     {
                         using var doc = JsonDocument.Parse(stdout);
                         return doc.RootElement.Clone();
                     }
+                }
+                catch (OperationCanceledException)
+                {
+                    try { process.Kill(entireProcessTree: true); } catch { }
                 }
             }
             catch { }
@@ -203,11 +214,22 @@ public static class LibraryScanner
                 CreateNoWindow = true
             };
 
-            using var process = Process.Start(psi);
-            if (process == null) return null;
+            using var process = new Process { StartInfo = psi };
+            using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(8));
+            process.Start();
 
-            var stderr = await process.StandardError.ReadToEndAsync();
-            await process.WaitForExitAsync();
+            var stderrTask = process.StandardError.ReadToEndAsync(cts.Token);
+            string stderr;
+            try
+            {
+                await process.WaitForExitAsync(cts.Token);
+                stderr = await stderrTask;
+            }
+            catch (OperationCanceledException)
+            {
+                try { process.Kill(entireProcessTree: true); } catch { }
+                return null;
+            }
 
             int duration = 0;
             int bitrate = 0;
@@ -305,10 +327,18 @@ public static class LibraryScanner
                     CreateNoWindow = true
                 };
 
-                using var proc = Process.Start(psi);
-                if (proc != null)
+                using var proc = new Process { StartInfo = psi };
+                using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(8));
+                proc.Start();
+
+                var stderrTask = proc.StandardError.ReadToEndAsync(cts.Token);
+                var stdoutTask = proc.StandardOutput.ReadToEndAsync(cts.Token);
+
+                try
                 {
-                    await proc.WaitForExitAsync();
+                    await proc.WaitForExitAsync(cts.Token);
+                    await Task.WhenAll(stderrTask, stdoutTask);
+
                     if (File.Exists(cachePath) && new FileInfo(cachePath).Length > 200)
                     {
                         return ($"/covers/{trackHash}.jpg", currentAlbum, currentArtist, currentTitle, currentGenre, currentYear);
@@ -317,6 +347,10 @@ public static class LibraryScanner
                     {
                         try { File.Delete(cachePath); } catch { }
                     }
+                }
+                catch (OperationCanceledException)
+                {
+                    try { proc.Kill(entireProcessTree: true); } catch { }
                 }
             }
             catch { }

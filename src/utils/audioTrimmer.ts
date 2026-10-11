@@ -15,6 +15,8 @@ export function getAudioContext(): AudioContext {
   return sharedAudioContext;
 }
 
+const MAX_BUFFER_SIZE_BYTES = 120 * 1024 * 1024; // Limite de 120 Mo pour parer au crash OOM V8
+
 /**
  * Charge et décode un Track sous forme d'AudioBuffer complet
  */
@@ -24,16 +26,26 @@ export async function loadAudioBufferForTrack(
 ): Promise<AudioBuffer> {
   const ctx = getAudioContext();
 
+  if (track.sizeInBytes && track.sizeInBytes > MAX_BUFFER_SIZE_BYTES) {
+    throw new Error('Ce fichier média est trop volumineux (> 120 Mo) pour être décodé en mémoire.');
+  }
+
   onProgress?.('Récupération des données audio...');
 
   // 1. Vérifier si un Blob existe déjà dans IndexedDB
   let arrayBuffer: ArrayBuffer | null = null;
   try {
     const blob = await getAudioBlob(track.id);
-    if (blob && blob.size > 1000) {
-      arrayBuffer = await blob.arrayBuffer();
+    if (blob) {
+      if (blob.size > MAX_BUFFER_SIZE_BYTES) {
+        throw new Error('Ce fichier média est trop volumineux (> 120 Mo) pour être décodé en mémoire.');
+      }
+      if (blob.size > 1000) {
+        arrayBuffer = await blob.arrayBuffer();
+      }
     }
-  } catch (err) {
+  } catch (err: any) {
+    if (err?.message?.includes('120 Mo')) throw err;
     console.warn('Erreur de lecture du Blob IndexedDB:', err);
   }
 
@@ -45,8 +57,16 @@ export async function loadAudioBufferForTrack(
       if (!response.ok) {
         throw new Error(`HTTP ${response.status}`);
       }
+      const contentLength = response.headers.get('content-length');
+      if (contentLength && parseInt(contentLength, 10) > MAX_BUFFER_SIZE_BYTES) {
+        throw new Error('Ce fichier média est trop volumineux (> 120 Mo) pour être décodé en mémoire.');
+      }
       arrayBuffer = await response.arrayBuffer();
-    } catch (fetchErr) {
+      if (arrayBuffer.byteLength > MAX_BUFFER_SIZE_BYTES) {
+        throw new Error('Ce fichier média est trop volumineux (> 120 Mo) pour être décodé en mémoire.');
+      }
+    } catch (fetchErr: any) {
+      if (fetchErr?.message?.includes('120 Mo')) throw fetchErr;
       console.warn('Fetch audio échoué, essai de génération de secours:', fetchErr);
       // Génération synthétique de secours pour les morceaux de démonstration
       onProgress?.('Génération de secours de l’onde sonore...');
@@ -58,11 +78,13 @@ export async function loadAudioBufferForTrack(
     }
   }
 
+  if (arrayBuffer.byteLength > MAX_BUFFER_SIZE_BYTES) {
+    throw new Error('Ce fichier média est trop volumineux (> 120 Mo) pour être décodé en mémoire.');
+  }
+
   onProgress?.('Décodage des échantillons audio haute fidélité...');
   try {
-    // Clonage pour éviter que decodeAudioData ne détache le buffer d'origine
-    const bufferCopy = arrayBuffer.slice(0);
-    const audioBuffer = await ctx.decodeAudioData(bufferCopy);
+    const audioBuffer = await ctx.decodeAudioData(arrayBuffer);
     return audioBuffer;
   } catch (decodeErr) {
     // Fallback: générer une onde synthétique propre si le fichier est corrompu ou format exotique

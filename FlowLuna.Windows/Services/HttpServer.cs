@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Concurrent;
+using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Net;
@@ -31,6 +32,40 @@ public class HttpServer
     {
         Port = preferredPort;
 
+        var possibleWwwRoots = new[]
+        {
+            Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "wwwroot"),
+            Path.GetFullPath(Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "..", "..", "..", "..", "dist")),
+            Path.Combine(Directory.GetCurrentDirectory(), "dist"),
+            Path.Combine(Directory.GetCurrentDirectory(), "..", "dist")
+        };
+
+        var wwwroot = possibleWwwRoots.FirstOrDefault(Directory.Exists);
+
+        _app = BuildApp(Port, wwwroot);
+
+        try
+        {
+            await _app.StartAsync();
+            Console.WriteLine($"[FlowLuna HTTP] Serveur démarré sur {BaseUrl}");
+        }
+        catch (IOException)
+        {
+            // Port 3000 is occupied — rebuild on fallback port 3001
+            Port = 3001;
+
+            // Dispose the failed app before rebuilding
+            try { await _app.DisposeAsync(); } catch { }
+
+            _app = BuildApp(Port, wwwroot);
+
+            await _app.StartAsync();
+            Console.WriteLine($"[FlowLuna HTTP] Serveur démarré sur fallback {BaseUrl}");
+        }
+    }
+
+    private WebApplication BuildApp(int port, string? wwwroot)
+    {
         var builder = WebApplication.CreateEmptyBuilder(new WebApplicationOptions
         {
             Args = Array.Empty<string>()
@@ -38,7 +73,7 @@ public class HttpServer
 
         builder.WebHost.UseKestrel(options =>
         {
-            options.Listen(IPAddress.Loopback, Port);
+            options.Listen(IPAddress.Loopback, port);
         });
 
         builder.Services.AddCors(options =>
@@ -51,9 +86,16 @@ public class HttpServer
 
         builder.Services.AddRouting();
 
-        _app = builder.Build();
-        _app.UseCors();
+        var app = builder.Build();
+        app.UseCors();
 
+        ConfigureEndpoints(app, wwwroot);
+
+        return app;
+    }
+
+    private void ConfigureEndpoints(WebApplication app, string? wwwroot)
+    {
         // 1. Static media directories
         var appDataAudio = Path.Combine(BinaryManager.FlowLunaDataDir, "audio");
         var appDataVideos = Path.Combine(BinaryManager.FlowLunaDataDir, "videos");
@@ -62,26 +104,26 @@ public class HttpServer
         Directory.CreateDirectory(appDataVideos);
         Directory.CreateDirectory(appDataCovers);
 
-        _app.UseStaticFiles(new StaticFileOptions
+        app.UseStaticFiles(new StaticFileOptions
         {
             FileProvider = new PhysicalFileProvider(appDataAudio),
             RequestPath = "/audio"
         });
 
-        _app.UseStaticFiles(new StaticFileOptions
+        app.UseStaticFiles(new StaticFileOptions
         {
             FileProvider = new PhysicalFileProvider(appDataVideos),
             RequestPath = "/videos"
         });
 
-        _app.UseStaticFiles(new StaticFileOptions
+        app.UseStaticFiles(new StaticFileOptions
         {
             FileProvider = new PhysicalFileProvider(appDataCovers),
             RequestPath = "/covers"
         });
 
         // 2. Library Endpoints
-        _app.MapGet("/api/library/scan", async (HttpContext ctx) =>
+        app.MapGet("/api/library/scan", async (HttpContext ctx) =>
         {
             var folder = ctx.Request.Query["folder"].ToString();
             var tracks = await LibraryScanner.ScanAllDirectoriesAsync(string.IsNullOrWhiteSpace(folder) ? null : folder);
@@ -94,7 +136,7 @@ public class HttpServer
             });
         });
 
-        _app.MapPost("/api/library/add-folder", async (HttpContext ctx) =>
+        app.MapPost("/api/library/add-folder", async (HttpContext ctx) =>
         {
             using var reader = new StreamReader(ctx.Request.Body);
             var bodyText = await reader.ReadToEndAsync();
@@ -125,7 +167,7 @@ public class HttpServer
             });
         });
 
-        _app.MapPost("/api/library/add-files", async (HttpContext ctx) =>
+        app.MapPost("/api/library/add-files", async (HttpContext ctx) =>
         {
             using var reader = new StreamReader(ctx.Request.Body);
             var bodyText = await reader.ReadToEndAsync();
@@ -151,7 +193,7 @@ public class HttpServer
             });
         });
 
-        _app.MapGet("/api/library/folders", () =>
+        app.MapGet("/api/library/folders", () =>
         {
             return Results.Json(new
             {
@@ -160,7 +202,7 @@ public class HttpServer
         });
 
         // Universal zero-copy audio stream with Range HTTP 206 support
-        _app.MapGet("/api/library/stream", (HttpContext ctx) =>
+        app.MapGet("/api/library/stream", (HttpContext ctx) =>
         {
             var reqFile = ctx.Request.Query["file"].ToString();
             if (string.IsNullOrWhiteSpace(reqFile) || !File.Exists(reqFile))
@@ -193,7 +235,7 @@ public class HttpServer
         });
 
         // Dedicated cover artwork serving endpoint
-        _app.MapGet("/api/covers/{name}", (string name) =>
+        app.MapGet("/api/covers/{name}", (string name) =>
         {
             var safeName = Path.GetFileName(name);
             var coverPath = Path.Combine(appDataCovers, safeName);
@@ -202,7 +244,7 @@ public class HttpServer
         });
 
         // Online song metadata and artwork search
-        _app.MapGet("/api/metadata/search", async (HttpContext ctx) =>
+        app.MapGet("/api/metadata/search", async (HttpContext ctx) =>
         {
             var query = ctx.Request.Query["query"].ToString();
             var artist = ctx.Request.Query["artist"].ToString();
@@ -216,7 +258,7 @@ public class HttpServer
         });
 
         // Lyrics lookup (local .lrc file or disk cache)
-        _app.MapGet("/api/lyrics", async (HttpContext ctx) =>
+        app.MapGet("/api/lyrics", async (HttpContext ctx) =>
         {
             var filePath = ctx.Request.Query["file"].ToString();
 
@@ -255,7 +297,7 @@ public class HttpServer
         });
 
         // Lyrics cache endpoint
-        _app.MapPost("/api/lyrics/cache", async (HttpContext ctx) =>
+        app.MapPost("/api/lyrics/cache", async (HttpContext ctx) =>
         {
             try
             {
@@ -279,39 +321,144 @@ public class HttpServer
             return Results.BadRequest();
         });
 
+        // Video container chapters parser route (ffprobe)
+        app.MapGet("/api/video/chapters", async (HttpContext ctx) =>
+        {
+            var filePath = ctx.Request.Query["filePath"].ToString();
+            if (string.IsNullOrWhiteSpace(filePath) || !File.Exists(filePath))
+            {
+                return Results.Json(new { success = false, chapters = Array.Empty<object>() });
+            }
+
+            var ffprobePath = BinaryManager.GetFfprobePath();
+            if (string.IsNullOrWhiteSpace(ffprobePath) || (!File.Exists(ffprobePath) && ffprobePath.EndsWith(".exe", StringComparison.OrdinalIgnoreCase)))
+            {
+                return Results.Json(new { success = false, chapters = Array.Empty<object>() });
+            }
+
+            try
+            {
+                var psi = new ProcessStartInfo
+                {
+                    FileName = ffprobePath,
+                    Arguments = $"-v quiet -print_format json -show_chapters \"{filePath}\"",
+                    RedirectStandardOutput = true,
+                    RedirectStandardError = true,
+                    UseShellExecute = false,
+                    CreateNoWindow = true
+                };
+
+                using var proc = new Process { StartInfo = psi };
+                if (!proc.Start())
+                {
+                    return Results.Json(new { success = false, chapters = Array.Empty<object>() });
+                }
+
+                using var cts = new System.Threading.CancellationTokenSource(TimeSpan.FromSeconds(8));
+                var stdoutTask = proc.StandardOutput.ReadToEndAsync(cts.Token);
+                var stderrTask = proc.StandardError.ReadToEndAsync(cts.Token);
+
+                await Task.WhenAll(stdoutTask, stderrTask);
+                await proc.WaitForExitAsync(cts.Token);
+
+                var output = stdoutTask.Result;
+                if (string.IsNullOrWhiteSpace(output))
+                {
+                    return Results.Json(new { success = false, chapters = Array.Empty<object>() });
+                }
+
+                using var doc = JsonDocument.Parse(output);
+                if (doc.RootElement.TryGetProperty("chapters", out var chaptersEl) && chaptersEl.ValueKind == JsonValueKind.Array)
+                {
+                    var chapters = new System.Collections.Generic.List<object>();
+                    int idx = 0;
+                    foreach (var ch in chaptersEl.EnumerateArray())
+                    {
+                        long id = idx;
+                        if (ch.TryGetProperty("id", out var idProp) && idProp.TryGetInt64(out var parsedId))
+                        {
+                            id = parsedId;
+                        }
+
+                        string title = $"Chapitre {idx + 1}";
+                        if (ch.TryGetProperty("tags", out var tagsEl) && tagsEl.TryGetProperty("title", out var titleTag) && !string.IsNullOrWhiteSpace(titleTag.GetString()))
+                        {
+                            title = titleTag.GetString()!;
+                        }
+                        else if (ch.TryGetProperty("title", out var titleDirect) && !string.IsNullOrWhiteSpace(titleDirect.GetString()))
+                        {
+                            title = titleDirect.GetString()!;
+                        }
+
+                        double startTime = 0.0;
+                        if (ch.TryGetProperty("start_time", out var startProp))
+                        {
+                            if (startProp.ValueKind == JsonValueKind.Number) startTime = startProp.GetDouble();
+                            else if (startProp.ValueKind == JsonValueKind.String && double.TryParse(startProp.GetString(), System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out var parsedStart))
+                                startTime = parsedStart;
+                        }
+
+                        double endTime = 0.0;
+                        if (ch.TryGetProperty("end_time", out var endProp))
+                        {
+                            if (endProp.ValueKind == JsonValueKind.Number) endTime = endProp.GetDouble();
+                            else if (endProp.ValueKind == JsonValueKind.String && double.TryParse(endProp.GetString(), System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out var parsedEnd))
+                                endTime = parsedEnd;
+                        }
+
+                        chapters.Add(new
+                        {
+                            id,
+                            title,
+                            startTime,
+                            endTime
+                        });
+                        idx++;
+                    }
+                    return Results.Json(new { success = true, chapters });
+                }
+
+                return Results.Json(new { success = true, chapters = Array.Empty<object>() });
+            }
+            catch
+            {
+                return Results.Json(new { success = false, chapters = Array.Empty<object>() });
+            }
+        });
+
         // 3. Downloader & Binaries Endpoints
-        _app.MapGet("/api/downloader/binaries-status", async () =>
+        app.MapGet("/api/downloader/binaries-status", async () =>
         {
             var report = await BinaryManager.GetStatusReportAsync();
             return Results.Json(report);
         });
 
-        _app.MapPost("/api/downloader/update-ytdlp", async () =>
+        app.MapPost("/api/downloader/update-ytdlp", async () =>
         {
             var (success, message) = await BinaryManager.UpdateYtdlpAsync();
             return Results.Json(new { success, message });
         });
 
-        _app.MapGet("/api/engine/libvlc-status", async () =>
+        app.MapGet("/api/engine/libvlc-status", async () =>
         {
             var status = await BinaryManager.GetLibVlcStatusAsync();
             return Results.Json(status);
         });
 
-        _app.MapPost("/api/engine/update-libvlc", async () =>
+        app.MapPost("/api/engine/update-libvlc", async () =>
         {
             var (success, message) = await BinaryManager.UpdateLibVlcAsync();
             return Results.Json(new { success, message });
         });
 
         // FlowLuna Software Auto-Update endpoints
-        _app.MapGet("/api/app/check-update", async () =>
+        app.MapGet("/api/app/check-update", async () =>
         {
             var res = await BinaryManager.CheckAppUpdateAsync();
             return Results.Json(res);
         });
 
-        _app.MapPost("/api/app/download-update", async (HttpContext ctx) =>
+        app.MapPost("/api/app/download-update", async (HttpContext ctx) =>
         {
             using var reader = new StreamReader(ctx.Request.Body);
             var bodyText = await reader.ReadToEndAsync();
@@ -332,13 +479,13 @@ public class HttpServer
             return Results.Json(res);
         });
 
-        _app.MapGet("/api/app/update-progress", () =>
+        app.MapGet("/api/app/update-progress", () =>
         {
             var status = BinaryManager.GetAppUpdateProgress();
             return Results.Json(status);
         });
 
-        _app.MapPost("/api/app/apply-update", async (HttpContext ctx) =>
+        app.MapPost("/api/app/apply-update", async (HttpContext ctx) =>
         {
             using var reader = new StreamReader(ctx.Request.Body);
             var bodyText = await reader.ReadToEndAsync();
@@ -358,7 +505,7 @@ public class HttpServer
         });
 
         // Real-time SSE download progress
-        _app.MapGet("/api/downloader/progress/{jobId}", async (string jobId, HttpContext ctx) =>
+        app.MapGet("/api/downloader/progress/{jobId}", async (string jobId, HttpContext ctx) =>
         {
             ctx.Response.Headers.Append("Content-Type", "text/event-stream");
             ctx.Response.Headers.Append("Cache-Control", "no-cache");
@@ -386,7 +533,7 @@ public class HttpServer
         });
 
         // Media Inspection
-        _app.MapPost("/api/downloader/inspect", async (HttpContext ctx) =>
+        app.MapPost("/api/downloader/inspect", async (HttpContext ctx) =>
         {
             using var reader = new StreamReader(ctx.Request.Body);
             var bodyText = await reader.ReadToEndAsync();
@@ -399,7 +546,7 @@ public class HttpServer
         });
 
         // Direct Browser/PC Download
-        _app.MapGet("/api/downloader/download", async (HttpContext ctx) =>
+        app.MapGet("/api/downloader/download", async (HttpContext ctx) =>
         {
             var url = ctx.Request.Query["url"].ToString();
             var jobId = ctx.Request.Query["jobId"].ToString();
@@ -448,7 +595,7 @@ public class HttpServer
         });
 
         // Save Directly to FlowLuna Music Library
-        _app.MapPost("/api/downloader/save-to-app", async (HttpContext ctx) =>
+        app.MapPost("/api/downloader/save-to-app", async (HttpContext ctx) =>
         {
             using var reader = new StreamReader(ctx.Request.Body);
             var bodyText = await reader.ReadToEndAsync();
@@ -478,7 +625,7 @@ public class HttpServer
         });
 
         // 4. Audio Transcoder Endpoint
-        _app.MapPost("/api/audio/convert", async (HttpContext ctx) =>
+        app.MapPost("/api/audio/convert", async (HttpContext ctx) =>
         {
             var format = ctx.Request.Query["format"].ToString();
             if (string.IsNullOrWhiteSpace(format)) format = "mp3";
@@ -518,7 +665,7 @@ public class HttpServer
         });
 
         // Discord Rich Presence Endpoints
-        _app.MapPost("/api/discord/presence", async (HttpContext ctx) =>
+        app.MapPost("/api/discord/presence", async (HttpContext ctx) =>
         {
             try
             {
@@ -544,7 +691,7 @@ public class HttpServer
             }
         });
 
-        _app.MapPost("/api/discord/clear", async () =>
+        app.MapPost("/api/discord/clear", async () =>
         {
             try
             {
@@ -558,25 +705,16 @@ public class HttpServer
         });
 
         // 5. Static React SPA files serving
-        var possibleWwwRoots = new[]
-        {
-            Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "wwwroot"),
-            Path.GetFullPath(Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "..", "..", "..", "..", "dist")),
-            Path.Combine(Directory.GetCurrentDirectory(), "dist"),
-            Path.Combine(Directory.GetCurrentDirectory(), "..", "dist")
-        };
-
-        var wwwroot = possibleWwwRoots.FirstOrDefault(Directory.Exists);
         if (wwwroot != null)
         {
-            _app.UseStaticFiles(new StaticFileOptions
+            app.UseStaticFiles(new StaticFileOptions
             {
                 FileProvider = new PhysicalFileProvider(wwwroot),
                 RequestPath = ""
             });
 
             // SPA fallback: any non-API route returns index.html
-            _app.MapFallback(async (HttpContext ctx) =>
+            app.MapFallback(async (HttpContext ctx) =>
             {
                 var indexFile = Path.Combine(wwwroot, "index.html");
                 if (File.Exists(indexFile))
@@ -590,49 +728,6 @@ public class HttpServer
                     await ctx.Response.WriteAsync("FlowLuna UI non trouvée.");
                 }
             });
-        }
-
-        try
-        {
-            await _app.StartAsync();
-            Console.WriteLine($"[FlowLuna HTTP] Serveur démarré sur {BaseUrl}");
-        }
-        catch (IOException)
-        {
-            // Port 3000 is occupied — rebuild on fallback port 3001
-            Port = 3001;
-
-            var fallbackBuilder = WebApplication.CreateEmptyBuilder(new WebApplicationOptions
-            {
-                Args = Array.Empty<string>()
-            });
-
-            fallbackBuilder.WebHost.UseKestrel(opts => opts.Listen(IPAddress.Loopback, Port));
-            fallbackBuilder.Services.AddCors(options =>
-            {
-                options.AddDefaultPolicy(policy =>
-                    policy.AllowAnyOrigin().AllowAnyHeader().AllowAnyMethod());
-            });
-            fallbackBuilder.Services.AddRouting();
-
-            // Dispose the failed app before rebuilding
-            try { await _app.DisposeAsync(); } catch { }
-
-            _app = fallbackBuilder.Build();
-            _app.UseCors();
-
-            // Re-register all routes on fallback app (static files + SPA fallback)
-            if (wwwroot != null)
-            {
-                _app.UseStaticFiles(new StaticFileOptions
-                {
-                    FileProvider = new PhysicalFileProvider(wwwroot),
-                    RequestPath = ""
-                });
-            }
-
-            await _app.StartAsync();
-            Console.WriteLine($"[FlowLuna HTTP] Serveur démarré sur fallback {BaseUrl}");
         }
     }
 

@@ -40,7 +40,16 @@ export async function exportLibraryArchive(): Promise<{ filename: string; tracks
     playCount: typeof t.playCount === 'number' ? t.playCount : 0,
     addedAt: typeof t.addedAt === 'number' ? t.addedAt : Date.now(),
     lyrics: Array.isArray(t.lyrics) ? t.lyrics : undefined,
+    lyricsOffset: typeof t.lyricsOffset === 'number' ? t.lyricsOffset : undefined,
     sizeInBytes: typeof t.sizeInBytes === 'number' ? t.sizeInBytes : undefined,
+    year: typeof t.year === 'string' ? t.year : undefined,
+    genre: typeof t.genre === 'string' ? t.genre : undefined,
+    trackNumber: typeof t.trackNumber === 'number' ? t.trackNumber : undefined,
+    isVideo: Boolean(t.isVideo),
+    videoWidth: typeof t.videoWidth === 'number' ? t.videoWidth : undefined,
+    videoHeight: typeof t.videoHeight === 'number' ? t.videoHeight : undefined,
+    filePath: typeof t.filePath === 'string' ? t.filePath : undefined,
+    chapters: Array.isArray(t.chapters) ? t.chapters : undefined,
   }));
 
   // Nettoyage et sérialisation des playlists
@@ -180,7 +189,16 @@ export async function importLibraryArchive(file: File): Promise<{
           playCount: typeof rawTrack.playCount === 'number' ? rawTrack.playCount : 0,
           addedAt: typeof rawTrack.addedAt === 'number' ? rawTrack.addedAt : Date.now(),
           lyrics: Array.isArray(rawTrack.lyrics) ? rawTrack.lyrics : undefined,
+          lyricsOffset: typeof rawTrack.lyricsOffset === 'number' ? rawTrack.lyricsOffset : undefined,
           sizeInBytes: typeof rawTrack.sizeInBytes === 'number' ? rawTrack.sizeInBytes : undefined,
+          year: typeof rawTrack.year === 'string' ? rawTrack.year : undefined,
+          genre: typeof rawTrack.genre === 'string' ? rawTrack.genre : undefined,
+          trackNumber: typeof rawTrack.trackNumber === 'number' ? rawTrack.trackNumber : undefined,
+          isVideo: Boolean(rawTrack.isVideo),
+          videoWidth: typeof rawTrack.videoWidth === 'number' ? rawTrack.videoWidth : undefined,
+          videoHeight: typeof rawTrack.videoHeight === 'number' ? rawTrack.videoHeight : undefined,
+          filePath: typeof rawTrack.filePath === 'string' ? rawTrack.filePath : undefined,
+          chapters: Array.isArray(rawTrack.chapters) ? rawTrack.chapters : undefined,
         };
         await saveTrack(track);
         tracksCount++;

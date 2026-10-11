@@ -66,10 +66,22 @@ public static class AudioTranscoder
                 CreateNoWindow = true
             };
 
-            using var process = Process.Start(psi);
-            if (process != null)
+            using var process = new Process { StartInfo = psi };
+            using var cts = new CancellationTokenSource(TimeSpan.FromMinutes(3));
+            process.Start();
+
+            var stderrTask = process.StandardError.ReadToEndAsync(cts.Token);
+            var stdoutTask = process.StandardOutput.ReadToEndAsync(cts.Token);
+
+            try
             {
-                await process.WaitForExitAsync();
+                await process.WaitForExitAsync(cts.Token);
+                await Task.WhenAll(stderrTask, stdoutTask);
+            }
+            catch (OperationCanceledException)
+            {
+                try { process.Kill(entireProcessTree: true); } catch { }
+                throw new TimeoutException("Le transcodage audio via FFmpeg a expiré après 3 minutes.");
             }
 
             if (File.Exists(outputTemp))

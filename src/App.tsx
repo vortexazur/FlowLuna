@@ -547,7 +547,7 @@ export default function App() {
           }
         }
       } catch (err: any) {
-        if (err?.name === 'AbortError') {
+        if (err?.name === 'AbortError' && playRequestIdRef.current !== requestId) {
           // Play request was superseded by a newer track: clean exit without error
           return;
         }

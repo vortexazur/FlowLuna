@@ -6,6 +6,7 @@ using System.Linq;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Text.RegularExpressions;
+using System.Threading;
 using System.Threading.Tasks;
 
 namespace FlowLuna.Services;
@@ -44,20 +45,25 @@ public static class DownloaderEngine
             CreateNoWindow = true
         };
 
+        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(25));
         try
         {
-            using var process = Process.Start(psi);
-            if (process != null)
+            using var process = new Process { StartInfo = psi };
+            process.Start();
+
+            var stdoutTask = process.StandardOutput.ReadToEndAsync(cts.Token);
+            var stderrTask = process.StandardError.ReadToEndAsync(cts.Token);
+
+            await process.WaitForExitAsync(cts.Token);
+            var stdout = await stdoutTask;
+            await stderrTask;
+
+            if (process.ExitCode == 0 && !string.IsNullOrWhiteSpace(stdout))
             {
-                var stdout = await process.StandardOutput.ReadToEndAsync();
-                await process.WaitForExitAsync();
+                using var doc = JsonDocument.Parse(stdout);
+                var root = doc.RootElement;
 
-                if (process.ExitCode == 0 && !string.IsNullOrWhiteSpace(stdout))
-                {
-                    using var doc = JsonDocument.Parse(stdout);
-                    var root = doc.RootElement;
-
-                    var rawTitle = root.TryGetProperty("title", out var tp) ? tp.GetString() ?? "Média sans titre" : "Média sans titre";
+                var rawTitle = root.TryGetProperty("title", out var tp) ? tp.GetString() ?? "Média sans titre" : "Média sans titre";
                     var rawArtist = root.TryGetProperty("uploader", out var up) ? up.GetString() :
                                     root.TryGetProperty("channel", out var cp) ? cp.GetString() :
                                     root.TryGetProperty("artist", out var ap) ? ap.GetString() : "Artiste Inconnu";
@@ -109,7 +115,6 @@ public static class DownloaderEngine
                             new { format = "webm", label = "WebM (VP9 / Opus)" },
                         }
                     };
-                }
             }
         }
         catch { }
@@ -230,10 +235,23 @@ public static class DownloaderEngine
                 }
             }
         };
+        // Actively drain stderr to prevent OS anonymous pipe saturation and deadlock
+        process.ErrorDataReceived += (_, _) => { };
 
+        using var cts = new CancellationTokenSource(TimeSpan.FromMinutes(10));
         process.Start();
         process.BeginOutputReadLine();
-        await process.WaitForExitAsync();
+        process.BeginErrorReadLine();
+
+        try
+        {
+            await process.WaitForExitAsync(cts.Token);
+        }
+        catch (OperationCanceledException)
+        {
+            try { process.Kill(entireProcessTree: true); } catch { }
+            throw new TimeoutException("Le téléchargement via yt-dlp a dépassé le délai imparti de 10 minutes.");
+        }
 
         onProgress?.Invoke(new YtDlpProgressUpdate("finished", 100, Message: "Téléchargement terminé avec succès !"));
 

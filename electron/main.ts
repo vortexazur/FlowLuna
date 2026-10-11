@@ -25,16 +25,40 @@ app.name = 'FlowLuna';
 app.setAppUserModelId('com.flowluna.player');
 app.commandLine.appendSwitch('disable-gpu-shader-disk-cache');
 
+const MEDIA_EXTS = new Set([
+  '.mp3', '.flac', '.wav', '.ogg', '.m4a', '.aac', '.webm', '.opus', '.wma', '.alac',
+  '.mp4', '.mkv', '.mov', '.avi', '.m4v'
+]);
+
+function filterMediaFiles(args: string[]): string[] {
+  const result: string[] = [];
+  for (const arg of args) {
+    if (!arg || arg.startsWith('--') || arg.startsWith('-')) continue;
+    try {
+      const ext = path.extname(arg).toLowerCase();
+      if (MEDIA_EXTS.has(ext) && fs.existsSync(arg)) {
+        result.push(path.resolve(arg));
+      }
+    } catch {}
+  }
+  return result;
+}
+
 // Prevent multiple instances
 const gotTheLock = app.requestSingleInstanceLock();
 if (!gotTheLock) {
   app.quit();
 } else {
-  app.on('second-instance', () => {
+  app.on('second-instance', (_event, commandLine) => {
     if (mainWindow) {
       if (mainWindow.isMinimized()) mainWindow.restore();
       if (!mainWindow.isVisible()) mainWindow.show();
       mainWindow.focus();
+
+      const mediaFiles = filterMediaFiles(commandLine);
+      if (mediaFiles.length > 0) {
+        mainWindow.webContents.send('open-files', mediaFiles);
+      }
     }
   });
 }
@@ -201,6 +225,13 @@ function createMainWindow(): void {
   // Forward renderer console messages to Node process
   mainWindow.webContents.on('console-message', (_event, level, message, line, sourceId) => {
     console.log(`[Renderer L${level}] ${message} (${sourceId}:${line})`);
+  });
+
+  mainWindow.webContents.once('did-finish-load', () => {
+    const initialFiles = filterMediaFiles(process.argv);
+    if (initialFiles.length > 0) {
+      mainWindow?.webContents.send('open-files', initialFiles);
+    }
   });
 
   mainWindow.loadURL(targetUrl);
@@ -412,6 +443,14 @@ function setupIpcHandlers(): void {
       } catch {}
     }
   });
+
+  ipcMain.handle('open-default-apps-settings', async () => {
+    if (process.platform === 'win32') {
+      try {
+        await shell.openExternal('ms-settings:defaultapps');
+      } catch {}
+    }
+  });
 }
 
 // App lifecycle
@@ -428,6 +467,13 @@ app.whenReady().then(async () => {
       createMainWindow();
     }
   });
+});
+
+app.on('open-file', (event, filePath) => {
+  event.preventDefault();
+  if (mainWindow && mainWindow.webContents) {
+    mainWindow.webContents.send('open-files', [filePath]);
+  }
 });
 
 app.on('will-quit', () => {

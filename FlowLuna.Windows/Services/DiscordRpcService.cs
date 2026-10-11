@@ -202,39 +202,49 @@ public sealed class DiscordRpcService : IDisposable
     private async Task WriteFrameAsync(int opcode, string json)
     {
         if (_pipeStream == null) return;
+        using var cts = new CancellationTokenSource(TimeSpan.FromMilliseconds(1500));
         var bytes = Encoding.UTF8.GetBytes(json);
         var header = new byte[8];
         BitConverter.TryWriteBytes(header.AsSpan(0, 4), opcode);
         BitConverter.TryWriteBytes(header.AsSpan(4, 4), bytes.Length);
 
-        await _pipeStream.WriteAsync(header, 0, 8);
-        await _pipeStream.WriteAsync(bytes, 0, bytes.Length);
-        await _pipeStream.FlushAsync();
+        await _pipeStream.WriteAsync(header, 0, 8, cts.Token);
+        await _pipeStream.WriteAsync(bytes, 0, bytes.Length, cts.Token);
+        await _pipeStream.FlushAsync(cts.Token);
     }
 
     private async Task<(int opcode, string json)> ReadFrameAsync()
     {
         if (_pipeStream == null) return (-1, string.Empty);
-        var header = new byte[8];
-        int read = await _pipeStream.ReadAsync(header, 0, 8);
-        if (read < 8) return (-1, string.Empty);
-
-        int opcode = BitConverter.ToInt32(header, 0);
-        int length = BitConverter.ToInt32(header, 4);
-
-        if (length <= 0 || length > 1024 * 1024) return (opcode, string.Empty);
-
-        var buffer = new byte[length];
-        int total = 0;
-        while (total < length)
+        using var cts = new CancellationTokenSource(TimeSpan.FromMilliseconds(1500));
+        try
         {
-            int chunk = await _pipeStream.ReadAsync(buffer, total, length - total);
-            if (chunk <= 0) break;
-            total += chunk;
-        }
+            var header = new byte[8];
+            int read = await _pipeStream.ReadAsync(header, 0, 8, cts.Token);
+            if (read < 8) return (-1, string.Empty);
 
-        var json = Encoding.UTF8.GetString(buffer, 0, total);
-        return (opcode, json);
+            int opcode = BitConverter.ToInt32(header, 0);
+            int length = BitConverter.ToInt32(header, 4);
+
+            if (length <= 0 || length > 1024 * 1024) return (opcode, string.Empty);
+
+            var buffer = new byte[length];
+            int total = 0;
+            while (total < length)
+            {
+                int chunk = await _pipeStream.ReadAsync(buffer, total, length - total, cts.Token);
+                if (chunk <= 0) break;
+                total += chunk;
+            }
+
+            var json = Encoding.UTF8.GetString(buffer, 0, total);
+            return (opcode, json);
+        }
+        catch
+        {
+            ClosePipeInternal();
+            return (-1, string.Empty);
+        }
     }
 
     private void ClosePipeInternal()

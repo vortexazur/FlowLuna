@@ -142,7 +142,7 @@ export class VLCMediaPlayer {
   private volumeLevel: number = 85; // 0..100
   private isMutedState: boolean = false;
 
-  private hasAttachedListeners: boolean = false;
+  private boundListeners: Array<{ type: string; fn: (e?: any) => void }> = [];
   private listeners: Map<string, Set<EventListener>> = new Map();
 
   constructor() {
@@ -167,46 +167,68 @@ export class VLCMediaPlayer {
 
   public attachMediaElement(element: HTMLMediaElement) {
     if (this.audioEl === element && this.isConnected) return;
-    this.audioEl = element;
 
-    if (!this.hasAttachedListeners) {
-      this.setupMediaEventListeners();
-      this.hasAttachedListeners = true;
+    if (this.audioEl && this.audioEl !== element) {
+      this.removeMediaEventListeners();
+      if (this.sourceNode) {
+        try {
+          this.sourceNode.disconnect();
+        } catch {}
+        this.sourceNode = null;
+      }
+      this.isConnected = false;
     }
+
+    this.audioEl = element;
+    this.setupMediaEventListeners();
     this.buildDspPipeline();
+  }
+
+  private removeMediaEventListeners() {
+    if (!this.audioEl) return;
+    for (const item of this.boundListeners) {
+      this.audioEl.removeEventListener(item.type, item.fn);
+    }
+    this.boundListeners = [];
   }
 
   private setupMediaEventListeners() {
     if (!this.audioEl) return;
+    this.removeMediaEventListeners();
 
-    this.audioEl.addEventListener('loadstart', () => {
+    const add = (type: string, fn: (e?: any) => void) => {
+      this.audioEl!.addEventListener(type, fn);
+      this.boundListeners.push({ type, fn });
+    };
+
+    add('loadstart', () => {
       this.setState(VLCState.Opening);
       this.emit('opening');
     });
 
-    this.audioEl.addEventListener('waiting', () => {
+    add('waiting', () => {
       this.setState(VLCState.Buffering);
       this.emit('buffering', 0);
     });
 
-    this.audioEl.addEventListener('playing', () => {
+    add('playing', () => {
       this.setState(VLCState.Playing);
       this.emit('playing');
     });
 
-    this.audioEl.addEventListener('pause', () => {
+    add('pause', () => {
       if (this.state !== VLCState.Stopped && this.state !== VLCState.Ended) {
         this.setState(VLCState.Paused);
         this.emit('paused');
       }
     });
 
-    this.audioEl.addEventListener('ended', () => {
+    add('ended', () => {
       this.setState(VLCState.Ended);
       this.emit('endReached');
     });
 
-    this.audioEl.addEventListener('error', (e) => {
+    add('error', (e) => {
       // Ignore errors triggered by stop() clearing the source
       if (!this.audioEl?.src || this.audioEl.src === '' || this.audioEl.src === window.location.href) {
         return;
@@ -215,7 +237,7 @@ export class VLCMediaPlayer {
       this.emit('encounteredError', e);
     });
 
-    this.audioEl.addEventListener('timeupdate', () => {
+    add('timeupdate', () => {
       if (this.audioEl) {
         const timeMs = Math.round(this.audioEl.currentTime * 1000);
         const duration = this.audioEl.duration || 1;
@@ -225,7 +247,7 @@ export class VLCMediaPlayer {
       }
     });
 
-    this.audioEl.addEventListener('durationchange', () => {
+    add('durationchange', () => {
       if (this.audioEl && !isNaN(this.audioEl.duration)) {
         this.emit('lengthChanged', Math.round(this.audioEl.duration * 1000));
       }
@@ -236,7 +258,9 @@ export class VLCMediaPlayer {
     if (!this.audioEl || !this.audioContext || this.isConnected) return;
 
     try {
-      this.sourceNode = this.audioContext.createMediaElementSource(this.audioEl);
+      if (!this.sourceNode) {
+        this.sourceNode = this.audioContext.createMediaElementSource(this.audioEl);
+      }
 
       // Preamp Gain
       this.preampGainNode = this.audioContext.createGain();

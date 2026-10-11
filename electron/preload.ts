@@ -19,6 +19,8 @@ export interface ElectronAPI {
   selectMusicFiles: () => Promise<string[]>;
   setBackdrop?: (effect: string, theme: string) => Promise<any>;
   applyUpdate?: (installerPath?: string) => Promise<any>;
+  openDefaultAppsSettings?: () => Promise<void>;
+  onOpenFiles?: (callback: (filePaths: string[]) => void) => () => void;
 }
 
 const api: ElectronAPI = {
@@ -54,6 +56,14 @@ const api: ElectronAPI = {
   selectMusicFiles: () => ipcRenderer.invoke('select-music-files'),
   setBackdrop: (effect: string, theme: string) =>
     ipcRenderer.invoke('window-set-backdrop', effect, theme),
+  openDefaultAppsSettings: () => ipcRenderer.invoke('open-default-apps-settings'),
+  onOpenFiles: (callback: (filePaths: string[]) => void) => {
+    const subscription = (_event: any, filePaths: string[]) => callback(filePaths);
+    ipcRenderer.on('open-files', subscription);
+    return () => {
+      ipcRenderer.removeListener('open-files', subscription);
+    };
+  },
   applyUpdate: (installerPath?: string) =>
     fetch('/api/app/apply-update', {
       method: 'POST',

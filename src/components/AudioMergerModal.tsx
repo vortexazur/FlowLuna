@@ -141,18 +141,21 @@ export const AudioMergerModal: React.FC<AudioMergerModalProps> = ({
           currentOffset += bufLen;
         } else {
           // Crossfade with previous buffer
-          const actualFade = Math.min(crossfadeSamples, bufLen);
-          const fadeStartOffset = currentOffset - actualFade;
+          const actualFade = Math.min(crossfadeSamples, bufLen, audioBuffers[i - 1].length, currentOffset);
+          const fadeStartOffset = Math.max(0, currentOffset - actualFade);
 
           for (let s = 0; s < bufLen; s++) {
             const outIdx = fadeStartOffset + s;
+            if (outIdx < 0) continue;
             if (outIdx >= totalLength) break;
 
-            if (s < actualFade) {
+            if (actualFade > 0 && s < actualFade) {
               // Overlap region
               const fadeRatio = s / actualFade;
-              outL[outIdx] = outL[outIdx] * (1 - fadeRatio) + inL[s] * fadeRatio;
-              outR[outIdx] = outR[outIdx] * (1 - fadeRatio) + inR[s] * fadeRatio;
+              const prevL = Number.isFinite(outL[outIdx]) ? outL[outIdx] : 0;
+              const prevR = Number.isFinite(outR[outIdx]) ? outR[outIdx] : 0;
+              outL[outIdx] = prevL * (1 - fadeRatio) + inL[s] * fadeRatio;
+              outR[outIdx] = prevR * (1 - fadeRatio) + inR[s] * fadeRatio;
             } else {
               outL[outIdx] = inL[s];
               outR[outIdx] = inR[s];
