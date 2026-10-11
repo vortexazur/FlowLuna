@@ -14,8 +14,8 @@ console.log('--- Test 1 : Logique de Navigation Temporelle à la Molette (Wheel 
     seekCalls.push(step);
   };
 
-  const defaultStep = 5;
-  const customStep = 10;
+  const defaultStep = 10;
+  const customStep = 15;
   let lastWheelTime = 0;
   const throttleMs = 100;
 
@@ -47,29 +47,29 @@ console.log('--- Test 1 : Logique de Navigation Temporelle à la Molette (Wheel 
     return { prevented, executed: true };
   };
 
-  // Molette vers le haut (deltaY < 0) -> Avance de 5s par défaut
+  // Molette vers le haut (deltaY < 0) -> Avance de 10s par défaut (unifié avec videoSkipForwardInterval)
   let res = simulateWheel(-100, 0, false, 1000, defaultStep);
   assert.strictEqual(res.prevented, true, "L'événement molette doit être intercepté avec preventDefault");
   assert.strictEqual(res.executed, true, "Le seek doit s'exécuter");
-  assert.deepStrictEqual(seekCalls, [5], "Molette vers le haut doit avancer de +5s");
+  assert.deepStrictEqual(seekCalls, [10], "Molette vers le haut doit avancer de +10s (valeur skip)");
 
   // Rafale d'événements molette dans la fenêtre de throttle (ex: à 1020ms, < 100ms)
   res = simulateWheel(-100, 0, false, 1020, defaultStep);
   assert.strictEqual(res.prevented, true, "L'événement doit toujours être preventDefault pour bloquer le scroll de page");
   assert.strictEqual(res.executed, false, "L'exécution doit être throttlée (< 100ms)");
-  assert.deepStrictEqual(seekCalls, [5], "Aucun seek supplémentaire ne doit être déclenché durant le throttle");
+  assert.deepStrictEqual(seekCalls, [10], "Aucun seek supplémentaire ne doit être déclenché durant le throttle");
 
-  // Molette vers le bas (deltaY > 0) après expiration du throttle avec pas customisé (10s)
+  // Molette vers le bas (deltaY > 0) après expiration du throttle avec pas customisé (15s)
   res = simulateWheel(120, 0, false, 1150, customStep);
   assert.strictEqual(res.executed, true, "Le seek doit s'exécuter après expiration du throttle");
-  assert.deepStrictEqual(seekCalls, [5, -10], "Molette vers le bas avec pas 10s doit reculer de -10s");
+  assert.deepStrictEqual(seekCalls, [10, -15], "Molette vers le bas avec pas 15s doit reculer de -15s");
 
   // Molette sur la liste déroulante (zone scrollable .overflow-y-auto)
   res = simulateWheel(100, 0, true, 1300, defaultStep);
   assert.strictEqual(res.prevented, false, "Le scroll au-dessus de la file d'attente ne doit pas être intercepté");
   assert.strictEqual(res.executed, false, "Aucun seek ne doit être déclenché au-dessus de la file");
 
-  console.log('✓ Test 1 passé avec succès (Wheel seek, direction, pas configurable, throttle et scroll conservé)');
+  console.log('✓ Test 1 passé avec succès (Wheel seek unifié avec Skip forward, pas configurable, throttle et scroll conservé)');
 }
 
 console.log('--- Test 2 : Arbitrage Simple-clic (Play/Pause) vs Double-clic (Plein Écran) ---');

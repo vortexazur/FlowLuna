@@ -68,7 +68,6 @@ interface VideoPlayerProps {
   onUpdateMarathonConfig?: (config: MarathonConfig) => void;
   videoSkipForwardInterval?: number;
   videoAspectRatio?: VideoAspectRatio;
-  wheelSeekStep?: number;
 }
 
 export const VideoPlayer: React.FC<VideoPlayerProps> = ({
@@ -105,7 +104,6 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
   onUpdateMarathonConfig,
   videoSkipForwardInterval = 10,
   videoAspectRatio = 'contain',
-  wheelSeekStep = 5,
 }) => {
   const [areControlsVisible, setAreControlsVisible] = useState(true);
   const [playbackSpeed, setPlaybackSpeed] = useState<number>(1);
@@ -442,7 +440,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
     return () => document.removeEventListener('fullscreenchange', handleFullscreenChange);
   }, []);
 
-  // Navigation temporelle à la molette (Wheel Seek) avec throttle et preventDefault()
+  // Navigation temporelle à la molette (Wheel Seek) unifiée avec l'intervalle de saut
   useEffect(() => {
     const container = containerRef.current;
     if (!container || isHidden) return;
@@ -463,9 +461,9 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
 
       const delta = e.deltaY !== 0 ? e.deltaY : -e.deltaX;
       if (delta < 0) {
-        triggerSeek(wheelSeekStep);
+        triggerSeek(videoSkipForwardInterval);
       } else if (delta > 0) {
-        triggerSeek(-wheelSeekStep);
+        triggerSeek(-videoSkipForwardInterval);
       }
     };
 
@@ -473,7 +471,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
     return () => {
       container.removeEventListener('wheel', handleWheel);
     };
-  }, [isHidden, wheelSeekStep, triggerSeek]);
+  }, [isHidden, videoSkipForwardInterval, triggerSeek]);
 
   // Arbitrage du simple clic (Play/Pause) vs double-clic (Plein écran) sur le flux vidéo
   const handleStreamClick = (e: React.MouseEvent) => {

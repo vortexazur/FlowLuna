@@ -82,7 +82,6 @@ const DEFAULT_PLAYER_SETTINGS: PlayerSettings = {
   marathonConfig: DEFAULT_MARATHON_CONFIG,
   videoSkipForwardInterval: 10,
   videoAspectRatio: 'contain',
-  wheelSeekStep: 5,
 };
 
 const DEFAULT_EQ_SETTINGS: EqualizerSettings = {
@@ -1898,7 +1897,6 @@ export default function App() {
         onUpdateMarathonConfig={(newCfg) => handleUpdatePlayerSettings({ ...playerSettings, marathonConfig: newCfg })}
         videoSkipForwardInterval={playerSettings.videoSkipForwardInterval ?? 10}
         videoAspectRatio={playerSettings.videoAspectRatio ?? 'contain'}
-        wheelSeekStep={playerSettings.wheelSeekStep ?? 5}
         onClose={() => {
           setVideoMode('hidden');
           handleStop();

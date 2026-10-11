@@ -1127,15 +1127,15 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                 </div>
               </div>
 
-              {/* 1. Pas de saut temporel (Skip forward) */}
+              {/* 1. Intervalle de saut temporel (Skip & Molette) */}
               <div className="flex flex-col gap-3.5 bg-neutral-900/60 p-4.5 rounded-xl border border-neutral-800 hover:border-neutral-700/60 transition-colors">
                 <div className="flex items-center justify-between">
                   <div>
                     <span className="font-semibold text-neutral-200 block text-xs">
-                      Intervalle d'avance rapide (Skip forward)
+                      Intervalle de saut temporel (Skip & Molette)
                     </span>
                     <span className="text-neutral-400 text-[11px] leading-relaxed">
-                      Définit le pas temporel en secondes lors d'une avance rapide (flèche droite →, bouton avance rapide ou double-clic droit).
+                      Définit le pas temporel en secondes lors d'un saut (flèches clavier, boutons d'avance/retour, double-clic et défilement molette).
                     </span>
                   </div>
                   <span className="text-xs font-mono font-bold px-2.5 py-0.5 rounded-full bg-sky-950/80 text-sky-400 border border-sky-500/30 whitespace-nowrap">
@@ -1183,69 +1183,6 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                           key={preset.value}
                           type="button"
                           onClick={() => updateSetting('videoSkipForwardInterval', preset.value)}
-                          className={`py-1.5 px-2 rounded-lg text-[11px] font-medium transition-all text-center cursor-pointer border ${
-                            isActive
-                              ? 'border-sky-500/60 bg-sky-500/20 text-sky-200 font-bold shadow-xs ring-1 ring-sky-500/30'
-                              : 'border-neutral-800 bg-neutral-900/60 text-neutral-400 hover:text-neutral-200 hover:border-neutral-700'
-                          }`}
-                        >
-                          {preset.label}
-                        </button>
-                      );
-                    })}
-                  </div>
-                </div>
-              </div>
-
-              {/* 1b. Navigation temporelle à la molette (Wheel Seek) */}
-              <div className="flex flex-col gap-3.5 bg-neutral-900/60 p-4.5 rounded-xl border border-neutral-800 hover:border-neutral-700/60 transition-colors">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <Sliders className="w-4 h-4 text-sky-400" />
-                    <div>
-                      <span className="font-semibold text-neutral-200 block text-xs">
-                        Navigation à la molette (Wheel Seek)
-                      </span>
-                      <span className="text-neutral-400 text-[11px] leading-relaxed">
-                        Faire défiler la molette sur le lecteur vidéo avance ou recule la lecture selon ce pas.
-                      </span>
-                    </div>
-                  </div>
-                  <span className="text-xs font-mono font-bold px-2.5 py-0.5 rounded-full bg-sky-950/80 text-sky-400 border border-sky-500/30 whitespace-nowrap">
-                    {settings.wheelSeekStep ?? 5}s{' '}
-                    {(settings.wheelSeekStep ?? 5) === 5 ? '(Par défaut)' : ''}
-                  </span>
-                </div>
-
-                <div className="flex flex-col gap-2.5 pt-1">
-                  <div className="flex items-center gap-3">
-                    <span className="text-[11px] font-mono text-neutral-500 font-semibold w-8">1s</span>
-                    <input
-                      type="range"
-                      min={1}
-                      max={30}
-                      step={1}
-                      value={settings.wheelSeekStep ?? 5}
-                      onChange={(e) => updateSetting('wheelSeekStep', parseInt(e.target.value, 10))}
-                      className="flex-1 h-2 bg-neutral-800 rounded-lg appearance-none cursor-pointer accent-sky-400"
-                    />
-                    <span className="text-[11px] font-mono text-sky-400 font-bold w-16 text-right">30s</span>
-                  </div>
-
-                  {/* Préréglages rapides */}
-                  <div className="grid grid-cols-4 sm:grid-cols-4 gap-2 pt-1">
-                    {[
-                      { value: 2, label: '2s' },
-                      { value: 5, label: '5s (Défaut)' },
-                      { value: 10, label: '10s' },
-                      { value: 15, label: '15s' },
-                    ].map((preset) => {
-                      const isActive = (settings.wheelSeekStep ?? 5) === preset.value;
-                      return (
-                        <button
-                          key={preset.value}
-                          type="button"
-                          onClick={() => updateSetting('wheelSeekStep', preset.value)}
                           className={`py-1.5 px-2 rounded-lg text-[11px] font-medium transition-all text-center cursor-pointer border ${
                             isActive
                               ? 'border-sky-500/60 bg-sky-500/20 text-sky-200 font-bold shadow-xs ring-1 ring-sky-500/30'

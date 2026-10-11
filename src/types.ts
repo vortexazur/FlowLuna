@@ -1,4 +1,4 @@
-export const APP_VERSION = '1.2.9';
+export const APP_VERSION = '1.21.0';
 
 export type MediaFormat =
   | 'mp3'
@@ -214,7 +214,6 @@ export interface PlayerSettings {
   playbackSpeed?: number; // 0.5 to 2.0
   autoSkipOpening?: boolean; // Saut automatique des génériques/openings (Auto-skip)
   marathonConfig?: MarathonConfig; // Mode Marathon (Auto-chain & transitions intelligentes)
-  videoSkipForwardInterval?: number; // Intervalle d'avance rapide en secondes (5s à 90s, step 5s, défaut 10s)
+  videoSkipForwardInterval?: number; // Intervalle de saut temporel (Skip & Molette) en secondes (5s à 90s, step 5s, défaut 10s)
   videoAspectRatio?: VideoAspectRatio; // Ratio d'affichage vidéo ('contain', 'cover', '16-9')
-  wheelSeekStep?: number; // Pas de navigation temporelle à la molette en secondes (défaut 5s)
 }
