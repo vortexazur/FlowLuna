@@ -264,32 +264,52 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
     setTimeout(() => setClickAnim(null), 500);
   };
 
-  // Bascule du plein écran (Compatible HTML5 Fullscreen & conteneur vidéo)
+  // Bascule du plein écran (Compatible HTML5 Fullscreen & Conteneur vidéo & Desktop Host)
   const toggleFullscreen = useCallback(async () => {
     try {
       if (videoMode === 'pip') {
         onSetVideoMode('theater');
       }
-      const container = containerRef.current || document.getElementById('flowluna-video-container');
-      if (!document.fullscreenElement) {
-        if (container?.requestFullscreen) {
-          await container.requestFullscreen();
-        } else if ((container as any)?.webkitRequestFullscreen) {
-          await (container as any).webkitRequestFullscreen();
-        } else if (document.documentElement.requestFullscreen) {
-          await document.documentElement.requestFullscreen();
+
+      const isAlreadyFs = !!document.fullscreenElement || isFullscreen;
+
+      if (isAlreadyFs) {
+        if (document.fullscreenElement) {
+          try {
+            if (document.exitFullscreen) {
+              await document.exitFullscreen();
+            } else if ((document as any)?.webkitExitFullscreen) {
+              await (document as any).webkitExitFullscreen();
+            }
+          } catch {}
         }
+        setIsFullscreen(false);
       } else {
-        if (document.exitFullscreen) {
-          await document.exitFullscreen();
-        } else if ((document as any)?.webkitExitFullscreen) {
-          await (document as any).webkitExitFullscreen();
+        const container = containerRef.current || document.getElementById('flowluna-video-container');
+        try {
+          if (container?.requestFullscreen) {
+            await container.requestFullscreen();
+          } else if ((container as any)?.webkitRequestFullscreen) {
+            await (container as any).webkitRequestFullscreen();
+          } else if (document.documentElement.requestFullscreen) {
+            await document.documentElement.requestFullscreen();
+          }
+        } catch (e) {
+          console.warn('requestFullscreen skipped/fallback:', e);
         }
+        setIsFullscreen(true);
+      }
+
+      // Synchronisation fenêtre native desktop (Electron ou WPF WebView2)
+      if (window.electronAPI?.toggleFullscreen) {
+        try {
+          await window.electronAPI.toggleFullscreen();
+        } catch {}
       }
     } catch (err) {
       console.warn('Erreur lors du basculement plein écran :', err);
     }
-  }, [videoMode, onSetVideoMode]);
+  }, [videoMode, onSetVideoMode, isFullscreen]);
 
   // Autoplay immédiat et synchronisation de lecture sécurisée
   useEffect(() => {
@@ -376,8 +396,8 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
           setIsQueueOpen(false);
         } else if (isSpeedMenuOpen) {
           setIsSpeedMenuOpen(false);
-        } else if (document.fullscreenElement) {
-          document.exitFullscreen?.().catch(() => {});
+        } else if (document.fullscreenElement || isFullscreen) {
+          toggleFullscreen();
         } else {
           onSetVideoMode('pip');
         }
@@ -431,13 +451,23 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
     onClose?.();
   }, [onSetVideoMode, onClose, videoRef]);
 
-  // Synchronisation de l'état de plein écran natif (F ou Escape)
+  // Synchronisation de l'état de plein écran natif (F ou Escape ou Desktop Event)
   useEffect(() => {
     const handleFullscreenChange = () => {
       setIsFullscreen(!!document.fullscreenElement);
     };
     document.addEventListener('fullscreenchange', handleFullscreenChange);
-    return () => document.removeEventListener('fullscreenchange', handleFullscreenChange);
+    document.addEventListener('webkitfullscreenchange', handleFullscreenChange);
+
+    const unsub = window.electronAPI?.onFullScreenChange?.((fs: boolean) => {
+      setIsFullscreen(fs);
+    });
+
+    return () => {
+      document.removeEventListener('fullscreenchange', handleFullscreenChange);
+      document.removeEventListener('webkitfullscreenchange', handleFullscreenChange);
+      unsub?.();
+    };
   }, []);
 
   // Navigation temporelle à la molette (Wheel Seek) unifiée avec l'intervalle de saut
@@ -486,30 +516,29 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
       return;
     }
 
-    if (e.detail === 2) {
+    // Cancel pending single-click on any multiple click
+    if (e.detail > 1) {
       if (clickTimeoutRef.current) {
         clearTimeout(clickTimeoutRef.current);
         clickTimeoutRef.current = null;
       }
-      toggleFullscreen();
       return;
     }
 
-    if (e.detail === 1) {
-      if (clickTimeoutRef.current) clearTimeout(clickTimeoutRef.current);
-      clickTimeoutRef.current = setTimeout(() => {
-        clickTimeoutRef.current = null;
-        if (videoMode === 'theater' && !areControlsVisible) {
-          setAreControlsVisible(true);
-        } else {
-          onTogglePlay();
-          triggerClickAnim(isPlaying ? 'pause' : 'play');
-        }
-      }, 250);
-    }
+    if (clickTimeoutRef.current) clearTimeout(clickTimeoutRef.current);
+    clickTimeoutRef.current = setTimeout(() => {
+      clickTimeoutRef.current = null;
+      if (videoMode === 'theater' && !areControlsVisible) {
+        setAreControlsVisible(true);
+      } else {
+        onTogglePlay();
+        triggerClickAnim(isPlaying ? 'pause' : 'play');
+      }
+    }, 250);
   };
 
   const handleStreamDoubleClick = (e: React.MouseEvent) => {
+    e.preventDefault();
     e.stopPropagation();
     if (clickTimeoutRef.current) {
       clearTimeout(clickTimeoutRef.current);
@@ -597,8 +626,6 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
           playsInline
           preload="auto"
           crossOrigin="anonymous"
-          onClick={handleStreamClick}
-          onDoubleClick={handleStreamDoubleClick}
           onPlay={onPlay}
           onPause={onPause}
           onError={onError}
@@ -904,7 +931,10 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
                 {/* Fullscreen Button */}
                 <button
                   type="button"
-                  onClick={toggleFullscreen}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    toggleFullscreen();
+                  }}
                   title={isFullscreen ? 'Quitter le plein écran (F)' : 'Plein écran (F)'}
                   className="p-2 rounded-xl bg-neutral-900/80 hover:bg-neutral-800 border border-neutral-700/70 text-neutral-300 hover:text-white transition-colors cursor-pointer"
                 >
@@ -1154,7 +1184,10 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
                   {/* Browser Fullscreen */}
                   <button
                     type="button"
-                    onClick={toggleFullscreen}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      toggleFullscreen();
+                    }}
                     className="p-2 rounded-lg text-neutral-300 hover:text-white hover:bg-white/10 transition-colors cursor-pointer"
                     title={isFullscreen ? 'Quitter le plein écran (F)' : 'Plein écran (F)'}
                   >

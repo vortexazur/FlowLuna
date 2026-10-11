@@ -312,11 +312,11 @@ public static class BinaryManager
 
     public static async Task<AppUpdateStatus> CheckAppUpdateAsync()
     {
-        const string currentVer = "1.21.0";
+        const string currentVer = "1.21.1";
         try
         {
             using var req = new HttpRequestMessage(HttpMethod.Get, "https://api.github.com/repos/vortexazur/FlowLuna/releases/latest");
-            req.Headers.UserAgent.ParseAdd("FlowLuna-App/1.21.0");
+            req.Headers.UserAgent.ParseAdd("FlowLuna-App/1.21.1");
 
             using var res = await HttpClient.SendAsync(req);
             if (res.IsSuccessStatusCode)
@@ -418,7 +418,7 @@ public static class BinaryManager
             try
             {
                 using var req = new HttpRequestMessage(HttpMethod.Get, downloadUrl);
-                req.Headers.UserAgent.ParseAdd("FlowLuna-App/1.21.0");
+                req.Headers.UserAgent.ParseAdd("FlowLuna-App/1.21.1");
 
                 using var response = await HttpClient.SendAsync(req, HttpCompletionOption.ResponseHeadersRead);
                 response.EnsureSuccessStatusCode();

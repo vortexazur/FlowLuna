@@ -21,6 +21,9 @@ export interface ElectronAPI {
   applyUpdate?: (installerPath?: string) => Promise<any>;
   openDefaultAppsSettings?: () => Promise<void>;
   onOpenFiles?: (callback: (filePaths: string[]) => void) => () => void;
+  toggleFullscreen: () => Promise<boolean>;
+  isFullScreen: () => Promise<boolean>;
+  onFullScreenChange?: (callback: (fullscreen: boolean) => void) => () => void;
 }
 
 const api: ElectronAPI = {
@@ -70,6 +73,15 @@ const api: ElectronAPI = {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ installerPath }),
     }).then((r) => r.json()),
+  toggleFullscreen: () => ipcRenderer.invoke('window-toggle-fullscreen'),
+  isFullScreen: () => ipcRenderer.invoke('window-is-fullscreen'),
+  onFullScreenChange: (callback: (fullscreen: boolean) => void) => {
+    const subscription = (_event: any, value: boolean) => callback(value);
+    ipcRenderer.on('window-fullscreen-changed', subscription);
+    return () => {
+      ipcRenderer.removeListener('window-fullscreen-changed', subscription);
+    };
+  },
 };
 
 contextBridge.exposeInMainWorld('electronAPI', api);

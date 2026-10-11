@@ -182,6 +182,20 @@ function createMainWindow(): void {
   mainWindow.on('unmaximize', () => {
     mainWindow?.webContents.send('window-maximized-changed', false);
   });
+  mainWindow.on('enter-full-screen', () => {
+    mainWindow?.webContents.send('window-fullscreen-changed', true);
+  });
+  mainWindow.on('leave-full-screen', () => {
+    mainWindow?.webContents.send('window-fullscreen-changed', false);
+  });
+  mainWindow.webContents.on('enter-html-full-screen', () => {
+    mainWindow?.setFullScreen(true);
+    mainWindow?.webContents.send('window-fullscreen-changed', true);
+  });
+  mainWindow.webContents.on('leave-html-full-screen', () => {
+    mainWindow?.setFullScreen(false);
+    mainWindow?.webContents.send('window-fullscreen-changed', false);
+  });
 
   let hasShown = false;
   const showWindow = () => {
@@ -366,6 +380,18 @@ function setupIpcHandlers(): void {
 
   ipcMain.handle('window-is-maximized', () => {
     return mainWindow?.isMaximized() ?? false;
+  });
+
+  ipcMain.handle('window-toggle-fullscreen', () => {
+    if (!mainWindow) return false;
+    const next = !mainWindow.isFullScreen();
+    mainWindow.setFullScreen(next);
+    mainWindow.webContents.send('window-fullscreen-changed', next);
+    return next;
+  });
+
+  ipcMain.handle('window-is-fullscreen', () => {
+    return mainWindow?.isFullScreen() ?? false;
   });
 
   let isElectronCompact = false;

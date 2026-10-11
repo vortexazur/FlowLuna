@@ -38,6 +38,72 @@ public partial class MainWindow : Window
     private readonly object _pendingFilesLock = new();
     private bool _isUiReady = false;
 
+    public bool IsFullScreen => _isFullScreen;
+    private bool _isFullScreen = false;
+    private WindowState _previousWindowState = WindowState.Normal;
+    private ResizeMode _previousResizeMode = ResizeMode.CanResize;
+
+    public void ToggleFullScreen()
+    {
+        Dispatcher.Invoke(() =>
+        {
+            if (_isFullScreen)
+            {
+                ExitFullScreen();
+            }
+            else
+            {
+                EnterFullScreen();
+            }
+        });
+    }
+
+    public void EnterFullScreen()
+    {
+        if (_isFullScreen) return;
+        _isFullScreen = true;
+        _previousWindowState = WindowState;
+        _previousResizeMode = ResizeMode;
+
+        System.Windows.Shell.WindowChrome.SetWindowChrome(this, null);
+        ResizeMode = ResizeMode.NoResize;
+        WindowState = WindowState.Normal;
+        WindowState = WindowState.Maximized;
+        Topmost = true;
+
+        if (WebViewControl?.CoreWebView2 != null)
+        {
+            WebViewControl.CoreWebView2.ExecuteScriptAsync(
+                "window.dispatchEvent(new CustomEvent('window-fullscreen-changed', { detail: true }));"
+            );
+        }
+    }
+
+    public void ExitFullScreen()
+    {
+        if (!_isFullScreen) return;
+        _isFullScreen = false;
+
+        Topmost = false;
+        var chrome = new System.Windows.Shell.WindowChrome
+        {
+            CaptionHeight = 0,
+            ResizeBorderThickness = new Thickness(6),
+            CornerRadius = new CornerRadius(12),
+            GlassFrameThickness = new Thickness(-1)
+        };
+        System.Windows.Shell.WindowChrome.SetWindowChrome(this, chrome);
+        ResizeMode = _previousResizeMode;
+        WindowState = _previousWindowState;
+
+        if (WebViewControl?.CoreWebView2 != null)
+        {
+            WebViewControl.CoreWebView2.ExecuteScriptAsync(
+                "window.dispatchEvent(new CustomEvent('window-fullscreen-changed', { detail: false }));"
+            );
+        }
+    }
+
     public void BringToForeground()
     {
         Dispatcher.Invoke(() =>
@@ -246,6 +312,28 @@ public partial class MainWindow : Window
                         const handler = (e) => callback(e.detail);
                         window.addEventListener('flowluna-open-files', handler);
                         return () => window.removeEventListener('flowluna-open-files', handler);
+                    },
+                    toggleFullscreen: () => {
+                        try {
+                            if (window.chrome?.webview?.hostObjects?.nativeHost) {
+                                window.chrome.webview.hostObjects.nativeHost.ToggleFullScreen();
+                            } else {
+                                window.chrome.webview.postMessage({ action: 'toggle-fullscreen' });
+                            }
+                        } catch {}
+                    },
+                    isFullScreen: async () => {
+                        try {
+                            if (window.chrome?.webview?.hostObjects?.nativeHost) {
+                                return await window.chrome.webview.hostObjects.nativeHost.IsFullScreen();
+                            }
+                        } catch {}
+                        return !!document.fullscreenElement;
+                    },
+                    onFullScreenChange: (callback) => {
+                        const handler = (e) => callback(e.detail);
+                        window.addEventListener('window-fullscreen-changed', handler);
+                        return () => window.removeEventListener('window-fullscreen-changed', handler);
                     }
                 };
             })();
@@ -253,7 +341,23 @@ public partial class MainWindow : Window
 
             await WebViewControl.CoreWebView2.AddScriptToExecuteOnDocumentCreatedAsync(polyfillScript);
 
-            // 5. Handle web messages
+            // 5. Handle HTML5 FullScreen requests inside WebView2
+            WebViewControl.CoreWebView2.ContainsFullScreenElementChanged += (sender, args) =>
+            {
+                Dispatcher.Invoke(() =>
+                {
+                    if (WebViewControl.CoreWebView2.ContainsFullScreenElement)
+                    {
+                        EnterFullScreen();
+                    }
+                    else
+                    {
+                        ExitFullScreen();
+                    }
+                });
+            };
+
+            // 6. Handle web messages
             WebViewControl.CoreWebView2.WebMessageReceived += CoreWebView2_WebMessageReceived;
 
             // 6. Hook NavigationCompleted to reveal UI only when the SPA is ready
@@ -432,6 +536,13 @@ public partial class MainWindow : Window
                         break;
                     case "maximize":
                         WindowState = WindowState == WindowState.Maximized ? WindowState.Normal : WindowState.Maximized;
+                        break;
+                    case "toggle-fullscreen":
+                        ToggleFullScreen();
+                        break;
+                    case "set-fullscreen":
+                        bool fs = doc.RootElement.TryGetProperty("fullscreen", out var fp) && fp.GetBoolean();
+                        if (fs) EnterFullScreen(); else ExitFullScreen();
                         break;
                     case "close":
                         Close();

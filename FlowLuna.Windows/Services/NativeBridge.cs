@@ -51,6 +51,29 @@ public class NativeBridge
         return _window.Dispatcher.Invoke(() => _window.WindowState == WindowState.Maximized);
     }
 
+    public void ToggleFullScreen()
+    {
+        _window.Dispatcher.Invoke(() =>
+        {
+            if (_window is MainWindow mw)
+            {
+                mw.ToggleFullScreen();
+            }
+        });
+    }
+
+    public bool IsFullScreen()
+    {
+        return _window.Dispatcher.Invoke(() =>
+        {
+            if (_window is MainWindow mw)
+            {
+                return mw.IsFullScreen;
+            }
+            return false;
+        });
+    }
+
     public string? SelectMusicFolder()
     {
         return _window.Dispatcher.Invoke(() =>
