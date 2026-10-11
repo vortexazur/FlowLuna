@@ -164,6 +164,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
   const [isFullscreen, setIsFullscreen] = useState<boolean>(false);
 
   const isVideo = !!currentTrack?.isVideo;
+  const isHidden = !currentTrack || !isVideo || videoMode === 'hidden';
 
   // Format time (mm:ss or hh:mm:ss)
   const formatTime = (secs: number) => {
@@ -265,21 +266,62 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
     setTimeout(() => setClickAnim(null), 500);
   };
 
-  const toggleFullscreen = useCallback(() => {
-    if (videoMode === 'pip') {
-      onSetVideoMode('theater');
-      return;
-    }
-    if (!document.fullscreenElement) {
-      containerRef.current?.requestFullscreen?.().catch(() => {});
-    } else {
-      document.exitFullscreen?.().catch(() => {});
+  // Bascule du plein écran (Compatible HTML5 Fullscreen & conteneur vidéo)
+  const toggleFullscreen = useCallback(async () => {
+    try {
+      if (videoMode === 'pip') {
+        onSetVideoMode('theater');
+      }
+      const container = containerRef.current || document.getElementById('flowluna-video-container');
+      if (!document.fullscreenElement) {
+        if (container?.requestFullscreen) {
+          await container.requestFullscreen();
+        } else if ((container as any)?.webkitRequestFullscreen) {
+          await (container as any).webkitRequestFullscreen();
+        } else if (document.documentElement.requestFullscreen) {
+          await document.documentElement.requestFullscreen();
+        }
+      } else {
+        if (document.exitFullscreen) {
+          await document.exitFullscreen();
+        } else if ((document as any)?.webkitExitFullscreen) {
+          await (document as any).webkitExitFullscreen();
+        }
+      }
+    } catch (err) {
+      console.warn('Erreur lors du basculement plein écran :', err);
     }
   }, [videoMode, onSetVideoMode]);
 
+  // Autoplay immédiat et synchronisation de lecture sécurisée
+  useEffect(() => {
+    const video = videoRef.current;
+    if (!video || !currentTrack?.isVideo || isHidden) return;
+
+    let isSubscribed = true;
+
+    const syncPlayback = async () => {
+      try {
+        if (isPlaying && video.paused) {
+          await video.play();
+        } else if (!isPlaying && !video.paused) {
+          video.pause();
+        }
+      } catch (err) {
+        console.warn('Autoplay bloqué ou en attente d’interaction :', err);
+      }
+    };
+
+    syncPlayback();
+
+    return () => {
+      isSubscribed = false;
+    };
+  }, [isPlaying, isHidden, currentTrack?.id]);
+
   // Keyboard shortcuts when in theater mode
   useEffect(() => {
-    if (videoMode !== 'theater') return;
+    if (videoMode !== 'theater' || isHidden) return;
 
     const handleKeyDown = (e: KeyboardEvent) => {
       const activeEl = document.activeElement;
@@ -287,7 +329,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
         return;
       }
 
-      if (e.code === 'Space') {
+      if (e.code === 'Space' || e.key === 'k' || e.key === 'K') {
         e.preventDefault();
         e.stopPropagation();
         onTogglePlay();
@@ -312,6 +354,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
         e.stopPropagation();
         onToggleMute();
       } else if (e.key === 'f' || e.key === 'F') {
+        e.preventDefault();
         e.stopPropagation();
         toggleFullscreen();
       } else if (e.key === 's' || e.key === 'S') {
@@ -347,6 +390,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [
     videoMode,
+    isHidden,
     isPlaying,
     currentTime,
     duration,
@@ -397,9 +441,6 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
     document.addEventListener('fullscreenchange', handleFullscreenChange);
     return () => document.removeEventListener('fullscreenchange', handleFullscreenChange);
   }, []);
-
-  // Détection si le lecteur vidéo doit être masqué / libéré
-  const isHidden = !currentTrack || !isVideo || videoMode === 'hidden';
 
   // Navigation temporelle à la molette (Wheel Seek) avec throttle et preventDefault()
   useEffect(() => {
@@ -523,36 +564,21 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
       ? 'object-fill aspect-video'
       : 'object-contain';
 
-  // Si le lecteur est inactif/fermé : démonter tout le décor/overlay et préserver uniquement la balise média
-  if (isHidden) {
-    return (
-      <div className="hidden pointer-events-none" aria-hidden="true">
-        <video
-          ref={videoRef as any}
-          className="hidden"
-          playsInline
-          preload="auto"
-          crossOrigin="anonymous"
-          onPlay={onPlay}
-          onPause={onPause}
-          onError={onError}
-        />
-      </div>
-    );
-  }
-
   return (
     <div
       ref={containerRef}
+      id="flowluna-video-container"
       onMouseEnter={() => setIsHovered(true)}
       onMouseLeave={() => setIsHovered(false)}
       className={`transition-all duration-300 select-none ${
-        videoMode === 'theater'
+        isHidden
+          ? 'hidden pointer-events-none opacity-0'
+          : videoMode === 'theater'
           ? 'fixed inset-0 z-50 bg-black flex flex-col justify-between overflow-hidden animate-in fade-in duration-200'
           : 'fixed bottom-28 right-6 z-40 w-80 md:w-96 aspect-video rounded-2xl shadow-2xl border border-neutral-800 bg-neutral-950 overflow-hidden group hover:border-neutral-700 hover:shadow-cyan-950/20 transition-all animate-in slide-in-from-bottom-5 duration-200'
       }`}
       style={
-        videoMode === 'pip'
+        !isHidden && videoMode === 'pip'
           ? {
               boxShadow: '0 20px 45px -8px rgba(0, 0, 0, 0.9), 0 8px 18px -4px rgba(0, 0, 0, 0.7)',
             }
@@ -569,17 +595,20 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
         {/* The single persistent video element attached to audio pipeline */}
         <video
           ref={videoRef as any}
-          className={`w-full h-full max-h-screen ${videoObjectFitClass}`}
+          autoPlay
           playsInline
           preload="auto"
           crossOrigin="anonymous"
+          onClick={handleStreamClick}
+          onDoubleClick={handleStreamDoubleClick}
           onPlay={onPlay}
           onPause={onPause}
           onError={onError}
+          className={`w-full h-full max-h-screen ${videoObjectFitClass}`}
         />
 
         {/* Central Click Feedback Animation */}
-        {clickAnim && (
+        {!isHidden && clickAnim && (
           <div className="absolute inset-0 flex items-center justify-center pointer-events-none z-30">
             <div className="w-16 h-16 rounded-full bg-black/70 backdrop-blur-md border border-white/20 flex items-center justify-center text-white animate-ping duration-300">
               {clickAnim === 'play' ? (
@@ -594,7 +623,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
         {/* ============================================================ */}
         {/* THEATER MODE OVERLAYS                                       */}
         {/* ============================================================ */}
-        {videoMode === 'theater' && (
+        {!isHidden && videoMode === 'theater' && (
           <>
             {/* Left Lateral Skip Indicator (Image 3) */}
             <div
@@ -1142,7 +1171,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
         {/* ============================================================ */}
         {/* FLOATING MINI-PLAYER (PiP) OVERLAYS                          */}
         {/* ============================================================ */}
-        {videoMode === 'pip' && (
+        {!isHidden && videoMode === 'pip' && (
           <div
             className={`absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-black/60 p-2.5 flex flex-col justify-between transition-opacity duration-200 ${
               isHovered ? 'opacity-100' : 'opacity-0 pointer-events-none'

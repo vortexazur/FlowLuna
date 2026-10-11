@@ -1094,7 +1094,7 @@ export default function App() {
         return;
       }
 
-      if (e.code === 'Space') {
+      if (e.code === 'Space' || e.key === 'k' || e.key === 'K') {
         e.preventDefault();
         handleTogglePlay();
       } else if (e.code === 'ArrowLeft') {
@@ -1130,7 +1130,18 @@ export default function App() {
       } else if (e.key === 'r' || e.key === 'R') {
         setRepeatMode((prev) => (prev === 'off' ? 'all' : prev === 'all' ? 'one' : 'off'));
       } else if (e.key === 'f' || e.key === 'F') {
-        setIsFullscreenOpen((prev) => !prev);
+        if (currentPlayingTrack?.isVideo) {
+          e.preventDefault();
+          setVideoMode('theater');
+          const container = document.getElementById('flowluna-video-container');
+          if (!document.fullscreenElement) {
+            container?.requestFullscreen?.().catch(() => {});
+          } else {
+            document.exitFullscreen?.().catch(() => {});
+          }
+        } else {
+          setIsFullscreenOpen((prev) => !prev);
+        }
       } else if (e.key === 'e' || e.key === 'E') {
         setIsEqualizerOpen((prev) => !prev);
       } else if (e.key === 'q' || e.key === 'Q') {
@@ -1142,7 +1153,7 @@ export default function App() {
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [handleTogglePlay, handleStop, handleSeek, duration, volume, handleToggleMute, currentPlayingTrack, handleNext, handlePrev]);
+  }, [handleTogglePlay, handleStop, handleSeek, duration, volume, handleToggleMute, currentPlayingTrack, handleNext, handlePrev, videoMode]);
 
   // Electron Tray Sync
   useEffect(() => {
@@ -1490,10 +1501,17 @@ export default function App() {
           onPlayTrack={(track, list) => {
             const q = list || tracks;
             const idx = q.findIndex((t) => t.id === track.id);
-            playTrackAt(idx !== -1 ? idx : 0, q);
             setVideoMode('theater');
+            setIsPlaying(true);
+            playTrackAt(idx !== -1 ? idx : 0, q);
           }}
-          onOpenVideoTheater={() => setVideoMode('theater')}
+          onOpenVideoTheater={() => {
+            setVideoMode('theater');
+            setIsPlaying(true);
+            if (audioRef.current?.paused) {
+              audioRef.current.play().catch(console.warn);
+            }
+          }}
           onImportFiles={handleImportFiles}
           onDeleteTrack={(track) => handleDeleteTrack(track.id)}
           onOpenTrimmer={handleOpenTrimmer}

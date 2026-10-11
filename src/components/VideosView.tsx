@@ -107,7 +107,10 @@ export const VideosView: React.FC<VideosViewProps> = ({
 
       {/* Currently Playing Banner (if a video is active) */}
       {currentVideo && (
-        <div className="relative rounded-2xl glass-card border border-sky-500/30 bg-sky-500/10 p-4 md:p-5 flex flex-col md:flex-row items-center justify-between gap-4 shadow-xl overflow-hidden group backdrop-blur-xl">
+        <div
+          onClick={onOpenVideoTheater}
+          className="relative rounded-2xl glass-card border border-sky-500/30 bg-sky-500/10 p-4 md:p-5 flex flex-col md:flex-row items-center justify-between gap-4 shadow-xl overflow-hidden group backdrop-blur-xl cursor-pointer"
+        >
           <div className="flex items-center gap-4 min-w-0 w-full md:w-auto">
             <div className="relative w-24 h-16 md:w-32 md:h-20 rounded-xl overflow-hidden bg-black/40 border border-white/10 shrink-0">
               <img
