@@ -22,6 +22,7 @@ export interface ElectronAPI {
   openDefaultAppsSettings?: () => Promise<void>;
   onOpenFiles?: (callback: (filePaths: string[]) => void) => () => void;
   toggleFullscreen: () => Promise<boolean>;
+  setFullScreen: (enabled: boolean) => Promise<boolean>;
   isFullScreen: () => Promise<boolean>;
   onFullScreenChange?: (callback: (fullscreen: boolean) => void) => () => void;
 }
@@ -74,6 +75,7 @@ const api: ElectronAPI = {
       body: JSON.stringify({ installerPath }),
     }).then((r) => r.json()),
   toggleFullscreen: () => ipcRenderer.invoke('window-toggle-fullscreen'),
+  setFullScreen: (enabled: boolean) => ipcRenderer.invoke('window-set-fullscreen', enabled),
   isFullScreen: () => ipcRenderer.invoke('window-is-fullscreen'),
   onFullScreenChange: (callback: (fullscreen: boolean) => void) => {
     const subscription = (_event: any, value: boolean) => callback(value);

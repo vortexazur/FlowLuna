@@ -154,7 +154,8 @@ export default function App() {
 
   // Video Mode: 'theater' (fullscreen/cinema), 'pip' (floating mini window), 'hidden' (audio-only)
   const [videoMode, setVideoMode] = useState<VideoDisplayMode>('theater');
-  const audioRef = useRef<HTMLVideoElement | null>(null);
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+  const videoRef = useRef<HTMLVideoElement | null>(null);
   const currentPlayingTrack = useMemo(() => {
     const base = queue[currentTrackIndex] || null;
     if (!base) return null;
@@ -378,18 +379,17 @@ export default function App() {
     };
   }, []);
 
-  // Connect Web Audio API to the HTMLAudioElement
+  // Connect Web Audio API to the dedicated HTMLAudioElement (music tracks only)
   useEffect(() => {
     if (audioRef.current) {
       audioEngine.init(audioRef.current);
       audioEngine.applyEqualizer(equalizerSettings);
-      const isVideo = !!currentPlayingTrack?.isVideo;
-      const target = isVideo
-        ? (playerSettings.normalizationTarget === 'streaming' ? 'broadcast' : (playerSettings.normalizationTarget ?? 'broadcast'))
-        : (playerSettings.normalizationTarget ?? 'streaming');
-      audioEngine.setVolumeNormalization(playerSettings.volumeNormalization, target);
+      audioEngine.setVolumeNormalization(
+        playerSettings.volumeNormalization,
+        playerSettings.normalizationTarget ?? 'streaming'
+      );
     }
-  }, [equalizerSettings, playerSettings.volumeNormalization, playerSettings.normalizationTarget, currentPlayingTrack?.isVideo]);
+  }, [equalizerSettings, playerSettings.volumeNormalization, playerSettings.normalizationTarget]);
 
   // Launch automatic background library scanner (discovers local audio tracks without manual import)
   useEffect(() => {
@@ -453,29 +453,51 @@ export default function App() {
       setIsPlaying(true);
       lastTrackStartTimeRef.current = Date.now();
 
-      if (track.isVideo) {
+      const isVideoTrack = !!track.isVideo;
+      if (isVideoTrack) {
         setVideoMode('theater');
       }
 
-      const audio = audioRef.current;
-      if (!audio) {
+      // Immediately pause and unbind the inactive media element to guarantee exclusive playback
+      if (isVideoTrack) {
+        if (audioRef.current) {
+          try {
+            audioRef.current.pause();
+            audioRef.current.removeAttribute('src');
+            audioRef.current.load();
+          } catch {}
+        }
+      } else {
+        if (videoRef.current) {
+          try {
+            videoRef.current.pause();
+            videoRef.current.removeAttribute('src');
+            videoRef.current.load();
+          } catch {}
+        }
+      }
+
+      const activeMedia = isVideoTrack ? videoRef.current : audioRef.current;
+      if (!activeMedia) {
         isTransitioningRef.current = false;
         return;
       }
 
-      // Safely pause currently playing track immediately
+      // Safely pause active media element immediately
       try {
-        audio.pause();
+        activeMedia.pause();
       } catch {}
 
       // Manual skips start immediately at target volume (no 1.2s silence/blank!)
       const targetVolume = isMuted ? 0 : volume;
       if (isManualSkip) {
-        audio.volume = targetVolume;
+        activeMedia.volume = targetVolume;
       }
 
-      audioEngine.resume(); // resumes audioContext without prematurely playing audioEl
-      audioEngine.resetNormalization();
+      if (!isVideoTrack) {
+        audioEngine.resume(); // resumes audioContext without prematurely playing audioEl
+        audioEngine.resetNormalization();
+      }
 
       try {
         const playableUrl = await getTrackPlayableUrl(track);
@@ -493,19 +515,18 @@ export default function App() {
         }
 
         // Direct src assignment begins media load without aborting and re-creating decoder
-        audio.src = playableUrl;
+        activeMedia.src = playableUrl;
 
         // Check again after src assignment
         if (playRequestIdRef.current !== requestId) return;
 
         // Crossfade fade-in transition ONLY for automatic track progression of music tracks
         // Strictly disabled for video files and when Gapless (Zéro Blanc) is enabled
-        const isVideoTrack = !!track.isVideo;
         const crossfade = playerSettings.crossfadeDuration ?? 0;
         const shouldCrossfade = !isManualSkip && !isVideoTrack && !playerSettings.gaplessPlayback && crossfade > 0 && !isMuted;
 
         if (shouldCrossfade) {
-          audio.volume = 0;
+          activeMedia.volume = 0;
           const startTime = performance.now();
           const fadeDuration = Math.min(1200, crossfade * 1000);
           const rampUp = (now: number) => {
@@ -523,10 +544,10 @@ export default function App() {
           };
           crossfadeAnimRef.current = requestAnimationFrame(rampUp);
         } else {
-          audio.volume = targetVolume;
+          activeMedia.volume = targetVolume;
         }
 
-        const playPromise = audio.play();
+        const playPromise = activeMedia.play();
         if (playPromise !== undefined) {
           await playPromise;
         }
@@ -572,12 +593,13 @@ export default function App() {
       if (curQueue.length === 0) return;
 
       if (repeatMode === 'one' && isAuto) {
-        if (audioRef.current) {
+        const activeMedia = currentPlayingTrackRef.current?.isVideo ? videoRef.current : audioRef.current;
+        if (activeMedia) {
           try {
-            audioRef.current.currentTime = 0;
+            activeMedia.currentTime = 0;
             setCurrentTime(0);
             lastTrackStartTimeRef.current = Date.now();
-            audioRef.current.play().then(() => {
+            activeMedia.play().then(() => {
               setIsPlaying(true);
             }).catch(console.warn);
             const curTrack = curQueue[currentTrackIndexRef.current];
@@ -626,11 +648,12 @@ export default function App() {
 
     const timeSinceStart = Date.now() - lastTrackStartTimeRef.current;
     const isRapidSkipping = isTransitioningRef.current || timeSinceStart < 1500;
+    const activeMedia = currentPlayingTrackRef.current?.isVideo ? videoRef.current : audioRef.current;
 
-    if (!isRapidSkipping && audioRef.current) {
+    if (!isRapidSkipping && activeMedia) {
       try {
-        if (isFinite(audioRef.current.currentTime) && audioRef.current.currentTime > 3) {
-          audioRef.current.currentTime = 0;
+        if (isFinite(activeMedia.currentTime) && activeMedia.currentTime > 3) {
+          activeMedia.currentTime = 0;
           setCurrentTime(0);
           return;
         }
@@ -643,8 +666,8 @@ export default function App() {
     } else if (repeatMode === 'all') {
       prevIndex = curQueue.length - 1;
     } else {
-      if (audioRef.current) {
-        audioRef.current.currentTime = 0;
+      if (activeMedia) {
+        activeMedia.currentTime = 0;
         setCurrentTime(0);
       }
       return;
@@ -656,11 +679,15 @@ export default function App() {
 
   // Toggle play/pause
   const handleTogglePlay = useCallback(() => {
-    if (!audioRef.current) return;
-    audioEngine.resume();
+    const activeMedia = currentPlayingTrackRef.current?.isVideo ? videoRef.current : audioRef.current;
+    if (!activeMedia) return;
+
+    if (!currentPlayingTrackRef.current?.isVideo) {
+      audioEngine.resume();
+    }
 
     if (isPlaying) {
-      audioRef.current.pause();
+      activeMedia.pause();
       setIsPlaying(false);
     } else {
       if (!currentPlayingTrack) {
@@ -669,11 +696,11 @@ export default function App() {
           playTrackAt(0, targetList, true);
         }
       } else {
-        if (!audioRef.current.src || audioRef.current.src === '' || audioRef.current.src === window.location.href) {
+        if (!activeMedia.src || activeMedia.src === '' || activeMedia.src === window.location.href) {
           playTrackAt(currentTrackIndex >= 0 ? currentTrackIndex : 0, queue.length > 0 ? queue : tracks, true);
         } else {
           setIsPlaying(true);
-          audioRef.current.play().catch(() => {
+          activeMedia.play().catch(() => {
             playTrackAt(currentTrackIndex >= 0 ? currentTrackIndex : 0, queue.length > 0 ? queue : tracks, true);
           });
         }
@@ -681,7 +708,7 @@ export default function App() {
     }
   }, [isPlaying, currentPlayingTrack, tracks, currentTrackIndex, queue, playTrackAt]);
 
-  // Stop playback completely: unloads active track, resets player state to empty, and frees audio stream
+  // Stop playback completely: unloads active track, resets player state to empty, and frees media streams
   const handleStop = useCallback(() => {
     playRequestIdRef.current++;
     if (crossfadeAnimRef.current !== null) {
@@ -701,6 +728,18 @@ export default function App() {
         audioRef.current.load();
       } catch (err) {
         console.warn('Error resetting audio element on stop:', err);
+      }
+    }
+    if (videoRef.current) {
+      try {
+        videoRef.current.pause();
+        if (isFinite(videoRef.current.duration) && videoRef.current.duration > 0) {
+          videoRef.current.currentTime = 0;
+        }
+        videoRef.current.removeAttribute('src');
+        videoRef.current.load();
+      } catch (err) {
+        console.warn('Error resetting video element on stop:', err);
       }
     }
     currentTrackIndexRef.current = -1;
@@ -736,13 +775,14 @@ export default function App() {
 
   // Seek
   const handleSeek = (newTime: number) => {
-    if (audioRef.current && isFinite(newTime) && newTime >= 0) {
+    const activeMedia = currentPlayingTrackRef.current?.isVideo ? videoRef.current : audioRef.current;
+    if (activeMedia && isFinite(newTime) && newTime >= 0) {
       try {
-        const max = isFinite(audioRef.current.duration) && audioRef.current.duration > 0
-          ? audioRef.current.duration
+        const max = isFinite(activeMedia.duration) && activeMedia.duration > 0
+          ? activeMedia.duration
           : newTime;
         const target = Math.min(newTime, max);
-        audioRef.current.currentTime = target;
+        activeMedia.currentTime = target;
         setCurrentTime(target);
         if ('mediaSession' in navigator && 'setPositionState' in navigator.mediaSession && duration > 0) {
           try {
@@ -766,8 +806,12 @@ export default function App() {
       cancelAnimationFrame(crossfadeAnimRef.current);
       crossfadeAnimRef.current = null;
     }
+    const target = isMuted ? 0 : newVol;
     if (audioRef.current) {
-      audioRef.current.volume = isMuted ? 0 : newVol;
+      audioRef.current.volume = target;
+    }
+    if (videoRef.current) {
+      videoRef.current.volume = target;
     }
     if (newVol > 0 && isMuted) {
       setIsMuted(false);
@@ -777,8 +821,12 @@ export default function App() {
   const handleToggleMute = () => {
     setIsMuted((prev) => {
       const next = !prev;
+      const target = next ? 0 : volume;
       if (audioRef.current) {
-        audioRef.current.volume = next ? 0 : volume;
+        audioRef.current.volume = target;
+      }
+      if (videoRef.current) {
+        videoRef.current.volume = target;
       }
       return next;
     });
@@ -933,12 +981,7 @@ export default function App() {
 
     // Stop playback if current playing track is being deleted
     if (currentPlayingTrack && idSet.has(currentPlayingTrack.id)) {
-      if (audioRef.current) {
-        audioRef.current.pause();
-        audioRef.current.src = '';
-      }
-      setIsPlaying(false);
-      setCurrentTrackIndex(-1);
+      handleStop();
     }
 
     // Delete each track from IndexedDB (both metadata and audio blob)
@@ -1098,13 +1141,15 @@ export default function App() {
         handleTogglePlay();
       } else if (e.code === 'ArrowLeft') {
         e.preventDefault();
-        if (audioRef.current) {
-          handleSeek(Math.max(0, audioRef.current.currentTime - 5));
+        const activeMedia = currentPlayingTrackRef.current?.isVideo ? videoRef.current : audioRef.current;
+        if (activeMedia) {
+          handleSeek(Math.max(0, activeMedia.currentTime - 5));
         }
       } else if (e.code === 'ArrowRight') {
         e.preventDefault();
-        if (audioRef.current) {
-          handleSeek(Math.min(duration, audioRef.current.currentTime + 5));
+        const activeMedia = currentPlayingTrackRef.current?.isVideo ? videoRef.current : audioRef.current;
+        if (activeMedia) {
+          handleSeek(Math.min(duration, activeMedia.currentTime + 5));
         }
       } else if (e.code === 'ArrowUp') {
         e.preventDefault();
@@ -1176,16 +1221,13 @@ export default function App() {
       } else if (action === 'prev') {
         handlePrev();
       } else if (action === 'stop') {
-        if (audioRef.current) {
-          audioRef.current.pause();
-          setIsPlaying(false);
-        }
+        handleStop();
       }
     });
     return () => {
       unsubscribe?.();
     };
-  }, [handleTogglePlay, handleNext, handlePrev]);
+  }, [handleTogglePlay, handleNext, handlePrev, handleStop]);
 
   // Listen for files opened directly from Windows (double-click or Open With)
   useEffect(() => {
@@ -1201,7 +1243,27 @@ export default function App() {
         if (resp.ok) {
           const data = await resp.json();
           if (data.success && Array.isArray(data.tracks) && data.tracks.length > 0) {
-            handleImportFiles(data.tracks);
+            const incoming: Track[] = data.tracks;
+            setTracks((prev) => {
+              const existingMap = new Map(prev.map((t) => [t.id, t]));
+              for (const t of incoming) {
+                existingMap.set(t.id, t);
+              }
+              return Array.from(existingMap.values());
+            });
+
+            // Bug 3 fix: Lancer le 1er fichier et insérer l'intégralité des autres fichiers sélectionnés dans la file d'attente (playlist)
+            const incomingIds = new Set(incoming.map((t) => t.id));
+            const curQueue = queueRef.current;
+            const remainingOldQueue = curQueue.filter((t) => !incomingIds.has(t.id));
+            const newQueue = [...incoming, ...remainingOldQueue];
+
+            setQueue(newQueue);
+            queueRef.current = newQueue;
+            playTrackAt(0, newQueue);
+            if (incoming[0]?.isVideo) {
+              setVideoMode('theater');
+            }
           }
         }
       } catch (err) {
@@ -1211,69 +1273,110 @@ export default function App() {
     return () => {
       unsubscribe?.();
     };
-  }, [handleImportFiles]);
+  }, [playTrackAt]);
 
-  // Audio element listeners - stable mount once, reads fresh state via refs to prevent listener churn & GC stalls
+  // Media element listeners for both Audio and Video players
   useEffect(() => {
     const audio = audioRef.current;
-    if (!audio) return;
+    const video = videoRef.current;
 
-    const handleTimeUpdate = () => {
-      setCurrentTime(audio.currentTime);
+    const createListeners = (isForVideo: boolean) => {
+      const getTarget = () => (isForVideo ? videoRef.current : audioRef.current);
 
-      const curTrack = currentPlayingTrackRef.current;
-      const settings = playerSettingsRef.current;
-      const curMuted = isMutedRef.current;
-      const curVol = volumeRef.current;
-
-      const isVideo = !!curTrack?.isVideo;
-      const crossfade = settings.crossfadeDuration ?? 0;
-      const isCrossfadeActive = !isVideo && !settings.gaplessPlayback && crossfade > 0;
-      const d = audio.duration;
-
-      if (isCrossfadeActive && d && d > 6 && !curMuted && crossfadeAnimRef.current === null) {
-        const remaining = d - audio.currentTime;
-        if (remaining <= crossfade && remaining > 0) {
-          const fadeRatio = Math.max(0.02, remaining / crossfade);
-          audio.volume = Math.max(0, Math.min(1, curVol * fadeRatio));
-        } else if (audio.currentTime > crossfade + 0.5 && Math.abs(audio.volume - curVol) > 0.05) {
-          audio.volume = curVol;
-        }
-      } else if (!isCrossfadeActive && !curMuted && crossfadeAnimRef.current === null && Math.abs(audio.volume - curVol) > 0.05) {
-        audio.volume = curVol;
-      }
-    };
-
-    const handleLoadedMetadata = () => {
-      const d = audio.duration;
-      if (d && !isNaN(d) && isFinite(d) && d > 0) {
-        const rounded = Math.round(d);
-        setDuration(rounded);
-
+      const handleTimeUpdate = () => {
         const curTrack = currentPlayingTrackRef.current;
-        if (curTrack && curTrack.duration !== rounded) {
-          const updated = { ...curTrack, duration: rounded };
-          setQueue((prev) => prev.map((t) => (t.id === updated.id ? updated : t)));
-          setTracks((prev) => prev.map((t) => (t.id === updated.id ? updated : t)));
-          saveTrack(updated).catch(() => {});
+        const isCurrentVideo = !!curTrack?.isVideo;
+        if (isForVideo !== isCurrentVideo) return;
+
+        const target = getTarget();
+        if (!target) return;
+
+        setCurrentTime(target.currentTime);
+
+        const settings = playerSettingsRef.current;
+        const curMuted = isMutedRef.current;
+        const curVol = volumeRef.current;
+
+        const crossfade = settings.crossfadeDuration ?? 0;
+        const isCrossfadeActive = !isCurrentVideo && !settings.gaplessPlayback && crossfade > 0;
+        const d = target.duration;
+
+        if (isCrossfadeActive && d && d > 6 && !curMuted && crossfadeAnimRef.current === null) {
+          const remaining = d - target.currentTime;
+          if (remaining <= crossfade && remaining > 0) {
+            const fadeRatio = Math.max(0.02, remaining / crossfade);
+            target.volume = Math.max(0, Math.min(1, curVol * fadeRatio));
+          } else if (target.currentTime > crossfade + 0.5 && Math.abs(target.volume - curVol) > 0.05) {
+            target.volume = curVol;
+          }
+        } else if (!isCrossfadeActive && !curMuted && crossfadeAnimRef.current === null && Math.abs(target.volume - curVol) > 0.05) {
+          target.volume = curVol;
         }
-      }
+      };
+
+      const handleLoadedMetadata = () => {
+        const curTrack = currentPlayingTrackRef.current;
+        const isCurrentVideo = !!curTrack?.isVideo;
+        if (isForVideo !== isCurrentVideo) return;
+
+        const target = getTarget();
+        if (!target) return;
+
+        const d = target.duration;
+        if (d && !isNaN(d) && isFinite(d) && d > 0) {
+          const rounded = Math.round(d);
+          setDuration(rounded);
+
+          if (curTrack && curTrack.duration !== rounded) {
+            const updated = { ...curTrack, duration: rounded };
+            setQueue((prev) => prev.map((t) => (t.id === updated.id ? updated : t)));
+            setTracks((prev) => prev.map((t) => (t.id === updated.id ? updated : t)));
+            saveTrack(updated).catch(() => {});
+          }
+        }
+      };
+
+      const handleEnded = () => {
+        const curTrack = currentPlayingTrackRef.current;
+        const isCurrentVideo = !!curTrack?.isVideo;
+        if (isForVideo !== isCurrentVideo) return;
+
+        handleNextRef.current(true);
+      };
+
+      return { handleTimeUpdate, handleLoadedMetadata, handleEnded };
     };
 
-    const handleEnded = () => {
-      handleNextRef.current(true);
-    };
+    const audioHandlers = createListeners(false);
+    const videoHandlers = createListeners(true);
 
-    audio.addEventListener('timeupdate', handleTimeUpdate);
-    audio.addEventListener('loadedmetadata', handleLoadedMetadata);
-    audio.addEventListener('durationchange', handleLoadedMetadata);
-    audio.addEventListener('ended', handleEnded);
+    if (audio) {
+      audio.addEventListener('timeupdate', audioHandlers.handleTimeUpdate);
+      audio.addEventListener('loadedmetadata', audioHandlers.handleLoadedMetadata);
+      audio.addEventListener('durationchange', audioHandlers.handleLoadedMetadata);
+      audio.addEventListener('ended', audioHandlers.handleEnded);
+    }
+
+    if (video) {
+      video.addEventListener('timeupdate', videoHandlers.handleTimeUpdate);
+      video.addEventListener('loadedmetadata', videoHandlers.handleLoadedMetadata);
+      video.addEventListener('durationchange', videoHandlers.handleLoadedMetadata);
+      video.addEventListener('ended', videoHandlers.handleEnded);
+    }
 
     return () => {
-      audio.removeEventListener('timeupdate', handleTimeUpdate);
-      audio.removeEventListener('loadedmetadata', handleLoadedMetadata);
-      audio.removeEventListener('durationchange', handleLoadedMetadata);
-      audio.removeEventListener('ended', handleEnded);
+      if (audio) {
+        audio.removeEventListener('timeupdate', audioHandlers.handleTimeUpdate);
+        audio.removeEventListener('loadedmetadata', audioHandlers.handleLoadedMetadata);
+        audio.removeEventListener('durationchange', audioHandlers.handleLoadedMetadata);
+        audio.removeEventListener('ended', audioHandlers.handleEnded);
+      }
+      if (video) {
+        video.removeEventListener('timeupdate', videoHandlers.handleTimeUpdate);
+        video.removeEventListener('loadedmetadata', videoHandlers.handleLoadedMetadata);
+        video.removeEventListener('durationchange', videoHandlers.handleLoadedMetadata);
+        video.removeEventListener('ended', videoHandlers.handleEnded);
+      }
     };
   }, []);
 
@@ -1297,10 +1400,11 @@ export default function App() {
 
       if ('setPositionState' in navigator.mediaSession && duration > 0) {
         try {
+          const activeMedia = currentPlayingTrackRef.current?.isVideo ? videoRef.current : audioRef.current;
           navigator.mediaSession.setPositionState({
             duration: Math.max(0, duration),
             playbackRate: playerSettings.playbackSpeed ?? 1.0,
-            position: Math.min(Math.max(0, audioRef.current?.currentTime || 0), duration),
+            position: Math.min(Math.max(0, activeMedia?.currentTime || 0), duration),
           });
         } catch {}
       }
@@ -1346,14 +1450,16 @@ export default function App() {
       });
       navigator.mediaSession.setActionHandler('seekbackward', (details) => {
         const offset = details.seekOffset || 10;
-        if (audioRef.current) {
-          handleSeek(Math.max(0, audioRef.current.currentTime - offset));
+        const activeMedia = currentPlayingTrackRef.current?.isVideo ? videoRef.current : audioRef.current;
+        if (activeMedia) {
+          handleSeek(Math.max(0, activeMedia.currentTime - offset));
         }
       });
       navigator.mediaSession.setActionHandler('seekforward', (details) => {
         const offset = details.seekOffset || 10;
-        if (audioRef.current) {
-          handleSeek(Math.min(audioRef.current.duration || 0, audioRef.current.currentTime + offset));
+        const activeMedia = currentPlayingTrackRef.current?.isVideo ? videoRef.current : audioRef.current;
+        if (activeMedia) {
+          handleSeek(Math.min(activeMedia.duration || 0, activeMedia.currentTime + offset));
         }
       });
     } catch (err) {
@@ -1507,8 +1613,8 @@ export default function App() {
           onOpenVideoTheater={() => {
             setVideoMode('theater');
             setIsPlaying(true);
-            if (audioRef.current?.paused) {
-              audioRef.current.play().catch(console.warn);
+            if (videoRef.current?.paused) {
+              videoRef.current.play().catch(console.warn);
             }
           }}
           onImportFiles={handleImportFiles}
@@ -1811,9 +1917,12 @@ export default function App() {
         <TitleBar currentTrack={currentPlayingTrack} isPlaying={isPlaying} accent={playerSettings.accent} />
       )}
 
+      {/* Dedicated HTMLAudioElement for music playback (connected to Web Audio engine) */}
+      <audio ref={audioRef} preload="auto" className="hidden" />
+
       {/* Unified Video & Audio Media Player Engine */}
       <VideoPlayer
-        videoRef={audioRef}
+        videoRef={videoRef}
         currentTrack={currentPlayingTrack}
         isPlaying={isPlaying}
         onTogglePlay={handleTogglePlay}
@@ -1827,11 +1936,11 @@ export default function App() {
         }}
         onError={(e) => {
           if (isTransitioningRef.current) return;
-          const mediaError = audioRef.current?.error;
+          const mediaError = videoRef.current?.error;
           if (mediaError && mediaError.code === MediaError.MEDIA_ERR_ABORTED) {
             return;
           }
-          console.warn('Impossible de charger le flux média:', e);
+          console.warn('Impossible de charger le flux média vidéo:', e);
           setIsPlaying(false);
         }}
         currentTime={currentTime}

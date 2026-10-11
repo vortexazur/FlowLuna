@@ -37,6 +37,7 @@ export interface ElectronAPIType {
   openDefaultAppsSettings?: () => Promise<void> | void;
   onOpenFiles?: (callback: (filePaths: string[]) => void) => () => void;
   toggleFullscreen?: () => Promise<boolean> | void;
+  setFullScreen?: (enabled: boolean) => Promise<boolean> | void;
   isFullScreen?: () => Promise<boolean> | boolean;
   onFullScreenChange?: (callback: (fullscreen: boolean) => void) => () => void;
 }

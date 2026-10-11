@@ -271,9 +271,9 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
         onSetVideoMode('theater');
       }
 
-      const isAlreadyFs = !!document.fullscreenElement || isFullscreen;
+      const isCurrentlyFs = !!document.fullscreenElement || isFullscreen;
 
-      if (isAlreadyFs) {
+      if (isCurrentlyFs) {
         if (document.fullscreenElement) {
           try {
             if (document.exitFullscreen) {
@@ -281,30 +281,40 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
             } else if ((document as any)?.webkitExitFullscreen) {
               await (document as any).webkitExitFullscreen();
             }
+          } catch (e) {
+            console.warn('exitFullscreen error:', e);
+          }
+        } else if (window.electronAPI?.setFullScreen) {
+          try {
+            await window.electronAPI.setFullScreen(false);
           } catch {}
         }
         setIsFullscreen(false);
       } else {
         const container = containerRef.current || document.getElementById('flowluna-video-container');
+        let html5Success = false;
         try {
           if (container?.requestFullscreen) {
             await container.requestFullscreen();
+            html5Success = true;
           } else if ((container as any)?.webkitRequestFullscreen) {
             await (container as any).webkitRequestFullscreen();
+            html5Success = true;
           } else if (document.documentElement.requestFullscreen) {
             await document.documentElement.requestFullscreen();
+            html5Success = true;
           }
         } catch (e) {
-          console.warn('requestFullscreen skipped/fallback:', e);
+          console.warn('HTML5 requestFullscreen skipped/failed:', e);
+        }
+
+        // Si le fullscreen HTML5 n'est pas supporté ou a échoué, repli sur l'hôte desktop
+        if (!html5Success && window.electronAPI?.setFullScreen) {
+          try {
+            await window.electronAPI.setFullScreen(true);
+          } catch {}
         }
         setIsFullscreen(true);
-      }
-
-      // Synchronisation fenêtre native desktop (Electron ou WPF WebView2)
-      if (window.electronAPI?.toggleFullscreen) {
-        try {
-          await window.electronAPI.toggleFullscreen();
-        } catch {}
       }
     } catch (err) {
       console.warn('Erreur lors du basculement plein écran :', err);

@@ -1097,6 +1097,24 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                 />
               </div>
 
+              {/* Saut Automatique des Openings (Skip OP) */}
+              <div className="flex items-center justify-between bg-neutral-900/60 p-4 rounded-xl border border-neutral-800 hover:border-neutral-700/60 transition-colors">
+                <div>
+                  <span className="font-semibold text-neutral-200 block text-xs">
+                    Saut automatique de l'opening (Skip OP)
+                  </span>
+                  <span className="text-neutral-400 text-[11px] leading-relaxed">
+                    Passe automatiquement les génériques d'intro détectés (chapitres ou API). Désactivé : conserve l'opening et affiche le bouton manuel « Passer l'opening ».
+                  </span>
+                </div>
+                <ToggleSwitch
+                  id="settings-skip-op-toggle-audio"
+                  checked={!!settings.autoSkipOpening}
+                  onChange={(val) => updateSetting('autoSkipOpening', val)}
+                  accent={accent}
+                />
+              </div>
+
               {/* Mode Discret (Ghost) */}
               <div className="flex items-center justify-between bg-neutral-900/60 p-4 rounded-xl border border-neutral-800 hover:border-neutral-700/60 transition-colors">
                 <div>
@@ -1266,17 +1284,18 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                 </div>
               </div>
 
-              {/* 3. Saut Automatique des Openings (Auto-Skip) */}
+              {/* 3. Saut Automatique des Openings (Skip OP) */}
               <div className="flex items-center justify-between bg-neutral-900/60 p-4 rounded-xl border border-neutral-800 hover:border-neutral-700/60 transition-colors">
                 <div>
                   <span className="font-semibold text-neutral-200 block text-xs">
-                    Saut automatique des intros & génériques (Auto-Skip)
+                    Saut automatique de l'opening (Skip OP)
                   </span>
                   <span className="text-neutral-400 text-[11px] leading-relaxed">
-                    Passe automatiquement les openings validés (via chapitres ou API vérifiée. L'heuristique requiert une validation manuelle).
+                    Passe automatiquement les génériques d'intro validés (chapitres ou API). Désactivé : conserve l'opening et affiche uniquement le bouton manuel « Passer l'opening ».
                   </span>
                 </div>
                 <ToggleSwitch
+                  id="settings-skip-op-toggle-video"
                   checked={!!settings.autoSkipOpening}
                   onChange={(val) => updateSetting('autoSkipOpening', val)}
                   accent={accent}

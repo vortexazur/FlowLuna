@@ -3379,6 +3379,8 @@ app.post('/api/library/add-folder', express.json(), async (req, res) => {
   }
 });
 
+const explicitlyAddedFiles = new Set<string>();
+
 // Endpoint to probe and return track metadata for a list of file paths (from native file dialog)
 app.post('/api/library/add-files', express.json(), async (req, res) => {
   try {
@@ -3390,6 +3392,8 @@ app.post('/api/library/add-files', express.json(), async (req, res) => {
     const tracks: ScannedAudioTrack[] = [];
     for (const fp of filePaths) {
       if (typeof fp === 'string' && fs.existsSync(fp)) {
+        const resolvedPath = path.resolve(fp);
+        explicitlyAddedFiles.add(resolvedPath);
         const track = await buildTrackMetadataFromFile(fp, false);
         if (track) tracks.push(track);
       }
@@ -3421,7 +3425,7 @@ app.get('/api/library/stream', (req, res) => {
 
   const resolved = path.resolve(reqFile);
 
-  // Security: only serve files from authorized library directories
+  // Security: only serve files from authorized library directories or explicitly added files
   const allowedDirs = [
     ...getCustomScannedDirs(),
     path.join(os.homedir(), 'Music'),
@@ -3435,7 +3439,8 @@ app.get('/api/library/stream', (req, res) => {
     getFlowLunaDataDir(),
   ].map((d) => path.resolve(d));
   const isInAllowedDir = allowedDirs.some((dir) => resolved.startsWith(dir + path.sep) || resolved === dir);
-  if (!isInAllowedDir) {
+  const isExplicitlyAllowed = explicitlyAddedFiles.has(resolved);
+  if (!isInAllowedDir && !isExplicitlyAllowed) {
     return res.status(403).send('Accès au fichier non autorisé');
   }
 

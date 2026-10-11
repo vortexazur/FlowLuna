@@ -4,6 +4,7 @@ using System.Runtime.InteropServices;
 using System.Text.Json;
 using System.Windows;
 using System.Windows.Interop;
+using System.Windows.Threading;
 using FlowLuna.Services;
 using Microsoft.Web.WebView2.Core;
 
@@ -120,6 +121,10 @@ public partial class MainWindow : Window
         });
     }
 
+    private readonly List<string> _batchedFiles = new();
+    private readonly object _batchedFilesLock = new();
+    private DispatcherTimer? _batchFilesTimer;
+
     public void HandleIncomingFiles(IEnumerable<string> filePaths)
     {
         var existing = filePaths.Where(p => !string.IsNullOrWhiteSpace(p) && (File.Exists(p) || Directory.Exists(p))).ToList();
@@ -127,21 +132,63 @@ public partial class MainWindow : Window
 
         Dispatcher.Invoke(() =>
         {
-            if (WebViewControl?.CoreWebView2 != null && _isUiReady)
+            lock (_batchedFilesLock)
             {
-                var json = JsonSerializer.Serialize(existing);
-                WebViewControl.CoreWebView2.ExecuteScriptAsync(
-                    $"window.dispatchEvent(new CustomEvent('flowluna-open-files', {{ detail: {json} }}));"
-                );
-            }
-            else
-            {
-                lock (_pendingFilesLock)
+                foreach (var p in existing)
                 {
-                    _pendingFiles.AddRange(existing);
+                    if (!_batchedFiles.Contains(p, StringComparer.OrdinalIgnoreCase))
+                    {
+                        _batchedFiles.Add(p);
+                    }
                 }
+
+                if (_batchFilesTimer == null)
+                {
+                    _batchFilesTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(250) };
+                    _batchFilesTimer.Tick += (s, e) =>
+                    {
+                        _batchFilesTimer.Stop();
+                        _batchFilesTimer = null;
+                        DispatchBatchedFiles();
+                    };
+                }
+                _batchFilesTimer.Stop();
+                _batchFilesTimer.Start();
             }
         });
+    }
+
+    private void DispatchBatchedFiles()
+    {
+        List<string> toSend;
+        lock (_batchedFilesLock)
+        {
+            toSend = new List<string>(_batchedFiles);
+            _batchedFiles.Clear();
+        }
+
+        if (toSend.Count == 0) return;
+
+        if (WebViewControl?.CoreWebView2 != null && _isUiReady)
+        {
+            var json = JsonSerializer.Serialize(toSend);
+            WebViewControl.CoreWebView2.ExecuteScriptAsync(
+                $"window.dispatchEvent(new CustomEvent('flowluna-open-files', {{ detail: {json} }}));"
+            );
+        }
+        else
+        {
+            lock (_pendingFilesLock)
+            {
+                foreach (var p in toSend)
+                {
+                    if (!_pendingFiles.Contains(p, StringComparer.OrdinalIgnoreCase))
+                    {
+                        _pendingFiles.Add(p);
+                    }
+                }
+            }
+        }
     }
 
     private void FlushPendingFiles()
@@ -319,6 +366,16 @@ public partial class MainWindow : Window
                                 window.chrome.webview.hostObjects.nativeHost.ToggleFullScreen();
                             } else {
                                 window.chrome.webview.postMessage({ action: 'toggle-fullscreen' });
+                            }
+                        } catch {}
+                    },
+                    setFullScreen: (enabled) => {
+                        try {
+                            if (window.chrome?.webview?.hostObjects?.nativeHost) {
+                                if (enabled) window.chrome.webview.hostObjects.nativeHost.EnterFullScreen();
+                                else window.chrome.webview.hostObjects.nativeHost.ExitFullScreen();
+                            } else {
+                                window.chrome.webview.postMessage({ action: 'set-fullscreen', enabled: !!enabled });
                             }
                         } catch {}
                     },

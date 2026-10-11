@@ -74,6 +74,28 @@ public class NativeBridge
         });
     }
 
+    public void EnterFullScreen()
+    {
+        _window.Dispatcher.Invoke(() =>
+        {
+            if (_window is MainWindow mw)
+            {
+                mw.EnterFullScreen();
+            }
+        });
+    }
+
+    public void ExitFullScreen()
+    {
+        _window.Dispatcher.Invoke(() =>
+        {
+            if (_window is MainWindow mw)
+            {
+                mw.ExitFullScreen();
+            }
+        });
+    }
+
     public string? SelectMusicFolder()
     {
         return _window.Dispatcher.Invoke(() =>

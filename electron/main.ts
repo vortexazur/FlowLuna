@@ -45,6 +45,26 @@ function filterMediaFiles(args: string[]): string[] {
 }
 
 // Prevent multiple instances
+let openFilesBatch: string[] = [];
+let openFilesTimer: NodeJS.Timeout | null = null;
+
+function dispatchOpenFiles(files: string[]): void {
+  for (const f of files) {
+    if (!openFilesBatch.includes(f)) {
+      openFilesBatch.push(f);
+    }
+  }
+  if (openFilesTimer) clearTimeout(openFilesTimer);
+  openFilesTimer = setTimeout(() => {
+    openFilesTimer = null;
+    const batch = [...openFilesBatch];
+    openFilesBatch = [];
+    if (batch.length > 0 && mainWindow && mainWindow.webContents) {
+      mainWindow.webContents.send('open-files', batch);
+    }
+  }, 250);
+}
+
 const gotTheLock = app.requestSingleInstanceLock();
 if (!gotTheLock) {
   app.quit();
@@ -57,7 +77,7 @@ if (!gotTheLock) {
 
       const mediaFiles = filterMediaFiles(commandLine);
       if (mediaFiles.length > 0) {
-        mainWindow.webContents.send('open-files', mediaFiles);
+        dispatchOpenFiles(mediaFiles);
       }
     }
   });
@@ -244,7 +264,7 @@ function createMainWindow(): void {
   mainWindow.webContents.once('did-finish-load', () => {
     const initialFiles = filterMediaFiles(process.argv);
     if (initialFiles.length > 0) {
-      mainWindow?.webContents.send('open-files', initialFiles);
+      dispatchOpenFiles(initialFiles);
     }
   });
 
@@ -394,6 +414,13 @@ function setupIpcHandlers(): void {
     return mainWindow?.isFullScreen() ?? false;
   });
 
+  ipcMain.handle('window-set-fullscreen', (_event, enabled: boolean) => {
+    if (!mainWindow) return false;
+    mainWindow.setFullScreen(enabled);
+    mainWindow.webContents.send('window-fullscreen-changed', enabled);
+    return enabled;
+  });
+
   let isElectronCompact = false;
   let savedElectronBounds = { width: 1280, height: 820 };
 
@@ -497,9 +524,7 @@ app.whenReady().then(async () => {
 
 app.on('open-file', (event, filePath) => {
   event.preventDefault();
-  if (mainWindow && mainWindow.webContents) {
-    mainWindow.webContents.send('open-files', [filePath]);
-  }
+  dispatchOpenFiles([filePath]);
 });
 
 app.on('will-quit', () => {

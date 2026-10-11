@@ -333,10 +333,9 @@ export function useMarathonController({
 
       if (isInsideOp) {
         const isFirstEpisode = episodeNumber === 1;
-        // Configuration utilisateur autorisant le saut
-        const isConfiguredToAutoSkip = config.enabled
-          ? (!isFirstEpisode || config.skipFirstEpisodeOp)
-          : autoSkipOpening;
+        // Configuration utilisateur autorisant le saut automatique de l'opening (Skip OP)
+        const isConfiguredToAutoSkip =
+          !!autoSkipOpening && (!config.enabled || !isFirstEpisode || config.skipFirstEpisodeOp);
 
         // Règle stricte :
         // - Interdiction d'auto-skip sans confirmation si source === 'heuristic'

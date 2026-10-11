@@ -46,22 +46,27 @@ public static class SingleInstanceService
 
         if (!isFirstInstance)
         {
-            // Another instance is running — send arguments to it
+            // Another instance is running — send arguments to it with retries in case pipe is busy
             if (cleanedArgs.Count > 0)
             {
-                try
+                for (int attempt = 0; attempt < 6; attempt++)
                 {
-                    using var client = new NamedPipeClientStream(".", PipeName, PipeDirection.Out);
-                    client.Connect(2500); // Wait up to 2.5 seconds
-                    using var writer = new StreamWriter(client) { AutoFlush = true };
-                    foreach (var path in cleanedArgs)
+                    try
                     {
-                        writer.WriteLine(path);
+                        using var client = new NamedPipeClientStream(".", PipeName, PipeDirection.Out);
+                        client.Connect(1500); // Wait up to 1.5 seconds per attempt
+                        using var writer = new StreamWriter(client) { AutoFlush = true };
+                        foreach (var path in cleanedArgs)
+                        {
+                            writer.WriteLine(path);
+                        }
+                        break; // Sent successfully
                     }
-                }
-                catch (Exception ex)
-                {
-                    Debug.WriteLine($"[FlowLuna] Failed to send args to active instance: {ex.Message}");
+                    catch (Exception ex)
+                    {
+                        Debug.WriteLine($"[FlowLuna] Attempt {attempt + 1} sending args to active instance: {ex.Message}");
+                        Thread.Sleep(80);
+                    }
                 }
             }
             return false;
@@ -99,7 +104,7 @@ public static class SingleInstanceService
             {
                 try
                 {
-                    using var server = new NamedPipeServerStream(
+                    var server = new NamedPipeServerStream(
                         PipeName,
                         PipeDirection.In,
                         NamedPipeServerStream.MaxAllowedServerInstances,
@@ -108,25 +113,39 @@ public static class SingleInstanceService
 
                     await server.WaitForConnectionAsync(token);
 
-                    using var reader = new StreamReader(server);
-                    var files = new List<string>();
-                    while (!reader.EndOfStream)
+                    // Process client asynchronously so loop immediately creates the NEXT server instance to accept subsequent connections
+                    _ = Task.Run(async () =>
                     {
-                        var line = await reader.ReadLineAsync();
-                        if (!string.IsNullOrWhiteSpace(line))
+                        try
                         {
-                            var path = line.Trim().Trim('"');
-                            if (File.Exists(path) || Directory.Exists(path))
+                            using (server)
+                            using (var reader = new StreamReader(server))
                             {
-                                files.Add(path);
+                                var files = new List<string>();
+                                while (!reader.EndOfStream)
+                                {
+                                    var line = await reader.ReadLineAsync();
+                                    if (!string.IsNullOrWhiteSpace(line))
+                                    {
+                                        var path = line.Trim().Trim('"');
+                                        if (File.Exists(path) || Directory.Exists(path))
+                                        {
+                                            files.Add(path);
+                                        }
+                                    }
+                                }
+
+                                if (files.Count > 0)
+                                {
+                                    FilesReceived?.Invoke(files);
+                                }
                             }
                         }
-                    }
-
-                    if (files.Count > 0)
-                    {
-                        FilesReceived?.Invoke(files);
-                    }
+                        catch (Exception ex)
+                        {
+                            Debug.WriteLine($"[FlowLuna] IPC client reader exception: {ex.Message}");
+                        }
+                    }, token);
                 }
                 catch (OperationCanceledException)
                 {
@@ -135,7 +154,7 @@ public static class SingleInstanceService
                 catch (Exception ex)
                 {
                     Debug.WriteLine($"[FlowLuna] IPC Server loop exception: {ex.Message}");
-                    await Task.Delay(500, token);
+                    await Task.Delay(100, token);
                 }
             }
         }, token);
