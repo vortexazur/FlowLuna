@@ -80,7 +80,18 @@ public class HttpServer
         {
             options.AddDefaultPolicy(policy =>
             {
-                policy.AllowAnyOrigin().AllowAnyHeader().AllowAnyMethod();
+                policy.SetIsOriginAllowed(origin =>
+                {
+                    if (string.IsNullOrEmpty(origin)) return true;
+                    if (Uri.TryCreate(origin, UriKind.Absolute, out var uri))
+                    {
+                        var host = uri.Host.ToLowerInvariant();
+                        return host == "localhost" || host == "127.0.0.1" || uri.Scheme == "file" || uri.Scheme == "vscode-webview";
+                    }
+                    return false;
+                })
+                .AllowAnyHeader()
+                .AllowAnyMethod();
             });
         });
 
@@ -205,12 +216,34 @@ public class HttpServer
         app.MapGet("/api/library/stream", (HttpContext ctx) =>
         {
             var reqFile = ctx.Request.Query["file"].ToString();
-            if (string.IsNullOrWhiteSpace(reqFile) || !File.Exists(reqFile))
+            if (string.IsNullOrWhiteSpace(reqFile))
+            {
+                return Results.BadRequest("Paramètre file requis");
+            }
+
+            string fullPath;
+            try
+            {
+                fullPath = Path.GetFullPath(reqFile);
+            }
+            catch
+            {
+                return Results.BadRequest("Chemin de fichier invalide");
+            }
+
+            // Security: prohibit streaming system OS files
+            var winDir = Environment.GetFolderPath(Environment.SpecialFolder.Windows);
+            if (!string.IsNullOrEmpty(winDir) && fullPath.StartsWith(winDir, StringComparison.OrdinalIgnoreCase))
+            {
+                return Results.Forbid();
+            }
+
+            if (!File.Exists(fullPath))
             {
                 return Results.NotFound("Fichier audio introuvable");
             }
 
-            var ext = Path.GetExtension(reqFile).ToLowerInvariant();
+            var ext = Path.GetExtension(fullPath).ToLowerInvariant();
             var mimeMap = new System.Collections.Generic.Dictionary<string, string>
             {
                 [".mp3"] = "audio/mpeg",
@@ -230,8 +263,12 @@ public class HttpServer
                 [".m4v"] = "video/x-m4v"
             };
 
-            var contentType = mimeMap.TryGetValue(ext, out var mime) ? mime : "audio/mpeg";
-            return Results.File(reqFile, contentType: contentType, enableRangeProcessing: true);
+            if (!mimeMap.TryGetValue(ext, out var contentType))
+            {
+                return Results.BadRequest("Format multimédia non autorisé");
+            }
+
+            return Results.File(fullPath, contentType: contentType, enableRangeProcessing: true);
         });
 
         // Dedicated cover artwork serving endpoint
@@ -341,12 +378,17 @@ public class HttpServer
                 var psi = new ProcessStartInfo
                 {
                     FileName = ffprobePath,
-                    Arguments = $"-v quiet -print_format json -show_chapters \"{filePath}\"",
                     RedirectStandardOutput = true,
                     RedirectStandardError = true,
                     UseShellExecute = false,
                     CreateNoWindow = true
                 };
+                psi.ArgumentList.Add("-v");
+                psi.ArgumentList.Add("quiet");
+                psi.ArgumentList.Add("-print_format");
+                psi.ArgumentList.Add("json");
+                psi.ArgumentList.Add("-show_chapters");
+                psi.ArgumentList.Add(filePath);
 
                 using var proc = new Process { StartInfo = psi };
                 if (!proc.Start())

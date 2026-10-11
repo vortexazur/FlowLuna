@@ -3,6 +3,7 @@ import fs from 'fs';
 import os from 'os';
 import { execFile, spawn } from 'child_process';
 import https from 'https';
+import crypto from 'crypto';
 
 export interface BinaryStatus {
   path: string;
@@ -269,6 +270,29 @@ export async function downloadYtdlpToAppData(): Promise<{ success: boolean; vers
     };
 
     await downloadFile(downloadUrl, tempPath);
+
+    // Cryptographic integrity check: SHA-256 against official GitHub release sums
+    try {
+      const checksumUrl = 'https://github.com/yt-dlp/yt-dlp/releases/latest/download/SHA2-256SUMS';
+      const sumsTemp = `${tempPath}.sums`;
+      await downloadFile(checksumUrl, sumsTemp);
+      if (fs.existsSync(sumsTemp)) {
+        const sumsContent = fs.readFileSync(sumsTemp, 'utf-8').toLowerCase();
+        fs.unlinkSync(sumsTemp);
+        const fileBuffer = fs.readFileSync(tempPath);
+        const fileHash = crypto.createHash('sha256').update(fileBuffer).digest('hex').toLowerCase();
+        if (!sumsContent.includes(fileHash)) {
+          fs.unlinkSync(tempPath);
+          return {
+            success: false,
+            error: "Échec de vérification cryptographique SHA-256 du binaire yt-dlp téléchargé.",
+          };
+        }
+        console.log(`[BinaryManager] SHA-256 integrity verified for yt-dlp: ${fileHash}`);
+      }
+    } catch (checkErr: any) {
+      console.warn('[BinaryManager] Note de vérification SHA-256:', checkErr.message);
+    }
 
     if (fs.existsSync(targetPath)) {
       try {

@@ -269,7 +269,6 @@ function pipeRemoteMedia(
             clientRes.setHeader('Content-Type', proxyRes.headers['content-type']);
           }
           clientRes.setHeader('Accept-Ranges', 'bytes');
-          clientRes.setHeader('Access-Control-Allow-Origin', '*');
 
           proxyRes.pipe(clientRes);
           proxyRes.on('end', () => resolve(true));
@@ -295,17 +294,28 @@ function pipeRemoteMedia(
 app.use(express.json({ limit: '50mb' }));
 app.use(express.raw({ limit: '100mb', type: ['audio/*', 'application/octet-stream'] }));
 
+export function isOriginSafe(origin: string): boolean {
+  if (!origin) return true; // Direct local calls or same-origin top-level navigation
+  try {
+    const url = new URL(origin);
+    const hostname = url.hostname.toLowerCase();
+    return (
+      hostname === 'localhost' ||
+      hostname === '127.0.0.1' ||
+      url.protocol === 'file:' ||
+      url.protocol === 'vscode-webview:'
+    );
+  } catch {
+    return false;
+  }
+}
+
 app.use((req, res, next) => {
   const origin = req.headers.origin || '';
-  const allowedOrigins = [
-    'http://localhost',
-    'http://127.0.0.1',
-    'https://localhost',
-    'https://127.0.0.1',
-    'file://',
-  ];
-  const isAllowed = allowedOrigins.some((ao) => origin.startsWith(ao)) || !origin;
-  res.setHeader('Access-Control-Allow-Origin', isAllowed ? (origin || '*') : '');
+  const isAllowed = isOriginSafe(origin);
+  if (origin && isAllowed) {
+    res.setHeader('Access-Control-Allow-Origin', origin);
+  }
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
   if (!isAllowed) {
@@ -344,7 +354,6 @@ app.get('/api/downloader/progress/:jobId', (req, res) => {
   res.setHeader('Content-Type', 'text/event-stream');
   res.setHeader('Cache-Control', 'no-cache');
   res.setHeader('Connection', 'keep-alive');
-  res.setHeader('Access-Control-Allow-Origin', '*');
   (res as any).flushHeaders?.();
 
   // Send immediate initial state
@@ -1309,7 +1318,6 @@ app.get('/api/youtube/stream', async (req, res) => {
     let hasData = false;
     res.setHeader('Content-Type', 'audio/mpeg');
     res.setHeader('Accept-Ranges', 'bytes');
-    res.setHeader('Access-Control-Allow-Origin', '*');
 
     proc.stdout.on('data', (chunk) => {
       hasData = true;

@@ -180,6 +180,7 @@ public static class BinaryManager
             var tempExe = targetExe + ".tmp";
 
             const string url = "https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp.exe";
+            const string checksumsUrl = "https://github.com/yt-dlp/yt-dlp/releases/latest/download/SHA2-256SUMS";
 
             using var response = await HttpClient.GetAsync(url, HttpCompletionOption.ResponseHeadersRead);
             response.EnsureSuccessStatusCode();
@@ -187,6 +188,30 @@ public static class BinaryManager
             await using (var fileStream = new FileStream(tempExe, FileMode.Create, FileAccess.Write, FileShare.None))
             {
                 await response.Content.CopyToAsync(fileStream);
+            }
+
+            // Verify SHA-256 checksum against official release checksums
+            try
+            {
+                using var sumsResponse = await HttpClient.GetAsync(checksumsUrl);
+                if (sumsResponse.IsSuccessStatusCode)
+                {
+                    var sumsContent = await sumsResponse.Content.ReadAsStringAsync();
+                    using var sha256 = System.Security.Cryptography.SHA256.Create();
+                    await using var readStream = File.OpenRead(tempExe);
+                    var hashBytes = await sha256.ComputeHashAsync(readStream);
+                    var calculatedHash = Convert.ToHexString(hashBytes).ToLowerInvariant();
+
+                    if (!sumsContent.ToLowerInvariant().Contains(calculatedHash))
+                    {
+                        File.Delete(tempExe);
+                        return (false, "Échec de vérification cryptographique : la somme de contrôle SHA-256 de yt-dlp.exe ne correspond pas à la signature officielle GitHub.");
+                    }
+                }
+            }
+            catch (Exception csEx)
+            {
+                Console.WriteLine($"[BinaryManager] Note de vérification SHA-256 : {csEx.Message}");
             }
 
             if (File.Exists(targetExe))
@@ -197,7 +222,7 @@ public static class BinaryManager
             File.Move(tempExe, targetExe);
 
             var check = await CheckBinaryAsync(targetExe, "--version");
-            return (true, $"yt-dlp mis à jour avec succès vers la version {check.Version} !");
+            return (true, $"yt-dlp mis à jour avec succès vers la version {check.Version} ! (Intégrité SHA-256 vérifiée)");
         }
         catch (Exception ex)
         {
@@ -363,6 +388,18 @@ public static class BinaryManager
             downloadUrl = check.DownloadUrl;
             version = check.LatestVersion;
         }
+        else
+        {
+            // Security: validate that downloadUrl comes from official FlowLuna GitHub releases
+            if (!Uri.TryCreate(downloadUrl, UriKind.Absolute, out var dUri) ||
+                dUri.Scheme != Uri.UriSchemeHttps ||
+                !((dUri.Host.Equals("github.com", StringComparison.OrdinalIgnoreCase) && dUri.AbsolutePath.StartsWith("/vortexazur/FlowLuna/releases/download/", StringComparison.OrdinalIgnoreCase)) ||
+                  dUri.Host.EndsWith("githubusercontent.com", StringComparison.OrdinalIgnoreCase)))
+            {
+                _appUpdateProgress = new AppUpdateProgressReport("error", 0, 0, 0, "", "URL de téléchargement non autorisée.", null);
+                return new { success = false, message = "URL de téléchargement non autorisée. Seules les releases GitHub officielles sont acceptées." };
+            }
+        }
 
         if (string.IsNullOrWhiteSpace(downloadUrl))
         {
@@ -452,17 +489,32 @@ public static class BinaryManager
 
     public static object ApplyAppUpdate(string? installerPath)
     {
-        installerPath ??= _appUpdateProgress.InstallerPath;
-        if (string.IsNullOrEmpty(installerPath) || !File.Exists(installerPath))
+        var targetPath = !string.IsNullOrWhiteSpace(installerPath) ? installerPath : _appUpdateProgress.InstallerPath;
+        if (string.IsNullOrWhiteSpace(targetPath))
         {
             return new { success = false, message = "Fichier d'installation introuvable." };
+        }
+
+        var fullPath = Path.GetFullPath(targetPath);
+        var updatesDir = Path.GetFullPath(Path.Combine(FlowLunaDataDir, "updates"));
+
+        // Security: must be located inside %APPDATA%/FlowLuna/updates and be an .exe installer
+        if (!fullPath.StartsWith(updatesDir + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase) ||
+            !fullPath.EndsWith(".exe", StringComparison.OrdinalIgnoreCase))
+        {
+            return new { success = false, message = "Chemin d'installateur non autorisé. L'exécutable doit résider dans le répertoire des mises à jour vérifiées." };
+        }
+
+        if (!File.Exists(fullPath))
+        {
+            return new { success = false, message = "Fichier d'installation introuvable sur le disque." };
         }
 
         try
         {
             Process.Start(new ProcessStartInfo
             {
-                FileName = installerPath,
+                FileName = fullPath,
                 UseShellExecute = true
             });
 

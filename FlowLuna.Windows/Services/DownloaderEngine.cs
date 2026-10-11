@@ -30,20 +30,44 @@ public static class DownloaderEngine
         RegexOptions.Compiled | RegexOptions.IgnoreCase
     );
 
+    public static bool IsValidMediaUrl(string rawUrl)
+    {
+        if (string.IsNullOrWhiteSpace(rawUrl)) return false;
+        var trimmed = rawUrl.Trim();
+        if (Uri.TryCreate(trimmed, UriKind.Absolute, out var uri))
+        {
+            return uri.Scheme == Uri.UriSchemeHttp || uri.Scheme == Uri.UriSchemeHttps;
+        }
+        // 11-character YouTube video ID
+        if (Regex.IsMatch(trimmed, @"^[a-zA-Z0-9_-]{11}$"))
+        {
+            return true;
+        }
+        return false;
+    }
+
     public static async Task<object> InspectUrlAsync(string url)
     {
         var targetUrl = url.Trim();
+        if (!IsValidMediaUrl(targetUrl))
+        {
+            return new { error = "Format d'URL non autorisé ou invalide." };
+        }
+
         var ytdlpPath = BinaryManager.GetYtdlpPath();
 
         var psi = new ProcessStartInfo
         {
             FileName = ytdlpPath,
-            Arguments = $"-J --no-playlist --skip-download \"{targetUrl}\"",
             RedirectStandardOutput = true,
             RedirectStandardError = true,
             UseShellExecute = false,
             CreateNoWindow = true
         };
+        psi.ArgumentList.Add("-J");
+        psi.ArgumentList.Add("--no-playlist");
+        psi.ArgumentList.Add("--skip-download");
+        psi.ArgumentList.Add(targetUrl);
 
         using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(25));
         try
@@ -152,6 +176,11 @@ public static class DownloaderEngine
 
     public static async Task<string> DownloadToTempAsync(DownloadRequest request, Action<YtDlpProgressUpdate>? onProgress)
     {
+        if (!IsValidMediaUrl(request.Url))
+        {
+            throw new ArgumentException("Format d'URL de téléchargement non autorisé ou invalide.");
+        }
+
         var tempDir = Path.GetTempPath();
         var baseName = $"ytdl_{DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()}_{Guid.NewGuid().ToString("N")[..6]}";
         var outTemplate = Path.Combine(tempDir, $"{baseName}.%(ext)s");
@@ -159,12 +188,19 @@ public static class DownloaderEngine
         var isVideo = string.Equals(request.MediaType, "video", StringComparison.OrdinalIgnoreCase);
         var ext = isVideo ? (string.IsNullOrWhiteSpace(request.VideoFormat) ? "mp4" : request.VideoFormat) : (string.IsNullOrWhiteSpace(request.AudioFormat) ? "mp3" : request.AudioFormat);
 
-        var args = new List<string>
+        var psi = new ProcessStartInfo
         {
-            "--no-playlist",
-            "--newline",
-            "--ffmpeg-location", $"\"{BinaryManager.GetFfmpegPath()}\""
+            FileName = BinaryManager.GetYtdlpPath(),
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+            UseShellExecute = false,
+            CreateNoWindow = true
         };
+
+        psi.ArgumentList.Add("--no-playlist");
+        psi.ArgumentList.Add("--newline");
+        psi.ArgumentList.Add("--ffmpeg-location");
+        psi.ArgumentList.Add(BinaryManager.GetFfmpegPath());
 
         if (isVideo)
         {
@@ -172,10 +208,10 @@ public static class DownloaderEngine
                 ? $"bestvideo[height<={h}]+bestaudio/best[height<={h}]/best"
                 : "bestvideo+bestaudio/best";
 
-            args.Add("-f");
-            args.Add(resSpec);
-            args.Add("--merge-output-format");
-            args.Add(ext);
+            psi.ArgumentList.Add("-f");
+            psi.ArgumentList.Add(resSpec);
+            psi.ArgumentList.Add("--merge-output-format");
+            psi.ArgumentList.Add(ext);
         }
         else
         {
@@ -186,29 +222,19 @@ public static class DownloaderEngine
                 _ => "320"
             };
 
-            args.Add("-x");
-            args.Add("--audio-format");
-            args.Add(ext);
-            args.Add("--audio-quality");
-            args.Add(q);
+            psi.ArgumentList.Add("-x");
+            psi.ArgumentList.Add("--audio-format");
+            psi.ArgumentList.Add(ext);
+            psi.ArgumentList.Add("--audio-quality");
+            psi.ArgumentList.Add(q);
         }
 
-        args.Add("--embed-metadata");
-        args.Add("-o");
-        args.Add($"\"{outTemplate}\"");
-        args.Add($"\"{request.Url}\"");
+        psi.ArgumentList.Add("--embed-metadata");
+        psi.ArgumentList.Add("-o");
+        psi.ArgumentList.Add(outTemplate);
+        psi.ArgumentList.Add(request.Url.Trim());
 
         onProgress?.Invoke(new YtDlpProgressUpdate("downloading", 0, Message: "Démarrage du téléchargement..."));
-
-        var psi = new ProcessStartInfo
-        {
-            FileName = BinaryManager.GetYtdlpPath(),
-            Arguments = string.Join(" ", args),
-            RedirectStandardOutput = true,
-            RedirectStandardError = true,
-            UseShellExecute = false,
-            CreateNoWindow = true
-        };
 
         using var process = new Process { StartInfo = psi };
         process.OutputDataReceived += (_, e) =>
