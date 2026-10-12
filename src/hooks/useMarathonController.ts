@@ -24,6 +24,7 @@ export interface UseMarathonControllerProps {
   config?: MarathonConfig;
   onUpdateConfig?: (config: MarathonConfig) => void;
   autoSkipOpening?: boolean;
+  enableSkipOpening?: boolean;
 }
 
 export interface UseMarathonControllerReturn {
@@ -60,6 +61,7 @@ export function useMarathonController({
   config = DEFAULT_MARATHON_CONFIG,
   onUpdateConfig,
   autoSkipOpening = false,
+  enableSkipOpening = true,
 }: UseMarathonControllerProps): UseMarathonControllerReturn {
   const [markers, setMarkers] = useState<VideoSkipMarkers | null>(null);
   const [isDetecting, setIsDetecting] = useState<boolean>(false);
@@ -250,7 +252,7 @@ export function useMarathonController({
 
   // Manual Action: Skip Opening
   const skipOpening = useCallback(() => {
-    if (!markers?.op || isSeekingRef.current) return;
+    if (!enableSkipOpening || !markers?.op || isSeekingRef.current) return;
     isSeekingRef.current = true;
     hasSkippedOpRef.current = true;
     onSeek(markers.op.end);
@@ -259,7 +261,7 @@ export function useMarathonController({
     setTimeout(() => {
       isSeekingRef.current = false;
     }, 500);
-  }, [markers?.op, onSeek, showToast]);
+  }, [enableSkipOpening, markers?.op, onSeek, showToast]);
 
   // Toggle Marathon Mode enabled
   const toggleMarathon = useCallback(() => {
@@ -327,7 +329,7 @@ export function useMarathonController({
     }
 
     // 2. Auto-Skip OP (Garde-fous stricts : jamais d'auto-skip en heuristique ou si drift détecté)
-    if (markers?.op) {
+    if (enableSkipOpening && markers?.op) {
       const { start: opStart, end: opEnd, source: opSource } = markers.op;
       const isInsideOp = currentTime >= opStart && currentTime < opEnd;
 
@@ -364,6 +366,8 @@ export function useMarathonController({
       } else {
         setIsOpButtonVisible(false);
       }
+    } else if (!enableSkipOpening && isOpButtonVisible) {
+      setIsOpButtonVisible(false);
     }
 
     // 3. Ending & Auto-Chain Transitions (Rule 2)
@@ -455,8 +459,8 @@ export function useMarathonController({
     cancelCountdown,
     toggleMarathon,
     marathonToast,
-    opInterval: markers?.op || null,
-    isOpButtonVisible,
+    opInterval: enableSkipOpening ? (markers?.op || null) : null,
+    isOpButtonVisible: enableSkipOpening ? isOpButtonVisible : false,
     skipOpening,
   };
 }

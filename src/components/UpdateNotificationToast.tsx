@@ -1,6 +1,7 @@
 import React from 'react';
 import { Sparkles, Download, X, ArrowUpCircle } from 'lucide-react';
-import { AppUpdateInfo, AccentColor, ThemeMode } from '../types';
+import { AppUpdateInfo, AccentColor, ThemeMode, APP_VERSION } from '../types';
+import { compareSemVer } from '../utils/semver';
 
 interface UpdateNotificationToastProps {
   updateInfo: AppUpdateInfo | null;
@@ -40,7 +41,14 @@ export const UpdateNotificationToast: React.FC<UpdateNotificationToastProps> = (
   theme,
 }) => {
   // CRITICAL REQUIREMENT: Lors d'un visionnage d'une vidéo en plein écran, ne se montre pas en 1er plan !
-  if (!updateInfo || !updateInfo.hasUpdate || isDismissed || isFullscreenActive) {
+  // Strict SemVer: Ne JAMAIS afficher si latestVersion <= APP_VERSION
+  if (
+    !updateInfo ||
+    !updateInfo.hasUpdate ||
+    compareSemVer(updateInfo.latestVersion, APP_VERSION) <= 0 ||
+    isDismissed ||
+    isFullscreenActive
+  ) {
     return null;
   }
 

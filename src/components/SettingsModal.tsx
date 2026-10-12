@@ -26,12 +26,16 @@ import {
   ExternalLink,
   Zap,
   Disc,
+  Trash2,
 } from 'lucide-react';
 import { PlayerSettings, AccentColor, APP_VERSION, AppUpdateInfo, AppUpdateProgress, DEFAULT_MARATHON_CONFIG } from '../types';
 import { SUPPORTED_LANGUAGES, getT } from '../i18n';
 import { CountryFlag } from './CountryFlag';
 import { backgroundScanner } from '../services/backgroundScanner';
 import { saveTracks } from '../services/audioDb';
+import { compareSemVer } from '../utils/semver';
+import { ClearCacheModal } from './ClearCacheModal';
+import { formatBytes } from '../services/cacheCleanerService';
 
 interface SettingsModalProps {
   isOpen: boolean;
@@ -42,6 +46,7 @@ interface SettingsModalProps {
   playlistsCount?: number;
   onDataReload?: () => Promise<void> | void;
   initialTab?: SettingsTab;
+  appUpdateInfo?: AppUpdateInfo | null;
 }
 
 const ACCENT_OPTIONS: { id: AccentColor; label: string; colorHex: string }[] = [
@@ -172,6 +177,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   onChange,
   onDataReload,
   initialTab,
+  appUpdateInfo: initialAppUpdateInfo,
 }) => {
   const [activeTab, setActiveTab] = useState<SettingsTab>(initialTab || 'appearance');
   const [binariesStatus, setBinariesStatus] = useState<any>(null);
@@ -185,11 +191,33 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
 
   // App Auto-Update State
   const [isCheckingUpdate, setIsCheckingUpdate] = useState(false);
-  const [appUpdateInfo, setAppUpdateInfo] = useState<AppUpdateInfo | null>(null);
+  const [appUpdateInfo, setAppUpdateInfo] = useState<AppUpdateInfo | null>(initialAppUpdateInfo || null);
   const [isDownloadingAppUpdate, setIsDownloadingAppUpdate] = useState(false);
   const [appUpdateProgress, setAppUpdateProgress] = useState<AppUpdateProgress | null>(null);
   const [updateAlertMessage, setUpdateAlertMessage] = useState<{ text: string; type: 'success' | 'error' | 'info' } | null>(null);
   const [showRestartModal, setShowRestartModal] = useState(false);
+
+  // Clear Cache Modal State & Toast Notification
+  const [isClearCacheModalOpen, setIsClearCacheModalOpen] = useState(false);
+  const [cacheToastMessage, setCacheToastMessage] = useState<{ text: string; type: 'success' | 'error' } | null>(null);
+
+  useEffect(() => {
+    if (initialAppUpdateInfo) {
+      const isReallyNewer = compareSemVer(initialAppUpdateInfo.latestVersion, APP_VERSION) > 0;
+      setAppUpdateInfo({
+        ...initialAppUpdateInfo,
+        currentVersion: APP_VERSION,
+        hasUpdate: isReallyNewer,
+      });
+    }
+  }, [initialAppUpdateInfo]);
+
+  useEffect(() => {
+    if (cacheToastMessage) {
+      const timer = setTimeout(() => setCacheToastMessage(null), 4000);
+      return () => clearTimeout(timer);
+    }
+  }, [cacheToastMessage]);
 
   useEffect(() => {
     if (initialTab) {
@@ -368,16 +396,22 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
       const res = await fetch('/api/app/check-update');
       if (res.ok) {
         const data: AppUpdateInfo = await res.json();
-        setAppUpdateInfo(data);
-        if (data.hasUpdate) {
+        const isReallyNewer = compareSemVer(data.latestVersion, APP_VERSION) > 0;
+        const normalizedData: AppUpdateInfo = {
+          ...data,
+          currentVersion: APP_VERSION,
+          hasUpdate: isReallyNewer,
+        };
+        setAppUpdateInfo(normalizedData);
+        if (isReallyNewer) {
           setUpdateAlertMessage({
             text: `Nouvelle version v${data.latestVersion} disponible !`,
-            type: 'success',
+            type: 'info',
           });
         } else {
           setUpdateAlertMessage({
-            text: `FlowLuna est parfaitement à jour (v${data.currentVersion}).`,
-            type: 'info',
+            text: `Votre application est à jour (v${APP_VERSION}).`,
+            type: 'success',
           });
         }
       } else {
@@ -1097,24 +1131,6 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                 />
               </div>
 
-              {/* Saut Automatique des Openings (Skip OP) */}
-              <div className="flex items-center justify-between bg-neutral-900/60 p-4 rounded-xl border border-neutral-800 hover:border-neutral-700/60 transition-colors">
-                <div>
-                  <span className="font-semibold text-neutral-200 block text-xs">
-                    Saut automatique de l'opening (Skip OP)
-                  </span>
-                  <span className="text-neutral-400 text-[11px] leading-relaxed">
-                    Passe automatiquement les génériques d'intro détectés (chapitres ou API). Désactivé : conserve l'opening et affiche le bouton manuel « Passer l'opening ».
-                  </span>
-                </div>
-                <ToggleSwitch
-                  id="settings-skip-op-toggle-audio"
-                  checked={!!settings.autoSkipOpening}
-                  onChange={(val) => updateSetting('autoSkipOpening', val)}
-                  accent={accent}
-                />
-              </div>
-
               {/* Mode Discret (Ghost) */}
               <div className="flex items-center justify-between bg-neutral-900/60 p-4 rounded-xl border border-neutral-800 hover:border-neutral-700/60 transition-colors">
                 <div>
@@ -1284,22 +1300,44 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                 </div>
               </div>
 
-              {/* 3. Saut Automatique des Openings (Skip OP) */}
-              <div className="flex items-center justify-between bg-neutral-900/60 p-4 rounded-xl border border-neutral-800 hover:border-neutral-700/60 transition-colors">
-                <div>
-                  <span className="font-semibold text-neutral-200 block text-xs">
-                    Saut automatique de l'opening (Skip OP)
-                  </span>
-                  <span className="text-neutral-400 text-[11px] leading-relaxed">
-                    Passe automatiquement les génériques d'intro validés (chapitres ou API). Désactivé : conserve l'opening et affiche uniquement le bouton manuel « Passer l'opening ».
-                  </span>
+              {/* 3. Détection & Saut d'Opening (Skip OP) */}
+              <div className="flex flex-col gap-3 bg-neutral-900/60 p-4.5 rounded-xl border border-neutral-800 hover:border-neutral-700/60 transition-colors">
+                <div className="flex items-center justify-between">
+                  <div className="pr-4">
+                    <span className="font-semibold text-neutral-200 block text-xs">
+                      Fonctionnalité Skip Opening (Détection des génériques)
+                    </span>
+                    <span className="text-neutral-400 text-[11px] leading-relaxed">
+                      Active ou désactive complètement la détection des génériques. Si désactivé, le bouton « Passer l'opening » est totalement masqué sur le lecteur et les déclencheurs sont ignorés.
+                    </span>
+                  </div>
+                  <ToggleSwitch
+                    id="settings-enable-skip-op-toggle"
+                    checked={settings.enableSkipOpening ?? true}
+                    onChange={(val) => updateSetting('enableSkipOpening', val)}
+                    accent={accent}
+                  />
                 </div>
-                <ToggleSwitch
-                  id="settings-skip-op-toggle-video"
-                  checked={!!settings.autoSkipOpening}
-                  onChange={(val) => updateSetting('autoSkipOpening', val)}
-                  accent={accent}
-                />
+
+                {/* Sous-option : Saut automatique si la fonctionnalité globale est activée */}
+                {(settings.enableSkipOpening ?? true) && (
+                  <div className="flex items-center justify-between pt-3 border-t border-neutral-800/80 animate-in fade-in duration-150">
+                    <div className="pr-4">
+                      <span className="font-medium text-neutral-300 block text-xs">
+                        Saut automatique direct (Auto-Skip)
+                      </span>
+                      <span className="text-neutral-400 text-[11px] leading-relaxed">
+                        Passe automatiquement à la fin de l'opening sans intervention manuelle. Désactivé : conserve l'opening et affiche le bouton manuel « Passer l'opening ».
+                      </span>
+                    </div>
+                    <ToggleSwitch
+                      id="settings-auto-skip-op-toggle-video"
+                      checked={!!settings.autoSkipOpening}
+                      onChange={(val) => updateSetting('autoSkipOpening', val)}
+                      accent={accent}
+                    />
+                  </div>
+                )}
               </div>
 
               {/* 4. Mode Marathon (Auto-Chain & Smart Transitions) */}
@@ -1547,6 +1585,32 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                   <span>Paramètres Windows</span>
                 </button>
               </div>
+
+              {/* Gestion du Stockage & Cache */}
+              <div className="flex items-center justify-between bg-neutral-900/60 p-4 rounded-xl border border-neutral-800 hover:border-neutral-700/60 transition-colors">
+                <div className="pr-4">
+                  <div className="flex items-center gap-2">
+                    <Trash2 className="w-4 h-4 text-rose-400" />
+                    <span className="font-semibold text-neutral-200 block text-xs">Gestion du Stockage & Cache</span>
+                    <span className="text-[10px] uppercase font-mono px-2 py-0.5 rounded bg-rose-500/20 text-rose-300 font-semibold border border-rose-500/30">
+                      NETTOYAGE
+                    </span>
+                  </div>
+                  <span className="text-neutral-400 text-[11px] block mt-1 leading-relaxed">
+                    Libérez de l'espace disque en nettoyant sélectivement l'historique des téléchargements, les vidéos temporaires et les caches audio sans altérer votre bibliothèque.
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  id="open-clear-cache-modal-btn"
+                  onClick={() => setIsClearCacheModalOpen(true)}
+                  className="flex items-center gap-2 px-3.5 py-2 rounded-xl bg-neutral-800 hover:bg-rose-950/40 text-neutral-200 hover:text-rose-300 border border-neutral-700/80 hover:border-rose-500/40 text-xs font-semibold transition-all shrink-0 cursor-pointer shadow-xs active:scale-95"
+                  title="Ouvrir la boîte de dialogue pour vider le cache"
+                >
+                  <Trash2 className="w-3.5 h-3.5 text-rose-400" />
+                  <span>Vider le cache…</span>
+                </button>
+              </div>
             </div>
           )}
 
@@ -1605,8 +1669,30 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                   </div>
                 )}
 
+                {/* Application up to date panel */}
+                {(!appUpdateInfo || !appUpdateInfo.hasUpdate || compareSemVer(appUpdateInfo.latestVersion, APP_VERSION) <= 0) && (
+                  <div className="p-4 rounded-xl bg-emerald-950/20 border border-emerald-500/30 flex items-center justify-between animate-in fade-in">
+                    <div className="flex items-center gap-3">
+                      <div className="p-2.5 rounded-xl bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+                        <CheckCircle2 className="w-5 h-5 text-emerald-400" />
+                      </div>
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <span className="text-xs font-bold text-white">Votre application est à jour</span>
+                          <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-300 font-semibold border border-emerald-500/30">
+                            v{APP_VERSION}
+                          </span>
+                        </div>
+                        <p className="text-[11px] text-neutral-400 mt-0.5">
+                          Vous disposez de la version la plus récente de FlowLuna avec toutes les améliorations et correctifs de sécurité.
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
                 {/* Update available panel */}
-                {appUpdateInfo?.hasUpdate && (
+                {appUpdateInfo?.hasUpdate && compareSemVer(appUpdateInfo.latestVersion, APP_VERSION) > 0 && (
                   <div className="p-4 rounded-xl bg-cyan-950/30 border border-cyan-500/30 flex flex-col gap-3 animate-in fade-in">
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-2">
@@ -2019,6 +2105,42 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
               </button>
             </div>
           </div>
+        </div>
+      )}
+
+      {/* Modale Granulaire de Nettoyage du Cache */}
+      <ClearCacheModal
+        isOpen={isClearCacheModalOpen}
+        onClose={() => setIsClearCacheModalOpen(false)}
+        onSuccess={(result) => {
+          const formatted = formatBytes(result.clearedBytes);
+          setCacheToastMessage({
+            text:
+              result.clearedBytes > 0
+                ? `Cache nettoyé avec succès : ${formatted} libérés !`
+                : 'Cache nettoyé avec succès (aucun fichier temporaire à supprimer).',
+            type: 'success',
+          });
+        }}
+        onError={(errorMsg) => {
+          setCacheToastMessage({
+            text: `Erreur lors du nettoyage du cache : ${errorMsg}`,
+            type: 'error',
+          });
+        }}
+        accent={settings.accent}
+        theme={settings.theme}
+      />
+
+      {/* Toast Notification pour le Cache */}
+      {cacheToastMessage && (
+        <div className="fixed bottom-6 right-6 z-[80] flex items-center gap-2.5 px-4 py-3 rounded-xl bg-neutral-900/95 border border-neutral-700 text-white shadow-2xl backdrop-blur-md animate-in slide-in-from-bottom-3 duration-200">
+          {cacheToastMessage.type === 'success' ? (
+            <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+          ) : (
+            <AlertCircle className="w-4 h-4 text-rose-400 shrink-0" />
+          )}
+          <span className="text-xs font-medium">{cacheToastMessage.text}</span>
         </div>
       )}
     </div>

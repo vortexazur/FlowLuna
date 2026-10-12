@@ -64,6 +64,7 @@ interface VideoPlayerProps {
   onSaveQueueAsPlaylist?: () => void;
   autoSkipOpening?: boolean;
   onToggleAutoSkip?: (enabled: boolean) => void;
+  enableSkipOpening?: boolean;
   marathonConfig?: MarathonConfig;
   onUpdateMarathonConfig?: (config: MarathonConfig) => void;
   videoSkipForwardInterval?: number;
@@ -100,6 +101,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
   onSaveQueueAsPlaylist,
   autoSkipOpening = false,
   onToggleAutoSkip,
+  enableSkipOpening = true,
   marathonConfig,
   onUpdateMarathonConfig,
   videoSkipForwardInterval = 10,
@@ -146,6 +148,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
     config: marathonConfig,
     onUpdateConfig: onUpdateMarathonConfig,
     autoSkipOpening,
+    enableSkipOpening,
   });
 
   const containerRef = useRef<HTMLDivElement>(null);
@@ -387,7 +390,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
         toggleFullscreen();
       } else if (e.key === 's' || e.key === 'S') {
         e.stopPropagation();
-        if (skipInterval) {
+        if (enableSkipOpening && skipInterval) {
           skipOpening();
         }
       } else if (e.key === 'n' || e.key === 'N') {
@@ -964,15 +967,17 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
             </div>
 
             {/* Bouton d'action flottant "Passer l'opening" (Étape 2 & 4) */}
-            <SkipOpeningButton
-              isVisible={isSkipButtonVisible}
-              interval={skipInterval}
-              onSkip={skipOpening}
-              autoSkipEnabled={!!autoSkipOpening}
-              onToggleAutoSkip={(enabled) => onToggleAutoSkip?.(enabled)}
-              autoSkippedToast={marathonToast}
-              driftDetected={markers?.driftDetected}
-            />
+            {enableSkipOpening && (
+              <SkipOpeningButton
+                isVisible={isSkipButtonVisible}
+                interval={skipInterval}
+                onSkip={skipOpening}
+                autoSkipEnabled={!!autoSkipOpening}
+                onToggleAutoSkip={(enabled) => onToggleAutoSkip?.(enabled)}
+                autoSkippedToast={marathonToast}
+                driftDetected={markers?.driftDetected}
+              />
+            )}
 
             {/* Overlay Compte à Rebours Mode Marathon (Étape 3) */}
             <MarathonCountdownOverlay

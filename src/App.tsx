@@ -9,7 +9,9 @@ import {
   BackdropEffect,
   AppUpdateInfo,
   DEFAULT_MARATHON_CONFIG,
+  APP_VERSION,
 } from './types';
+import { compareSemVer } from './utils/semver';
 import {
   getAllTracks,
   saveTracks,
@@ -79,6 +81,7 @@ const DEFAULT_PLAYER_SETTINGS: PlayerSettings = {
   compactPlayerDock: 'bottom',
   compactPlayerGhost: false,
   autoSkipOpening: false,
+  enableSkipOpening: true,
   marathonConfig: DEFAULT_MARATHON_CONFIG,
   videoSkipForwardInterval: 10,
   videoAspectRatio: 'contain',
@@ -352,8 +355,14 @@ export default function App() {
         const res = await fetch('/api/app/check-update');
         if (res.ok) {
           const data: AppUpdateInfo = await res.json();
-          setAppUpdateInfo(data);
-          if (data.hasUpdate) {
+          const isReallyNewer = compareSemVer(data.latestVersion, APP_VERSION) > 0;
+          const normalizedData: AppUpdateInfo = {
+            ...data,
+            currentVersion: APP_VERSION,
+            hasUpdate: isReallyNewer,
+          };
+          setAppUpdateInfo(normalizedData);
+          if (isReallyNewer) {
             showSystemNotification(
               `Mise à jour FlowLuna disponible (v${data.latestVersion})`,
               {
@@ -2002,6 +2011,7 @@ export default function App() {
         }}
         autoSkipOpening={playerSettings.autoSkipOpening}
         onToggleAutoSkip={(enabled) => handleUpdatePlayerSettings({ ...playerSettings, autoSkipOpening: enabled })}
+        enableSkipOpening={playerSettings.enableSkipOpening ?? true}
         marathonConfig={playerSettings.marathonConfig}
         onUpdateMarathonConfig={(newCfg) => handleUpdatePlayerSettings({ ...playerSettings, marathonConfig: newCfg })}
         videoSkipForwardInterval={playerSettings.videoSkipForwardInterval ?? 10}
@@ -2150,6 +2160,7 @@ export default function App() {
         playlistsCount={playlists.length}
         onDataReload={loadDatabase}
         initialTab={settingsInitialTab}
+        appUpdateInfo={appUpdateInfo}
       />
 
       {/* Update Notification Toast (Never shown over fullscreen video) */}

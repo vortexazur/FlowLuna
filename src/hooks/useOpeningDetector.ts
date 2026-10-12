@@ -10,6 +10,7 @@ interface UseOpeningDetectorProps {
   onSeek: (time: number) => void;
   initialAutoSkip?: boolean;
   onAutoSkipChange?: (enabled: boolean) => void;
+  enableSkipOpening?: boolean;
 }
 
 export interface UseOpeningDetectorReturn {
@@ -30,6 +31,7 @@ export function useOpeningDetector({
   onSeek,
   initialAutoSkip = false,
   onAutoSkipChange,
+  enableSkipOpening = true,
 }: UseOpeningDetectorProps): UseOpeningDetectorReturn {
   const [currentInterval, setCurrentInterval] = useState<SkipInterval | null>(null);
   const [isDetecting, setIsDetecting] = useState<boolean>(false);
@@ -63,7 +65,7 @@ export function useOpeningDetector({
 
   // Étape 1 : Résolution en cascade du SkipInterval dès qu'une nouvelle vidéo est chargée
   useEffect(() => {
-    if (!track || !track.isVideo) {
+    if (!enableSkipOpening || !track || !track.isVideo) {
       setCurrentInterval(null);
       setIsDetecting(false);
       setIsVisible(false);
@@ -92,11 +94,11 @@ export function useOpeningDetector({
     return () => {
       isMounted = false;
     };
-  }, [track?.id, track?.title, videoRef, duration]);
+  }, [track?.id, track?.title, videoRef, duration, enableSkipOpening]);
 
   // Action manuelle : Passer l'opening
   const skipOpening = useCallback(() => {
-    if (!currentInterval) return;
+    if (!enableSkipOpening || !currentInterval) return;
     isSkippingRef.current = true;
     onSeek(currentInterval.end);
     setIsVisible(false);
@@ -108,11 +110,11 @@ export function useOpeningDetector({
       setAutoSkippedToast(null);
       isSkippingRef.current = false;
     }, 2000);
-  }, [currentInterval, onSeek]);
+  }, [enableSkipOpening, currentInterval, onSeek]);
 
   // Étape 2 : Écoute du flux temporel (timeupdate / currentTime)
   useEffect(() => {
-    if (!currentInterval || isSkippingRef.current) {
+    if (!enableSkipOpening || !currentInterval || isSkippingRef.current) {
       if (isVisible) setIsVisible(false);
       return;
     }
@@ -150,12 +152,12 @@ export function useOpeningDetector({
         setIsVisible(false);
       }
     }
-  }, [currentTime, currentInterval, autoSkipEnabled, onSeek, track, isVisible]);
+  }, [currentTime, currentInterval, autoSkipEnabled, onSeek, track, isVisible, enableSkipOpening]);
 
   return {
-    currentInterval,
-    isDetecting,
-    isVisible,
+    currentInterval: enableSkipOpening ? currentInterval : null,
+    isDetecting: enableSkipOpening ? isDetecting : false,
+    isVisible: enableSkipOpening ? isVisible : false,
     autoSkipEnabled,
     setAutoSkipEnabled,
     skipOpening,

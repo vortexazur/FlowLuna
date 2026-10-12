@@ -1,4 +1,4 @@
-export const APP_VERSION = '1.21.2';
+export const APP_VERSION = '1.21.3';
 
 export type MediaFormat =
   | 'mp3'
@@ -213,6 +213,7 @@ export interface PlayerSettings {
   stereoWidth?: number; // 0 to 200%
   playbackSpeed?: number; // 0.5 to 2.0
   autoSkipOpening?: boolean; // Saut automatique des génériques/openings (Auto-skip)
+  enableSkipOpening?: boolean; // Activation globale de la fonctionnalité Skip OP (si faux, masque le bouton et ignore les génériques)
   marathonConfig?: MarathonConfig; // Mode Marathon (Auto-chain & transitions intelligentes)
   videoSkipForwardInterval?: number; // Intervalle de saut temporel (Skip & Molette) en secondes (5s à 90s, step 5s, défaut 10s)
   videoAspectRatio?: VideoAspectRatio; // Ratio d'affichage vidéo ('contain', 'cover', '16-9')
