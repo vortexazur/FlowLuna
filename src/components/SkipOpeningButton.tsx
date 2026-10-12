@@ -15,38 +15,42 @@ interface SkipOpeningButtonProps {
 function getSourceBadge(
   interval: SkipInterval,
   driftDetected?: boolean
-): { label: string; colorClass: string; isWarning: boolean } {
+): { label: string; colorClass: string; isWarning: boolean; isSnapped?: boolean } {
+  let label = '';
+  let colorClass = '';
+  let isWarning = false;
+
   if (interval.source === 'chapter') {
-    return {
-      label: 'Chapitre',
-      colorClass: 'text-emerald-400 bg-emerald-500/15 border-emerald-500/30',
-      isWarning: false,
-    };
+    label = 'Chapitre';
+    colorClass = 'text-emerald-400 bg-emerald-500/15 border-emerald-500/30';
+  } else if (interval.source === 'acoustic') {
+    label = 'Empreinte Audio Locale';
+    colorClass = 'text-indigo-400 bg-indigo-500/15 border-indigo-500/30';
+  } else if (interval.source === 'subtitle') {
+    label = 'Sous-titres';
+    colorClass = 'text-purple-400 bg-purple-500/15 border-purple-500/30';
+  } else if (interval.source === 'heuristic') {
+    label = 'Heuristique (Incertain)';
+    colorClass = 'text-slate-300 bg-slate-500/20 border-slate-500/40';
+    isWarning = true;
+  } else {
+    // interval.source === 'api'
+    const isDrift = !!driftDetected || interval.confidence === 'moderate';
+    if (isDrift) {
+      label = 'API (Décalage possible)';
+      colorClass = 'text-amber-400 bg-amber-500/15 border-amber-500/30';
+      isWarning = true;
+    } else {
+      label = 'API';
+      colorClass = 'text-sky-400 bg-sky-500/15 border-sky-500/30';
+    }
   }
 
-  if (interval.source === 'heuristic') {
-    return {
-      label: 'Heuristique (Incertain)',
-      colorClass: 'text-slate-300 bg-slate-500/20 border-slate-500/40',
-      isWarning: true,
-    };
+  if (interval.snapped) {
+    label += ' • Calé au silence';
   }
 
-  // interval.source === 'api'
-  const isDrift = !!driftDetected || interval.confidence === 'moderate';
-  if (isDrift) {
-    return {
-      label: 'API (Décalage possible)',
-      colorClass: 'text-amber-400 bg-amber-500/15 border-amber-500/30',
-      isWarning: true,
-    };
-  }
-
-  return {
-    label: 'API',
-    colorClass: 'text-sky-400 bg-sky-500/15 border-sky-500/30',
-    isWarning: false,
-  };
+  return { label, colorClass, isWarning, isSnapped: !!interval.snapped };
 }
 
 export const SkipOpeningButton: React.FC<SkipOpeningButtonProps> = ({
@@ -66,6 +70,16 @@ export const SkipOpeningButton: React.FC<SkipOpeningButtonProps> = ({
   const shouldShowButton = isVisible && interval && (!autoSkipEnabled || isUncertain);
 
   const badge = interval ? getSourceBadge(interval, driftDetected) : null;
+
+  const actionLabel = interval
+    ? interval.type === 'recap'
+      ? 'Passer le résumé'
+      : interval.type === 'preview'
+        ? 'Passer au teaser'
+        : interval.type === 'ed'
+          ? "Passer l'ending"
+          : "Passer l'opening"
+    : "Passer l'opening";
 
   return (
     <>
@@ -96,8 +110,8 @@ export const SkipOpeningButton: React.FC<SkipOpeningButtonProps> = ({
             onClick={onSkip}
             title={
               isUncertain
-                ? "Passer l'opening (Segment incertain - Raccourci : S)"
-                : "Passer l'opening (Raccourci : S)"
+                ? `${actionLabel} (Segment incertain - Raccourci : S)`
+                : `${actionLabel} (Raccourci : S)`
             }
             className={`group flex items-center gap-3 px-4 py-2.5 rounded-2xl bg-neutral-900/90 hover:bg-neutral-800/95 active:scale-95 border text-white shadow-2xl backdrop-blur-md transition-all cursor-pointer ${
               badge?.isWarning
@@ -118,7 +132,7 @@ export const SkipOpeningButton: React.FC<SkipOpeningButtonProps> = ({
             <div className="flex flex-col text-left">
               <div className="flex items-center gap-2">
                 <span className="text-xs md:text-sm font-bold tracking-wide">
-                  Passer l'opening
+                  {actionLabel}
                 </span>
                 <kbd className="px-1.5 py-0.5 rounded text-[10px] font-mono font-bold bg-white/10 text-neutral-300 border border-white/20 shadow-xs">
                   S

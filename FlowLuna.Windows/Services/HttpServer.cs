@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Concurrent;
 using System.Diagnostics;
+using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Net;
@@ -466,6 +467,52 @@ public class HttpServer
             {
                 return Results.Json(new { success = false, chapters = Array.Empty<object>() });
             }
+        });
+
+        // Intro Skipper Endpoints : Snapping chirurgical aux silences audio / black frames
+        app.MapGet("/api/video/fine-tune-markers", async (HttpContext ctx) =>
+        {
+            var filePath = ctx.Request.Query["filePath"].ToString();
+            var startStr = ctx.Request.Query["start"].ToString();
+            var endStr = ctx.Request.Query["end"].ToString();
+            var windowStr = ctx.Request.Query["window"].ToString();
+
+            if (string.IsNullOrWhiteSpace(filePath) ||
+                !double.TryParse(startStr, NumberStyles.Any, CultureInfo.InvariantCulture, out var start) ||
+                !double.TryParse(endStr, NumberStyles.Any, CultureInfo.InvariantCulture, out var end))
+            {
+                return Results.BadRequest(new { success = false, message = "Paramètres filePath, start et end requis" });
+            }
+
+            double window = double.TryParse(windowStr, NumberStyles.Any, CultureInfo.InvariantCulture, out var w) ? w : 3.5;
+            var res = await IntroSkipperService.FineTuneIntervalAsync(filePath, start, end, window, ctx.RequestAborted);
+            return Results.Json(res);
+        });
+
+        // Intro Skipper Endpoints : Analyse multilingue des sous-titres (Recap / Preview)
+        app.MapGet("/api/video/subtitles/analyze", async (HttpContext ctx) =>
+        {
+            var filePath = ctx.Request.Query["filePath"].ToString();
+            if (string.IsNullOrWhiteSpace(filePath))
+            {
+                return Results.BadRequest(new { success = false, message = "Paramètre filePath requis" });
+            }
+
+            var res = await IntroSkipperService.AnalyzeSubtitlesAsync(filePath, ctx.RequestAborted);
+            return Results.Json(res);
+        });
+
+        // Intro Skipper Endpoints : Corrélation acoustique locale multi-épisodes
+        app.MapGet("/api/video/acoustic-match", async (HttpContext ctx) =>
+        {
+            var filePath = ctx.Request.Query["filePath"].ToString();
+            if (string.IsNullOrWhiteSpace(filePath))
+            {
+                return Results.BadRequest(new { success = false, message = "Paramètre filePath requis" });
+            }
+
+            var res = await IntroSkipperService.MatchAudioOpeningAsync(filePath, null, ctx.RequestAborted);
+            return Results.Json(res);
         });
 
         // 3. Downloader & Binaries Endpoints

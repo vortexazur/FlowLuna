@@ -69,6 +69,7 @@ interface VideoPlayerProps {
   onUpdateMarathonConfig?: (config: MarathonConfig) => void;
   videoSkipForwardInterval?: number;
   videoAspectRatio?: VideoAspectRatio;
+  enableSilenceSnapping?: boolean;
 }
 
 export const VideoPlayer: React.FC<VideoPlayerProps> = ({
@@ -102,6 +103,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
   autoSkipOpening = false,
   onToggleAutoSkip,
   enableSkipOpening = true,
+  enableSilenceSnapping = true,
   marathonConfig,
   onUpdateMarathonConfig,
   videoSkipForwardInterval = 10,
@@ -149,6 +151,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
     onUpdateConfig: onUpdateMarathonConfig,
     autoSkipOpening,
     enableSkipOpening,
+    enableSilenceSnapping,
   });
 
   const containerRef = useRef<HTMLDivElement>(null);

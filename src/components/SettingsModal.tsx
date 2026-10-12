@@ -1338,6 +1338,29 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                     />
                   </div>
                 )}
+
+                {/* Sous-option : Calage chirurgical aux silences audio (Time Adjustment inspiré d'intro-skipper) */}
+                {(settings.enableSkipOpening ?? true) && (
+                  <div className="flex items-center justify-between pt-3 border-t border-neutral-800/80 animate-in fade-in duration-150">
+                    <div className="pr-4">
+                      <span className="font-medium text-neutral-300 block text-xs flex items-center gap-1.5">
+                        <span>Ajustement acoustique & Silences (Snapping)</span>
+                        <span className="text-[9px] uppercase px-1.5 py-0.2 rounded font-bold bg-indigo-500/20 text-indigo-400 border border-indigo-500/30">
+                          Inspiré Intro-Skipper
+                        </span>
+                      </span>
+                      <span className="text-neutral-400 text-[11px] leading-relaxed">
+                        Analyse les transitions sonores et cale chirurgicalement le début et la fin du saut sur les silences audio ou coupures réelles pour éliminer toute coupure brutale de réplique ou de musique.
+                      </span>
+                    </div>
+                    <ToggleSwitch
+                      id="settings-silence-snapping-toggle-video"
+                      checked={settings.enableSilenceSnapping ?? true}
+                      onChange={(val) => updateSetting('enableSilenceSnapping', val)}
+                      accent={accent}
+                    />
+                  </div>
+                )}
               </div>
 
               {/* 4. Mode Marathon (Auto-Chain & Smart Transitions) */}

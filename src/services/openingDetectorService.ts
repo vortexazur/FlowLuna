@@ -100,20 +100,30 @@ function setCachedMarkers(cacheKey: string, markers: VideoSkipMarkers, duration:
   } catch {}
 }
 
-const OP_REGEX = /(?:^|\b)(?:op\b|opening|intro|ncop|crédits?\s+d'?ouverture|générique\s+d'?ouverture)/i;
+const OP_REGEX = /(?:^|\b)(?:op\b|opening|intro|ncop|crédits?\s+d['’]?ouverture|générique\s+d['’]?ouverture)/i;
 const ED_REGEX = /(?:^|\b)(?:ed\b|ending|outro|nced|crédits?\s+de\s+fin|générique\s+de\s+fin)/i;
-const POST_CREDITS_REGEX = /(?:^|\b)(?:preview|teaser|post-credit[s]?|scène\s+post-générique|épisode\s+suivant)/i;
+const POST_CREDITS_REGEX = /(?:^|\b)(?:preview|teaser|post-credit[s]?|scène\s+post-générique|épisode\s+suivant|prochain\s+épisode|à\s+suivre)\b/i;
+const RECAP_REGEX = /(?:^|\b)(?:recap|previously|précédemment|résumé)\b/i;
 
 /**
- * Niveau 1 : Inspection des chapitres intégrés (OP et ED)
+ * Niveau 1 : Inspection des chapitres intégrés (OP, ED, Recap, Preview)
  */
 export async function resolveChaptersMarkers(
   videoElement: HTMLVideoElement | null,
   track: Track | null,
   duration: number
-): Promise<{ op: SkipInterval | null; ed: SkipInterval | null; hasPostCredits: boolean; postCreditsStart?: number }> {
+): Promise<{
+  op: SkipInterval | null;
+  ed: SkipInterval | null;
+  recap?: SkipInterval | null;
+  preview?: SkipInterval | null;
+  hasPostCredits: boolean;
+  postCreditsStart?: number;
+}> {
   let op: SkipInterval | null = null;
   let ed: SkipInterval | null = null;
+  let recap: SkipInterval | null = null;
+  let preview: SkipInterval | null = null;
   let hasPostCredits = false;
   let postCreditsStart: number | undefined;
 
@@ -182,9 +192,30 @@ export async function resolveChaptersMarkers(
           title: chap.title,
         };
       }
+    } else if (!recap && RECAP_REGEX.test(title)) {
+      if (chap.endTime > chap.startTime) {
+        recap = {
+          start: chap.startTime,
+          end: chap.endTime,
+          type: 'recap',
+          source: 'chapter',
+          confidence: 'high',
+          title: chap.title,
+        };
+      }
     } else if (POST_CREDITS_REGEX.test(title)) {
       hasPostCredits = true;
       postCreditsStart = chap.startTime;
+      if (!preview && chap.endTime > chap.startTime) {
+        preview = {
+          start: chap.startTime,
+          end: chap.endTime,
+          type: 'preview',
+          source: 'chapter',
+          confidence: 'high',
+          title: chap.title,
+        };
+      }
     }
   }
 
@@ -196,7 +227,7 @@ export async function resolveChaptersMarkers(
     }
   }
 
-  return { op, ed, hasPostCredits, postCreditsStart };
+  return { op, ed, recap, preview, hasPostCredits, postCreditsStart };
 }
 
 /**
@@ -552,13 +583,119 @@ export async function getHeuristicMarkers(
 export const resolveAcousticMarkers = getHeuristicMarkers;
 
 /**
- * Fonction maîtresse : Résolution complète des marqueurs vidéo en cascade
- * Détecte à la fois Opening, Ending, Scène post-crédits et contrôle de dérive (drift)
+ * Intro Skipper Module 1 : Snapping chirurgical aux silences audio / transitions (TimeAdjustment)
+ */
+export async function fineTuneIntervalMarkers(
+  filePath: string,
+  interval: SkipInterval | null,
+  searchWindow: number = 3.5
+): Promise<SkipInterval | null> {
+  if (!interval || !filePath) return interval;
+  try {
+    const params = new URLSearchParams({
+      filePath,
+      start: interval.start.toString(),
+      end: interval.end.toString(),
+      window: searchWindow.toString(),
+    });
+    const res = await fetch(`/api/video/fine-tune-markers?${params.toString()}`);
+    if (res.ok) {
+      const data = await res.json();
+      if (data.success && data.snapped) {
+        return {
+          ...interval,
+          start: data.adjustedStart,
+          end: data.adjustedEnd,
+          snapped: true,
+          snapType: data.snapType,
+          offsetApplied: data.startOffset,
+          title: interval.title ? `${interval.title} (Ajusté)` : interval.title,
+        };
+      }
+    }
+  } catch {}
+  return interval;
+}
+
+/**
+ * Intro Skipper Module 2 : Détection de générique 100% locale par corrélation acoustique multi-épisodes
+ */
+export async function resolveAcousticMatchMarkers(filePath: string): Promise<SkipInterval | null> {
+  if (!filePath) return null;
+  try {
+    const params = new URLSearchParams({ filePath });
+    const res = await fetch(`/api/video/acoustic-match?${params.toString()}`);
+    if (res.ok) {
+      const data = await res.json();
+      if (data.success && typeof data.start === 'number' && typeof data.end === 'number') {
+        return {
+          start: data.start,
+          end: data.end,
+          type: 'op',
+          source: 'acoustic',
+          confidence: 'high',
+          title: data.matchedSibling
+            ? `Opening (Empreinte Audio Locale - ${data.matchedSibling})`
+            : 'Opening (Empreinte Audio Locale)',
+        };
+      }
+    }
+  } catch {}
+  return null;
+}
+
+/**
+ * Intro Skipper Module 3 : Analyse des sous-titres multilingues pour détection des récapitulatifs et teasers
+ */
+export async function resolveSubtitleMarkers(filePath: string): Promise<{
+  recap: SkipInterval | null;
+  preview: SkipInterval | null;
+}> {
+  if (!filePath) return { recap: null, preview: null };
+  try {
+    const params = new URLSearchParams({ filePath });
+    const res = await fetch(`/api/video/subtitles/analyze?${params.toString()}`);
+    if (res.ok) {
+      const data = await res.json();
+      let recap: SkipInterval | null = null;
+      let preview: SkipInterval | null = null;
+      if (data.success) {
+        if (typeof data.recapStart === 'number' && typeof data.recapEnd === 'number') {
+          recap = {
+            start: data.recapStart,
+            end: data.recapEnd,
+            type: 'recap',
+            source: 'subtitle',
+            confidence: 'high',
+            title: 'Résumé / Précédemment',
+          };
+        }
+        if (typeof data.previewStart === 'number' && typeof data.previewEnd === 'number') {
+          preview = {
+            start: data.previewStart,
+            end: data.previewEnd,
+            type: 'preview',
+            source: 'subtitle',
+            confidence: 'high',
+            title: 'Scène Teaser / Prochain Épisode',
+          };
+        }
+      }
+      return { recap, preview };
+    }
+  } catch {}
+  return { recap: null, preview: null };
+}
+
+/**
+ * Fonction maîtresse : Résolution complète des marqueurs vidéo en cascade enrichie
+ * Détecte à la fois Opening, Ending, Recap, Preview, Scène post-crédits, contrôle de dérive et Snapping
  */
 export async function resolveVideoMarkersCascade(
   videoElement: HTMLVideoElement | null,
   track: Track | null,
-  duration: number
+  duration: number,
+  enableSnapping: boolean = true
 ): Promise<VideoSkipMarkers> {
   if (!track) {
     return { op: null, ed: null, hasPostCredits: false };
@@ -571,16 +708,21 @@ export async function resolveVideoMarkersCascade(
 
   let op: SkipInterval | null = null;
   let ed: SkipInterval | null = null;
+  let recap: SkipInterval | null = null;
+  let preview: SkipInterval | null = null;
   let hasPostCredits = false;
   let postCreditsStart: number | undefined;
   let driftDetected = false;
   let referenceDuration: number | undefined;
+  let snapped = false;
 
   // === Niveau 1 : Chapitres intégrés ===
   try {
     const chapMarkers = await resolveChaptersMarkers(videoElement, track, actualDuration);
     if (chapMarkers.op) op = chapMarkers.op;
     if (chapMarkers.ed) ed = chapMarkers.ed;
+    if (chapMarkers.recap) recap = chapMarkers.recap;
+    if (chapMarkers.preview) preview = chapMarkers.preview;
     if (chapMarkers.hasPostCredits) {
       hasPostCredits = true;
       postCreditsStart = chapMarkers.postCreditsStart;
@@ -589,7 +731,19 @@ export async function resolveVideoMarkersCascade(
     console.warn('[VideoMarkers] Erreur Niveau 1 (Chapitres):', err);
   }
 
-  // === Niveau 2 : API Communautaire (Aniskip / Anime-Skip) si OP ou ED manquant ===
+  // === Niveau 2 : Empreinte acoustique locale multi-épisodes (Acoustic Matching) ===
+  if (!op && track.filePath) {
+    try {
+      const acousticOp = await resolveAcousticMatchMarkers(track.filePath);
+      if (acousticOp) {
+        op = acousticOp;
+      }
+    } catch (err) {
+      console.warn('[VideoMarkers] Erreur Niveau 2 (Acoustic Matching):', err);
+    }
+  }
+
+  // === Niveau 3 : API Communautaire (Aniskip / Anime-Skip) si OP ou ED manquant ===
   if (!op || !ed) {
     try {
       const { cleanTitle, episodeNumber } = parseAnimeTitleAndEpisode(track.title || track.album || '');
@@ -611,11 +765,26 @@ export async function resolveVideoMarkersCascade(
         }
       }
     } catch (err) {
-      console.warn('[VideoMarkers] Erreur Niveau 2 (API):', err);
+      console.warn('[VideoMarkers] Erreur Niveau 3 (API):', err);
     }
   }
 
-  // === Niveau 3 : Refonte Heuristique (si toujours manquant) ===
+  // === Niveau 4 : Analyse des Sous-Titres (Recap / Preview) si fichier local ===
+  if ((!recap || !preview) && track.filePath) {
+    try {
+      const subMarkers = await resolveSubtitleMarkers(track.filePath);
+      if (!recap && subMarkers.recap) recap = subMarkers.recap;
+      if (!preview && subMarkers.preview) {
+        preview = subMarkers.preview;
+        hasPostCredits = true;
+        if (!postCreditsStart) postCreditsStart = subMarkers.preview.start;
+      }
+    } catch (err) {
+      console.warn('[VideoMarkers] Erreur Niveau 4 (Sous-Titres):', err);
+    }
+  }
+
+  // === Niveau 5 : Refonte Heuristique (si toujours manquant) ===
   if (!op || !ed) {
     try {
       const heuristic = await getHeuristicMarkers(videoElement, track, actualDuration);
@@ -626,17 +795,42 @@ export async function resolveVideoMarkersCascade(
         postCreditsStart = heuristic.postCreditsStart;
       }
     } catch (err) {
-      console.warn('[VideoMarkers] Erreur Niveau 3 (Heuristique):', err);
+      console.warn('[VideoMarkers] Erreur Niveau 5 (Heuristique):', err);
+    }
+  }
+
+  // === Passe de finition : Snapping chirurgical aux silences audio (Time Adjustment) ===
+  if (enableSnapping && track.filePath) {
+    try {
+      if (op && op.source !== 'chapter') {
+        const tunedOp = await fineTuneIntervalMarkers(track.filePath, op);
+        if (tunedOp && tunedOp.snapped) {
+          op = tunedOp;
+          snapped = true;
+        }
+      }
+      if (ed && ed.source !== 'chapter') {
+        const tunedEd = await fineTuneIntervalMarkers(track.filePath, ed);
+        if (tunedEd && tunedEd.snapped) {
+          ed = tunedEd;
+          snapped = true;
+        }
+      }
+    } catch (err) {
+      console.warn('[VideoMarkers] Erreur Finition Snapping:', err);
     }
   }
 
   const result: VideoSkipMarkers = {
     op,
     ed,
+    recap,
+    preview,
     hasPostCredits,
     postCreditsStart,
     driftDetected,
     referenceDuration,
+    snapped,
   };
 
   setCachedMarkers(trackKey, result, actualDuration);
@@ -649,8 +843,9 @@ export async function resolveVideoMarkersCascade(
 export async function resolveOpeningCascade(
   videoElement: HTMLVideoElement | null,
   track: Track | null,
-  duration: number
+  duration: number,
+  enableSnapping: boolean = true
 ): Promise<SkipInterval | null> {
-  const markers = await resolveVideoMarkersCascade(videoElement, track, duration);
+  const markers = await resolveVideoMarkersCascade(videoElement, track, duration, enableSnapping);
   return markers.op;
 }

@@ -493,7 +493,7 @@ function getCurrentAppVersion(): string {
     const pkg = JSON.parse(fs.readFileSync(path.join(process.cwd(), 'package.json'), 'utf-8'));
     if (pkg.version) return pkg.version;
   } catch {}
-  return '1.21.3';
+  return '1.21.4';
 }
 
 app.get('/api/app/check-update', async (req, res) => {
@@ -3580,6 +3580,385 @@ app.get('/api/video/chapters', (req, res) => {
     );
   } catch (err: any) {
     return res.json({ success: false, error: err?.message, chapters: [] });
+  }
+});
+
+// Intro Skipper Endpoint 1 : Snapping chirurgical aux silences audio / black frames
+app.get('/api/video/fine-tune-markers', (req, res) => {
+  try {
+    const filePath = (req.query.filePath as string) || '';
+    const rawStart = parseFloat((req.query.start as string) || '');
+    const rawEnd = parseFloat((req.query.end as string) || '');
+    const searchWindow = parseFloat((req.query.window as string) || '3.5');
+
+    if (!filePath || !fs.existsSync(filePath) || isNaN(rawStart) || isNaN(rawEnd)) {
+      return res.status(400).json({ success: false, message: 'Paramètres filePath, start et end requis' });
+    }
+
+    const ffmpegPath = getFfmpegPath();
+    if (!fs.existsSync(ffmpegPath)) {
+      return res.json({
+        success: false,
+        originalStart: rawStart,
+        adjustedStart: rawStart,
+        originalEnd: rawEnd,
+        adjustedEnd: rawEnd,
+        snapped: false,
+        snapType: 'none',
+        message: 'FFmpeg non disponible',
+      });
+    }
+
+    // 1. Détecter silences autour de rawStart
+    const startRangeMin = Math.max(0, rawStart - searchWindow);
+    const startRangeDuration = searchWindow * 2.0;
+
+    const silenceArgsStart = [
+      '-v', 'info',
+      '-ss', startRangeMin.toFixed(2),
+      '-t', startRangeDuration.toFixed(2),
+      '-i', filePath,
+      '-vn', '-sn',
+      '-af', 'silencedetect=noise=-30dB:d=0.15',
+      '-f', 'null',
+      '-',
+    ];
+
+    execFile(ffmpegPath, silenceArgsStart, { timeout: 7000 }, (err1, _stdout1, stderr1) => {
+      let adjustedStart = rawStart;
+      let startSnapped = false;
+
+      if (!err1 && stderr1) {
+        const startRegex = /silence_start:\s*([\d\.]+)/g;
+        const endRegex = /silence_end:\s*([\d\.]+)/g;
+        let match;
+        const silences: Array<{ start: number; end: number }> = [];
+        let curStart: number | null = null;
+
+        while ((match = startRegex.exec(stderr1)) !== null) {
+          curStart = startRangeMin + parseFloat(match[1]);
+        }
+        while ((match = endRegex.exec(stderr1)) !== null) {
+          const e = startRangeMin + parseFloat(match[1]);
+          const s = curStart ?? (e - 0.2);
+          silences.push({ start: s, end: e });
+        }
+
+        let bestDist = Infinity;
+        let bestCandidate = rawStart;
+        for (const s of silences) {
+          const distEnd = Math.abs(s.end - rawStart);
+          if (distEnd < bestDist && distEnd <= searchWindow) {
+            bestDist = distEnd;
+            bestCandidate = s.end;
+          }
+          const distStart = Math.abs(s.start - rawStart);
+          if (distStart < bestDist && distStart <= searchWindow) {
+            bestDist = distStart;
+            bestCandidate = s.start;
+          }
+        }
+        if (bestDist <= searchWindow && Math.abs(bestCandidate - rawStart) > 0.05) {
+          adjustedStart = Math.round(bestCandidate * 100) / 100;
+          startSnapped = true;
+        }
+      }
+
+      // 2. Détecter silences autour de rawEnd
+      const endRangeMin = Math.max(0, rawEnd - searchWindow);
+      const endRangeDuration = searchWindow * 2.0;
+
+      const silenceArgsEnd = [
+        '-v', 'info',
+        '-ss', endRangeMin.toFixed(2),
+        '-t', endRangeDuration.toFixed(2),
+        '-i', filePath,
+        '-vn', '-sn',
+        '-af', 'silencedetect=noise=-30dB:d=0.15',
+        '-f', 'null',
+        '-',
+      ];
+
+      execFile(ffmpegPath, silenceArgsEnd, { timeout: 7000 }, (err2, _stdout2, stderr2) => {
+        let adjustedEnd = rawEnd;
+        let endSnapped = false;
+
+        if (!err2 && stderr2) {
+          const startRegex = /silence_start:\s*([\d\.]+)/g;
+          const endRegex = /silence_end:\s*([\d\.]+)/g;
+          let match;
+          const silences: Array<{ start: number; end: number }> = [];
+          let curStart: number | null = null;
+
+          while ((match = startRegex.exec(stderr2)) !== null) {
+            curStart = endRangeMin + parseFloat(match[1]);
+          }
+          while ((match = endRegex.exec(stderr2)) !== null) {
+            const e = endRangeMin + parseFloat(match[1]);
+            const s = curStart ?? (e - 0.2);
+            silences.push({ start: s, end: e });
+          }
+
+          let bestDist = Infinity;
+          let bestCandidate = rawEnd;
+          for (const s of silences) {
+            const distStart = Math.abs(s.start - rawEnd);
+            if (distStart < bestDist && distStart <= searchWindow) {
+              bestDist = distStart;
+              bestCandidate = s.start;
+            }
+            const distEnd = Math.abs(s.end - rawEnd);
+            if (distEnd < bestDist && distEnd <= searchWindow) {
+              bestDist = distEnd;
+              bestCandidate = s.end;
+            }
+          }
+          if (bestDist <= searchWindow && Math.abs(bestCandidate - rawEnd) > 0.05) {
+            adjustedEnd = Math.round(bestCandidate * 100) / 100;
+            endSnapped = true;
+          }
+        }
+
+        // Sécurité cohérence durée
+        if (adjustedEnd - adjustedStart < 15.0) {
+          adjustedStart = rawStart;
+          adjustedEnd = rawEnd;
+          startSnapped = false;
+          endSnapped = false;
+        }
+
+        const snapped = startSnapped || endSnapped;
+        return res.json({
+          success: true,
+          originalStart: rawStart,
+          adjustedStart,
+          originalEnd: rawEnd,
+          adjustedEnd,
+          snapped,
+          snapType: snapped ? 'silence' : 'none',
+          startOffset: Math.round((adjustedStart - rawStart) * 100) / 100,
+          endOffset: Math.round((adjustedEnd - rawEnd) * 100) / 100,
+          message: snapped ? 'Calé avec succès au silence' : 'Aucune coupure franche à proximité',
+        });
+      });
+    });
+  } catch (err: any) {
+    return res.json({
+      success: false,
+      originalStart: req.query.start ? parseFloat(req.query.start as string) : 0,
+      adjustedStart: req.query.start ? parseFloat(req.query.start as string) : 0,
+      originalEnd: req.query.end ? parseFloat(req.query.end as string) : 0,
+      adjustedEnd: req.query.end ? parseFloat(req.query.end as string) : 0,
+      snapped: false,
+      snapType: 'none',
+      error: err?.message,
+    });
+  }
+});
+
+// Intro Skipper Endpoint 2 : Analyse multilingue des sous-titres (Recap / Preview)
+app.get('/api/video/subtitles/analyze', (req, res) => {
+  try {
+    const filePath = (req.query.filePath as string) || '';
+    if (!filePath || !fs.existsSync(filePath)) {
+      return res.status(400).json({ success: false, message: 'Paramètre filePath requis' });
+    }
+
+    const dir = path.dirname(filePath);
+    const baseName = path.parse(filePath).name;
+    const sidecars = ['.srt', '.ass', '.ssa', '.vtt']
+      .map((ext) => path.join(dir, baseName + ext))
+      .filter((p) => fs.existsSync(p));
+
+    const recapPattern = /(?:^|\b)(?:previously\s+on|last\s+time\s+on|recap|précédemment|dans\s+l'épisode\s+précédent|résumé|anteriormente\s+en|en\s+el\s+episodio\s+anterior|was\s+bisher\s+geschah|in\s+der\s+letzten\s+folge|前回のあらすじ|これまでのあらすじ)\b/i;
+    const previewPattern = /(?:^|\b)(?:next\s+time\s+on|next\s+episode|preview|coming\s+up|prochain\s+épisode|dans\s+le\s+prochain\s+épisode|à\s+suivre|en\s+el\s+próximo\s+episodio|siguiente\s+episodio|adelanto|in\s+der\s+nächsten\s+folge|nächste\s+folge|vorschau|次回予告|次回|つづく)\b/i;
+
+    function parseCues(content: string) {
+      const cueTimeRegex = /(?<start>\d{1,2}:\d{2}:\d{2}[\.,]\d{3})\s*-->\s*(?<end>\d{1,2}:\d{2}:\d{2}[\.,]\d{3})/;
+      const lines = content.split(/\r?\n/);
+      let curStart = -1;
+      let curEnd = -1;
+      let recap: { start: number; end: number } | null = null;
+      let preview: { start: number; end: number } | null = null;
+
+      function toSec(ts: string) {
+        const parts = ts.replace(',', '.').split(':');
+        if (parts.length === 3) return parseFloat(parts[0]) * 3600 + parseFloat(parts[1]) * 60 + parseFloat(parts[2]);
+        if (parts.length === 2) return parseFloat(parts[0]) * 60 + parseFloat(parts[1]);
+        return 0;
+      }
+
+      for (const line of lines) {
+        const m = cueTimeRegex.exec(line);
+        if (m) {
+          curStart = toSec(m.groups!.start);
+          curEnd = toSec(m.groups!.end);
+          continue;
+        }
+        if (curStart >= 0 && line.trim()) {
+          if (!recap && curStart < 240 && recapPattern.test(line)) {
+            recap = { start: Math.max(0, curStart - 2), end: curEnd + 5 };
+          } else if (!preview && curStart > 480 && previewPattern.test(line)) {
+            preview = { start: curStart, end: curEnd + 30 };
+          }
+        }
+      }
+      return { recap, preview };
+    }
+
+    // Tester les fichiers sidecars
+    for (const subFile of sidecars) {
+      try {
+        const content = fs.readFileSync(subFile, 'utf-8');
+        const { recap, preview } = parseCues(content);
+        if (recap || preview) {
+          return res.json({
+            success: true,
+            recapStart: recap?.start ?? null,
+            recapEnd: recap?.end ?? null,
+            previewStart: preview?.start ?? null,
+            previewEnd: preview?.end ?? null,
+            source: path.basename(subFile),
+          });
+        }
+      } catch {}
+    }
+
+    // Tester flux sous-titre intégré via ffmpeg
+    const ffmpegPath = getFfmpegPath();
+    if (fs.existsSync(ffmpegPath)) {
+      execFile(
+        ffmpegPath,
+        ['-v', 'quiet', '-i', filePath, '-map', '0:s:0?', '-f', 'webvtt', '-'],
+        { timeout: 6000 },
+        (err, stdout) => {
+          if (!err && stdout) {
+            const { recap, preview } = parseCues(stdout);
+            if (recap || preview) {
+              return res.json({
+                success: true,
+                recapStart: recap?.start ?? null,
+                recapEnd: recap?.end ?? null,
+                previewStart: preview?.start ?? null,
+                previewEnd: preview?.end ?? null,
+                source: 'embedded',
+              });
+            }
+          }
+          return res.json({ success: true, recapStart: null, recapEnd: null, previewStart: null, previewEnd: null });
+        }
+      );
+      return;
+    }
+
+    return res.json({ success: true, recapStart: null, recapEnd: null, previewStart: null, previewEnd: null });
+  } catch (err: any) {
+    return res.json({ success: false, error: err?.message });
+  }
+});
+
+// Intro Skipper Endpoint 3 : Corrélation acoustique locale multi-épisodes
+app.get('/api/video/acoustic-match', (req, res) => {
+  try {
+    const filePath = (req.query.filePath as string) || '';
+    if (!filePath || !fs.existsSync(filePath)) {
+      return res.status(400).json({ success: false, message: 'Paramètre filePath requis' });
+    }
+
+    const dir = path.dirname(filePath);
+    const siblings = fs
+      .readdirSync(dir)
+      .map((f) => path.join(dir, f))
+      .filter((f) => f.toLowerCase() !== filePath.toLowerCase())
+      .filter((f) => /\.(mkv|mp4|avi|webm|m4v)$/i.test(f))
+      .sort();
+
+    if (siblings.length === 0) {
+      return res.json({ success: false, message: 'Aucun épisode frère trouvé dans le dossier' });
+    }
+
+    const sibling = siblings[0];
+    const ffmpegPath = getFfmpegPath();
+    if (!fs.existsSync(ffmpegPath)) {
+      return res.json({ success: false, message: 'FFmpeg non disponible' });
+    }
+
+    // Extraction 240s PCM float à 200 Hz
+    function extractEnvelope(target: string): Promise<Float32Array> {
+      return new Promise((resolve) => {
+        const args = ['-v', 'quiet', '-ss', '0', '-t', '240', '-i', target, '-vn', '-sn', '-ac', '1', '-ar', '200', '-f', 'f32le', '-'];
+        execFile(ffmpegPath, args, { encoding: 'buffer', maxBuffer: 10 * 1024 * 1024, timeout: 10000 }, (err, stdout) => {
+          if (err || !stdout || stdout.length === 0) {
+            return resolve(new Float32Array(0));
+          }
+          const floatCount = Math.floor(stdout.length / 4);
+          const raw = new Float32Array(stdout.buffer, stdout.byteOffset, floatCount);
+          const envLen = Math.floor(floatCount / 10);
+          const env = new Float32Array(envLen);
+          for (let i = 0; i < envLen; i++) {
+            let sumSq = 0;
+            for (let k = 0; k < 10; k++) {
+              const v = raw[i * 10 + k];
+              sumSq += v * v;
+            }
+            env[i] = Math.sqrt(sumSq / 10.0);
+          }
+          resolve(env);
+        });
+      });
+    }
+
+    Promise.all([extractEnvelope(filePath), extractEnvelope(sibling)]).then(([env1, env2]) => {
+      if (env1.length < 100 || env2.length < 100) {
+        return res.json({ success: false, message: "Échec d'extraction de l'enveloppe audio" });
+      }
+
+      const windowSize = 1800; // 90 secondes à 20 Hz
+      let bestScore = 0;
+      let bestT1 = -1;
+
+      for (let t1 = 200; t1 <= env1.length - windowSize; t1 += 20) {
+        for (let t2 = 200; t2 <= env2.length - windowSize; t2 += 20) {
+          let sumA = 0, sumB = 0, sumAA = 0, sumBB = 0, sumAB = 0;
+          for (let i = 0; i < windowSize; i++) {
+            const va = env1[t1 + i];
+            const vb = env2[t2 + i];
+            sumA += va; sumB += vb;
+            sumAA += va * va; sumBB += vb * vb;
+            sumAB += va * vb;
+          }
+          const meanA = sumA / windowSize;
+          const meanB = sumB / windowSize;
+          const varA = sumAA / windowSize - meanA * meanA;
+          const varB = sumBB / windowSize - meanB * meanB;
+          if (varA > 1e-7 && varB > 1e-7) {
+            const cov = sumAB / windowSize - meanA * meanB;
+            const corr = cov / Math.sqrt(varA * varB);
+            if (corr > bestScore) {
+              bestScore = corr;
+              bestT1 = t1;
+            }
+          }
+        }
+      }
+
+      if (bestScore >= 0.70 && bestT1 >= 0) {
+        const opStart = Math.round((bestT1 / 20.0) * 10) / 10;
+        const opEnd = Math.round((opStart + 90.0) * 10) / 10;
+        return res.json({
+          success: true,
+          start: opStart,
+          end: opEnd,
+          confidence: Math.round(bestScore * 100) / 100,
+          matchedSibling: path.basename(sibling),
+          message: `Générique corrélé avec succès contre ${path.basename(sibling)}`,
+        });
+      }
+
+      return res.json({ success: false, confidence: bestScore, matchedSibling: path.basename(sibling), message: 'Corrélation sonore insuffisante' });
+    });
+  } catch (err: any) {
+    return res.json({ success: false, error: err?.message });
   }
 });
 

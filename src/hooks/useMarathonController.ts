@@ -25,6 +25,7 @@ export interface UseMarathonControllerProps {
   onUpdateConfig?: (config: MarathonConfig) => void;
   autoSkipOpening?: boolean;
   enableSkipOpening?: boolean;
+  enableSilenceSnapping?: boolean;
 }
 
 export interface UseMarathonControllerReturn {
@@ -62,6 +63,7 @@ export function useMarathonController({
   onUpdateConfig,
   autoSkipOpening = false,
   enableSkipOpening = true,
+  enableSilenceSnapping = true,
 }: UseMarathonControllerProps): UseMarathonControllerReturn {
   const [markers, setMarkers] = useState<VideoSkipMarkers | null>(null);
   const [isDetecting, setIsDetecting] = useState<boolean>(false);
@@ -175,7 +177,7 @@ export function useMarathonController({
     const { episodeNumber: epNum } = parseAnimeTitleAndEpisode(track.title || track.album || '');
     setEpisodeNumber(epNum);
 
-    resolveVideoMarkersCascade(videoRef.current, track, duration || track.duration || 0)
+    resolveVideoMarkersCascade(videoRef.current, track, duration || track.duration || 0, enableSilenceSnapping)
       .then((resolved) => {
         if (isMounted) {
           setMarkers(resolved);

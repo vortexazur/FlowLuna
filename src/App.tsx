@@ -2012,6 +2012,7 @@ export default function App() {
         autoSkipOpening={playerSettings.autoSkipOpening}
         onToggleAutoSkip={(enabled) => handleUpdatePlayerSettings({ ...playerSettings, autoSkipOpening: enabled })}
         enableSkipOpening={playerSettings.enableSkipOpening ?? true}
+        enableSilenceSnapping={playerSettings.enableSilenceSnapping ?? true}
         marathonConfig={playerSettings.marathonConfig}
         onUpdateMarathonConfig={(newCfg) => handleUpdatePlayerSettings({ ...playerSettings, marathonConfig: newCfg })}
         videoSkipForwardInterval={playerSettings.videoSkipForwardInterval ?? 10}

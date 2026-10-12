@@ -1,4 +1,4 @@
-export const APP_VERSION = '1.21.3';
+export const APP_VERSION = '1.21.4';
 
 export type MediaFormat =
   | 'mp3'
@@ -52,16 +52,19 @@ export interface VideoChapter {
   endTime: number;
 }
 
-export type SkipSource = 'chapter' | 'api' | 'heuristic';
+export type SkipSource = 'chapter' | 'api' | 'acoustic' | 'subtitle' | 'heuristic';
 export type SkipConfidence = 'high' | 'moderate' | 'low';
 
 export interface SkipInterval {
   start: number; // en secondes
   end: number;   // en secondes
-  type: 'op' | 'ed';
+  type: 'op' | 'ed' | 'recap' | 'preview';
   source: SkipSource;
   confidence: SkipConfidence;
   title?: string;
+  snapped?: boolean;        // Si le marqueur a été ajusté sur un silence/coupure (TimeAdjustment inspiré d'intro-skipper)
+  snapType?: 'silence' | 'black' | 'none';
+  offsetApplied?: number;   // Décalage en secondes appliqué lors du snapping
 }
 
 export interface PlayerSkipState {
@@ -73,10 +76,13 @@ export interface PlayerSkipState {
 export interface VideoSkipMarkers {
   op: SkipInterval | null;
   ed: SkipInterval | null;
+  recap?: SkipInterval | null;
+  preview?: SkipInterval | null;
   hasPostCredits: boolean;
   postCreditsStart?: number;
   driftDetected?: boolean;        // true si écart significatif entre durée vidéo et référence API (> 4s)
   referenceDuration?: number;     // durée théorique fournie par l'API
+  snapped?: boolean;              // true si un micro-ajustement audio/silence a été appliqué
 }
 
 export interface MarathonConfig {
@@ -214,6 +220,7 @@ export interface PlayerSettings {
   playbackSpeed?: number; // 0.5 to 2.0
   autoSkipOpening?: boolean; // Saut automatique des génériques/openings (Auto-skip)
   enableSkipOpening?: boolean; // Activation globale de la fonctionnalité Skip OP (si faux, masque le bouton et ignore les génériques)
+  enableSilenceSnapping?: boolean; // Calage automatique chirurgical aux silences audio / fondus (TimeAdjustment inspiré d'intro-skipper)
   marathonConfig?: MarathonConfig; // Mode Marathon (Auto-chain & transitions intelligentes)
   videoSkipForwardInterval?: number; // Intervalle de saut temporel (Skip & Molette) en secondes (5s à 90s, step 5s, défaut 10s)
   videoAspectRatio?: VideoAspectRatio; // Ratio d'affichage vidéo ('contain', 'cover', '16-9')
