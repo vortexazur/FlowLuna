@@ -22,8 +22,58 @@ public static class SingleInstanceService
     private static Mutex? _mutex;
     private static CancellationTokenSource? _cts;
 
+    private static readonly object _listenerLock = new();
+    private static Action<List<string>>? _filesReceived;
+    private static readonly List<string> _pendingFilesBuffer = new();
+
     public static List<string> InitialFiles { get; } = new();
-    public static event Action<List<string>>? FilesReceived;
+
+    public static event Action<List<string>>? FilesReceived
+    {
+        add
+        {
+            lock (_listenerLock)
+            {
+                _filesReceived += value;
+                if (_pendingFilesBuffer.Count > 0)
+                {
+                    var buffered = new List<string>(_pendingFilesBuffer);
+                    _pendingFilesBuffer.Clear();
+                    try
+                    {
+                        value?.Invoke(buffered);
+                    }
+                    catch (Exception ex)
+                    {
+                        Debug.WriteLine($"[FlowLuna] Error flushing buffered IPC files: {ex.Message}");
+                    }
+                }
+            }
+        }
+        remove
+        {
+            lock (_listenerLock)
+            {
+                _filesReceived -= value;
+            }
+        }
+    }
+
+    private static void NotifyFilesReceived(List<string> files)
+    {
+        if (files == null || files.Count == 0) return;
+        lock (_listenerLock)
+        {
+            if (_filesReceived != null)
+            {
+                _filesReceived.Invoke(files);
+            }
+            else
+            {
+                _pendingFilesBuffer.AddRange(files);
+            }
+        }
+    }
 
     /// <summary>
     /// Checks if this is the first instance of FlowLuna.
@@ -46,15 +96,15 @@ public static class SingleInstanceService
 
         if (!isFirstInstance)
         {
-            // Another instance is running — send arguments to it with retries in case pipe is busy
+            // Another instance is running — send arguments to it with retries in case pipe is busy or starting
             if (cleanedArgs.Count > 0)
             {
-                for (int attempt = 0; attempt < 6; attempt++)
+                for (int attempt = 0; attempt < 30; attempt++)
                 {
                     try
                     {
                         using var client = new NamedPipeClientStream(".", PipeName, PipeDirection.Out);
-                        client.Connect(1500); // Wait up to 1.5 seconds per attempt
+                        client.Connect(1000); // Wait up to 1 second per attempt
                         using var writer = new StreamWriter(client) { AutoFlush = true };
                         foreach (var path in cleanedArgs)
                         {
@@ -65,7 +115,7 @@ public static class SingleInstanceService
                     catch (Exception ex)
                     {
                         Debug.WriteLine($"[FlowLuna] Attempt {attempt + 1} sending args to active instance: {ex.Message}");
-                        Thread.Sleep(80);
+                        Thread.Sleep(80 + (attempt % 5) * 20);
                     }
                 }
             }
@@ -98,66 +148,58 @@ public static class SingleInstanceService
         _cts = new CancellationTokenSource();
         var token = _cts.Token;
 
-        Task.Run(async () =>
+        // Run multiple concurrent server listeners so concurrent client connections never find a closed or busy pipe
+        for (int i = 0; i < 3; i++)
         {
-            while (!token.IsCancellationRequested)
+            _ = Task.Run(() => RunServerListenerLoopAsync(token), token);
+        }
+    }
+
+    private static async Task RunServerListenerLoopAsync(CancellationToken token)
+    {
+        while (!token.IsCancellationRequested)
+        {
+            try
             {
-                try
+                using var server = new NamedPipeServerStream(
+                    PipeName,
+                    PipeDirection.In,
+                    NamedPipeServerStream.MaxAllowedServerInstances,
+                    PipeTransmissionMode.Byte,
+                    PipeOptions.Asynchronous);
+
+                await server.WaitForConnectionAsync(token);
+
+                using var reader = new StreamReader(server);
+                var files = new List<string>();
+                while (!reader.EndOfStream)
                 {
-                    var server = new NamedPipeServerStream(
-                        PipeName,
-                        PipeDirection.In,
-                        NamedPipeServerStream.MaxAllowedServerInstances,
-                        PipeTransmissionMode.Byte,
-                        PipeOptions.Asynchronous);
-
-                    await server.WaitForConnectionAsync(token);
-
-                    // Process client asynchronously so loop immediately creates the NEXT server instance to accept subsequent connections
-                    _ = Task.Run(async () =>
+                    var line = await reader.ReadLineAsync();
+                    if (!string.IsNullOrWhiteSpace(line))
                     {
-                        try
+                        var path = line.Trim().Trim('"');
+                        if (File.Exists(path) || Directory.Exists(path))
                         {
-                            using (server)
-                            using (var reader = new StreamReader(server))
-                            {
-                                var files = new List<string>();
-                                while (!reader.EndOfStream)
-                                {
-                                    var line = await reader.ReadLineAsync();
-                                    if (!string.IsNullOrWhiteSpace(line))
-                                    {
-                                        var path = line.Trim().Trim('"');
-                                        if (File.Exists(path) || Directory.Exists(path))
-                                        {
-                                            files.Add(path);
-                                        }
-                                    }
-                                }
+                            files.Add(path);
+                        }
+                    }
+                }
 
-                                if (files.Count > 0)
-                                {
-                                    FilesReceived?.Invoke(files);
-                                }
-                            }
-                        }
-                        catch (Exception ex)
-                        {
-                            Debug.WriteLine($"[FlowLuna] IPC client reader exception: {ex.Message}");
-                        }
-                    }, token);
-                }
-                catch (OperationCanceledException)
+                if (files.Count > 0)
                 {
-                    break;
-                }
-                catch (Exception ex)
-                {
-                    Debug.WriteLine($"[FlowLuna] IPC Server loop exception: {ex.Message}");
-                    await Task.Delay(100, token);
+                    NotifyFilesReceived(files);
                 }
             }
-        }, token);
+            catch (OperationCanceledException)
+            {
+                break;
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine($"[FlowLuna] IPC listener loop exception: {ex.Message}");
+                try { await Task.Delay(100, token); } catch { }
+            }
+        }
     }
 
     public static void Cleanup()

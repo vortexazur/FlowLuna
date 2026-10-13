@@ -1,14 +1,17 @@
 import React, { useEffect, useState } from 'react';
 import { Minus, Square, Copy, X, Music2 } from 'lucide-react';
-import { AccentColor, Track, APP_VERSION } from '../types';
+import { AccentColor, Track, APP_VERSION, PlayerSettings } from '../types';
+import { getT } from '../i18n';
 
 interface TitleBarProps {
   currentTrack?: Track | null;
   isPlaying?: boolean;
   accent?: AccentColor;
+  settings?: PlayerSettings;
 }
 
-export const TitleBar: React.FC<TitleBarProps> = ({ currentTrack, isPlaying, accent = 'emerald' }) => {
+export const TitleBar: React.FC<TitleBarProps> = ({ currentTrack, isPlaying, accent = 'emerald', settings }) => {
+  const t = getT(settings?.language);
   const [isMaximized, setIsMaximized] = useState(false);
   const isElectron = typeof window !== 'undefined' && !!window.electronAPI;
 
@@ -86,8 +89,8 @@ export const TitleBar: React.FC<TitleBarProps> = ({ currentTrack, isPlaying, acc
         <button
           type="button"
           onClick={handleMinimize}
-          title="Réduire"
-          aria-label="Réduire"
+          title={t.titlebarMinimize}
+          aria-label={t.titlebarMinimize}
           className="h-full px-3.5 flex items-center justify-center text-neutral-400 hover:text-white hover:bg-neutral-800/80 transition-colors cursor-pointer"
         >
           <Minus className="w-3.5 h-3.5" />
@@ -97,8 +100,8 @@ export const TitleBar: React.FC<TitleBarProps> = ({ currentTrack, isPlaying, acc
         <button
           type="button"
           onClick={handleMaximize}
-          title={isMaximized ? 'Restaurer' : 'Agrandir'}
-          aria-label={isMaximized ? 'Restaurer' : 'Agrandir'}
+          title={isMaximized ? t.titlebarRestore : t.titlebarMaximize}
+          aria-label={isMaximized ? t.titlebarRestore : t.titlebarMaximize}
           className="h-full px-3.5 flex items-center justify-center text-neutral-400 hover:text-white hover:bg-neutral-800/80 transition-colors cursor-pointer"
         >
           {isMaximized ? <Copy className="w-3 h-3 rotate-180" /> : <Square className="w-3 h-3" />}
@@ -108,8 +111,8 @@ export const TitleBar: React.FC<TitleBarProps> = ({ currentTrack, isPlaying, acc
         <button
           type="button"
           onClick={handleClose}
-          title="Fermer"
-          aria-label="Fermer"
+          title={t.titlebarClose}
+          aria-label={t.titlebarClose}
           className="h-full px-4 flex items-center justify-center text-neutral-400 hover:text-white hover:bg-red-600 transition-colors cursor-pointer"
         >
           <X className="w-3.5 h-3.5" />

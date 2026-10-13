@@ -11,7 +11,8 @@ import {
   Music,
   AlertTriangle,
 } from 'lucide-react';
-import { AccentColor, ThemeMode } from '../types';
+import { AccentColor, ThemeMode, PlayerSettings } from '../types';
+import { getT } from '../i18n';
 import {
   getCacheUsageStats,
   clearSelectedCache,
@@ -27,6 +28,7 @@ interface ClearCacheModalProps {
   onError: (errorMsg: string) => void;
   accent: AccentColor;
   theme?: ThemeMode;
+  settings?: PlayerSettings;
 }
 
 const ACCENT_BTN: Record<AccentColor, string> = {
@@ -44,7 +46,9 @@ export const ClearCacheModal: React.FC<ClearCacheModalProps> = ({
   onSuccess,
   onError,
   accent,
+  settings,
 }) => {
+  const t = getT(settings?.language);
   const [downloadHistory, setDownloadHistory] = useState<boolean>(true);
   const [tempVideos, setTempVideos] = useState<boolean>(true);
   const [audioFiles, setAudioFiles] = useState<boolean>(false);
@@ -116,9 +120,9 @@ export const ClearCacheModal: React.FC<ClearCacheModalProps> = ({
               <Trash2 className="w-5 h-5" />
             </div>
             <div>
-              <h3 className="text-base font-bold tracking-tight text-white">Vider le cache</h3>
+              <h3 className="text-base font-bold tracking-tight text-white">{t.clearCacheTitle}</h3>
               <p className="text-xs text-neutral-400">
-                Sélectionnez les catégories à supprimer pour libérer de l'espace disque.
+                {t.clearCacheSubtitle}
               </p>
             </div>
           </div>
@@ -127,7 +131,7 @@ export const ClearCacheModal: React.FC<ClearCacheModalProps> = ({
             onClick={onClose}
             disabled={isCleaning}
             className="p-1.5 rounded-lg text-neutral-400 hover:text-white hover:bg-white/10 transition-colors cursor-pointer"
-            title="Fermer"
+            title={t.titlebarClose}
           >
             <X className="w-4 h-4" />
           </button>
@@ -136,7 +140,7 @@ export const ClearCacheModal: React.FC<ClearCacheModalProps> = ({
         {/* Quick select buttons */}
         <div className="px-6 pt-4 pb-2 flex items-center justify-between border-b border-white/5">
           <span className="text-[11px] font-semibold text-neutral-400 uppercase tracking-wider">
-            Sélection granulaire
+            {t.clearCacheGranular}
           </span>
           <div className="flex items-center gap-2">
             <button
@@ -145,7 +149,7 @@ export const ClearCacheModal: React.FC<ClearCacheModalProps> = ({
               disabled={isCleaning}
               className="px-2.5 py-1 rounded-lg text-[11px] font-medium bg-neutral-800 hover:bg-neutral-700 text-neutral-300 hover:text-white border border-neutral-700/60 transition-colors cursor-pointer"
             >
-              Tout sélectionner
+              {t.clearCacheSelectAll}
             </button>
             <button
               type="button"
@@ -153,7 +157,7 @@ export const ClearCacheModal: React.FC<ClearCacheModalProps> = ({
               disabled={isCleaning}
               className="px-2.5 py-1 rounded-lg text-[11px] font-medium bg-neutral-800 hover:bg-neutral-700 text-neutral-300 hover:text-white border border-neutral-700/60 transition-colors cursor-pointer"
             >
-              Tout désélectionner
+              {t.clearCacheDeselectAll}
             </button>
           </div>
         </div>
@@ -186,16 +190,16 @@ export const ClearCacheModal: React.FC<ClearCacheModalProps> = ({
               <div className="flex items-center justify-between">
                 <span className="text-xs font-bold text-white flex items-center gap-2">
                   <DownloadCloud className="w-3.5 h-3.5 text-cyan-400" />
-                  Historique des téléchargements
+                  {t.clearCacheHistory}
                 </span>
                 {stats && stats.downloadHistory.count > 0 && (
                   <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-neutral-900 border border-neutral-700 text-neutral-300">
-                    {stats.downloadHistory.count} entrée{stats.downloadHistory.count > 1 ? 's' : ''}
+                    {stats.downloadHistory.count} {t.clearCacheEntries}
                   </span>
                 )}
               </div>
               <p className="text-[11px] text-neutral-400 leading-relaxed mt-1">
-                Supprime la liste de vos téléchargements passés dans le téléchargeur (ne supprime pas vos fichiers sur le disque).
+                {t.clearCacheHistoryDesc}
               </p>
             </div>
           </label>
@@ -226,7 +230,7 @@ export const ClearCacheModal: React.FC<ClearCacheModalProps> = ({
               <div className="flex items-center justify-between">
                 <span className="text-xs font-bold text-white flex items-center gap-2">
                   <Film className="w-3.5 h-3.5 text-amber-400" />
-                  Vidéos temporaires
+                  {t.clearCacheTempVideos}
                 </span>
                 {stats && stats.tempVideos.bytes > 0 && (
                   <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded bg-amber-500/10 border border-amber-500/30 text-amber-300">
@@ -235,7 +239,7 @@ export const ClearCacheModal: React.FC<ClearCacheModalProps> = ({
                 )}
               </div>
               <p className="text-[11px] text-neutral-400 leading-relaxed mt-1">
-                Efface les copies de vidéos importées et stockées en cache local dans IndexedDB.
+                {t.clearCacheTempVideosDesc}
               </p>
             </div>
           </label>
@@ -266,7 +270,7 @@ export const ClearCacheModal: React.FC<ClearCacheModalProps> = ({
               <div className="flex items-center justify-between">
                 <span className="text-xs font-bold text-white flex items-center gap-2">
                   <Music className="w-3.5 h-3.5 text-emerald-400" />
-                  Fichiers audio
+                  {t.clearCacheAudio}
                 </span>
                 {stats && stats.audioFiles.bytes > 0 && (
                   <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded bg-emerald-500/10 border border-emerald-500/30 text-emerald-300">
@@ -275,7 +279,7 @@ export const ClearCacheModal: React.FC<ClearCacheModalProps> = ({
                 )}
               </div>
               <p className="text-[11px] text-neutral-400 leading-relaxed mt-1">
-                Supprime les fichiers musicaux sauvegardés dans le cache hors-ligne interne (ne touche pas à vos dossiers d'origine).
+                {t.clearCacheAudioDesc}
               </p>
             </div>
           </label>
@@ -289,7 +293,7 @@ export const ClearCacheModal: React.FC<ClearCacheModalProps> = ({
             disabled={isCleaning}
             className="px-4 py-2 rounded-xl text-xs font-semibold bg-neutral-800 hover:bg-neutral-700 text-neutral-300 hover:text-white transition-colors cursor-pointer border border-neutral-700"
           >
-            Annuler
+            {t.clearCacheCancel}
           </button>
           <button
             type="button"
@@ -303,12 +307,12 @@ export const ClearCacheModal: React.FC<ClearCacheModalProps> = ({
             {isCleaning ? (
               <>
                 <RefreshCw className="w-3.5 h-3.5 animate-spin" />
-                <span>Nettoyage en cours...</span>
+                <span>{t.clearCacheCleaning}</span>
               </>
             ) : (
               <>
                 <Trash2 className="w-3.5 h-3.5" />
-                <span>Nettoyer la sélection</span>
+                <span>{t.clearCacheSubmit}</span>
               </>
             )}
           </button>

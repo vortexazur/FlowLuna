@@ -184,7 +184,14 @@ public class HttpServer
             using var reader = new StreamReader(ctx.Request.Body);
             var bodyText = await reader.ReadToEndAsync();
             using var doc = JsonDocument.Parse(bodyText);
-            var filePathsElement = doc.RootElement.GetProperty("filePaths");
+            var root = doc.RootElement;
+            var filePathsElement = root.GetProperty("filePaths");
+
+            bool isTransient = false;
+            if (root.TryGetProperty("isTransient", out var transProp))
+            {
+                isTransient = transProp.GetBoolean();
+            }
 
             var validFps = new System.Collections.Generic.List<string>();
             foreach (var item in filePathsElement.EnumerateArray())
@@ -196,7 +203,7 @@ public class HttpServer
                 }
             }
 
-            var tasks = validFps.Select(async fp => await LibraryScanner.BuildTrackMetadataAsync(fp));
+            var tasks = validFps.Select(async fp => await LibraryScanner.BuildTrackMetadataAsync(fp, isPublic: false, fetchOnline: false, isTransient: isTransient));
             var results = await Task.WhenAll(tasks);
             var tracks = results.Where(t => t != null).Select(t => t!).ToList();
 

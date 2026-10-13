@@ -10,7 +10,8 @@ import {
   Plus,
   Music,
 } from 'lucide-react';
-import { Track, AccentColor } from '../types';
+import { Track, AccentColor, PlayerSettings } from '../types';
+import { getT } from '../i18n';
 
 interface QueueDrawerProps {
   isOpen: boolean;
@@ -24,6 +25,7 @@ interface QueueDrawerProps {
   onSaveQueueAsPlaylist?: () => void;
   onAddMediaToQueue?: (files: FileList | File[] | Track[]) => void;
   accent: AccentColor;
+  settings?: PlayerSettings;
 }
 
 const ACCENT_TEXT: Record<AccentColor, string> = {
@@ -47,7 +49,9 @@ export const QueueDrawer: React.FC<QueueDrawerProps> = ({
   onSaveQueueAsPlaylist,
   onAddMediaToQueue,
   accent,
+  settings,
 }) => {
+  const t = getT(settings?.language);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   if (!isOpen) return null;
@@ -115,7 +119,7 @@ export const QueueDrawer: React.FC<QueueDrawerProps> = ({
         <div className="flex items-center justify-between border-b border-neutral-800 pb-4 mb-4">
           <div className="flex items-center gap-2.5">
             <ListMusic className={`w-5 h-5 ${ACCENT_TEXT[accent]}`} />
-            <h3 className="text-base font-bold">File d'attente ({queue.length})</h3>
+            <h3 className="text-base font-bold">{t.playbackQueue} ({queue.length})</h3>
           </div>
 
           <div className="flex items-center gap-2">
@@ -124,7 +128,7 @@ export const QueueDrawer: React.FC<QueueDrawerProps> = ({
               id="queue-add-media-btn"
               onClick={handleAddClick}
               className="p-1.5 rounded-lg text-neutral-400 hover:text-white hover:bg-neutral-800 transition-colors"
-              title="Ajouter des vidéos ou morceaux à la file"
+              title={t.addMediaToQueue}
             >
               <PlusSquare className="w-4 h-4 text-emerald-400" />
             </button>
@@ -132,7 +136,7 @@ export const QueueDrawer: React.FC<QueueDrawerProps> = ({
               type="button"
               onClick={onClearQueue}
               className="p-1.5 rounded-lg text-neutral-400 hover:text-red-400 hover:bg-neutral-800 transition-colors"
-              title="Vider la file"
+              title={t.clearQueueTooltip}
             >
               <Trash2 className="w-4 h-4" />
             </button>
@@ -150,7 +154,7 @@ export const QueueDrawer: React.FC<QueueDrawerProps> = ({
         {currentTrack && (
           <div className="mb-5">
             <span className="text-xs uppercase tracking-wider text-neutral-400 font-semibold mb-2 block">
-              En cours de lecture
+              {t.nowPlayingVideo}
             </span>
             <div className="flex items-center gap-3 p-3 rounded-xl bg-neutral-950/70 border border-neutral-800/80">
               <img
@@ -177,12 +181,12 @@ export const QueueDrawer: React.FC<QueueDrawerProps> = ({
         {/* Upcoming List */}
         <div className="flex-1 overflow-y-auto flex flex-col gap-2">
           <span className="text-xs uppercase tracking-wider text-neutral-400 font-semibold mb-1 block">
-            À suivre ensuite ({upcomingTracks.length})
+            {t.upNextFollow.replace('{count}', upcomingTracks.length.toString())}
           </span>
 
           {upcomingTracks.length === 0 ? (
             <div className="text-center py-12 text-neutral-500 text-sm">
-              La file d'attente est vide. Ajoutez des titres depuis la bibliothèque ou vos playlists.
+              {t.emptyQueueMessage}
             </div>
           ) : (
             upcomingTracks.map((track, i) => {
@@ -212,7 +216,7 @@ export const QueueDrawer: React.FC<QueueDrawerProps> = ({
                         type="button"
                         onClick={() => onMoveQueueItem(realIndex, realIndex - 1)}
                         className="p-1 text-neutral-400 hover:text-white"
-                        title="Monter"
+                        title={t.moveUp}
                       >
                         <ArrowUp className="w-3.5 h-3.5" />
                       </button>
@@ -222,7 +226,7 @@ export const QueueDrawer: React.FC<QueueDrawerProps> = ({
                         type="button"
                         onClick={() => onMoveQueueItem(realIndex, realIndex + 1)}
                         className="p-1 text-neutral-400 hover:text-white"
-                        title="Descendre"
+                        title={t.moveDown}
                       >
                         <ArrowDown className="w-3.5 h-3.5" />
                       </button>
@@ -231,7 +235,7 @@ export const QueueDrawer: React.FC<QueueDrawerProps> = ({
                       type="button"
                       onClick={() => onRemoveFromQueue(realIndex)}
                       className="p-1 text-neutral-400 hover:text-red-400"
-                      title="Retirer de la file"
+                      title={t.removeFromQueueTooltip}
                     >
                       <X className="w-3.5 h-3.5" />
                     </button>

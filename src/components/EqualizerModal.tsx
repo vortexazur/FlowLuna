@@ -2,6 +2,7 @@ import React from 'react';
 import { Sliders, X, RotateCcw, Volume2, Sparkles, Check } from 'lucide-react';
 import { EqualizerSettings, EqualizerPresetName, AccentColor, PlayerSettings } from '../types';
 import { EQ_PRESETS, DEFAULT_EQ_FREQUENCIES, audioEngine } from '../services/audioEngine';
+import { getT } from '../i18n';
 
 interface EqualizerModalProps {
   isOpen: boolean;
@@ -40,6 +41,7 @@ export const EqualizerModal: React.FC<EqualizerModalProps> = ({
   playerSettings,
   onUpdatePlayerSettings,
 }) => {
+  const t = getT(playerSettings?.language);
   if (!isOpen) return null;
 
   const handleBandChange = (index: number, gain: number) => {
@@ -106,8 +108,8 @@ export const EqualizerModal: React.FC<EqualizerModalProps> = ({
               <Sliders className="w-5 h-5" />
             </div>
             <div>
-              <h2 className="text-xl font-bold tracking-tight">Égaliseur Paramétrique 10 Bandes</h2>
-              <p className="text-xs text-neutral-400">Traitement audio haute fidélité temps réel 32-bit float</p>
+              <h2 className="text-xl font-bold tracking-tight">{t.equalizerTitle}</h2>
+              <p className="text-xs text-neutral-400">{t.equalizerSubtitle}</p>
             </div>
           </div>
 
@@ -123,7 +125,7 @@ export const EqualizerModal: React.FC<EqualizerModalProps> = ({
               }`}
             >
               <Check className={`w-3.5 h-3.5 ${settings.enabled ? 'block' : 'hidden'}`} />
-              {settings.enabled ? 'Actif' : 'Désactivé'}
+              {settings.enabled ? t.eqActive : t.eqDisabled}
             </button>
 
             <button
@@ -131,7 +133,7 @@ export const EqualizerModal: React.FC<EqualizerModalProps> = ({
               id="eq-reset-btn"
               onClick={handleReset}
               className="p-1.5 rounded-lg text-neutral-400 hover:text-neutral-200 hover:bg-neutral-800 transition-colors"
-              title="Réinitialiser"
+              title={t.eqReset}
             >
               <RotateCcw className="w-4 h-4" />
             </button>
@@ -149,7 +151,7 @@ export const EqualizerModal: React.FC<EqualizerModalProps> = ({
 
         {/* Presets Chips */}
         <div className="flex flex-col gap-2">
-          <label className="text-xs font-medium uppercase tracking-wider text-neutral-400">Préréglages Audio</label>
+          <label className="text-xs font-medium uppercase tracking-wider text-neutral-400">{t.eqPresetsLabel}</label>
           <div className="flex flex-wrap gap-1.5">
             {(Object.keys(EQ_PRESETS) as EqualizerPresetName[]).map((p) => {
               const isSelected = settings.preset === p;

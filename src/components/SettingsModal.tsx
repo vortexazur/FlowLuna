@@ -2153,6 +2153,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
         }}
         accent={settings.accent}
         theme={settings.theme}
+        settings={settings}
       />
 
       {/* Toast Notification pour le Cache */}

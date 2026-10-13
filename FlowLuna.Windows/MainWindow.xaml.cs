@@ -144,7 +144,7 @@ public partial class MainWindow : Window
 
                 if (_batchFilesTimer == null)
                 {
-                    _batchFilesTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(600) };
+                    _batchFilesTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(120) };
                     _batchFilesTimer.Tick += (s, e) =>
                     {
                         _batchFilesTimer.Stop();
@@ -199,14 +199,11 @@ public partial class MainWindow : Window
             {
                 var json = JsonSerializer.Serialize(_pendingFiles);
                 _pendingFiles.Clear();
-                _ = Task.Delay(400).ContinueWith(_ =>
+                Dispatcher.Invoke(() =>
                 {
-                    Dispatcher.Invoke(() =>
-                    {
-                        WebViewControl?.CoreWebView2?.ExecuteScriptAsync(
-                            $"window.dispatchEvent(new CustomEvent('flowluna-open-files', {{ detail: {json} }}));"
-                        );
-                    });
+                    WebViewControl?.CoreWebView2?.ExecuteScriptAsync(
+                        $"window.dispatchEvent(new CustomEvent('flowluna-open-files', {{ detail: {json} }}));"
+                    );
                 });
             }
         }

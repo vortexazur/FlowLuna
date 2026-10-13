@@ -67,7 +67,7 @@ function dispatchOpenFiles(files: string[]): void {
         earlyOpenFiles.push(...batch);
       }
     }
-  }, 600);
+  }, 120);
 }
 
 const gotTheLock = app.requestSingleInstanceLock();

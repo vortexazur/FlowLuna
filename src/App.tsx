@@ -563,10 +563,12 @@ export default function App() {
 
         if (playRequestIdRef.current !== requestId) return;
 
-        // Update play count asynchronously
-        track.playCount = (track.playCount || 0) + 1;
-        saveTrack(track).catch(() => {});
-        setTracks((prev) => prev.map((t) => (t.id === track.id ? { ...t, playCount: track.playCount } : t)));
+        // Update play count asynchronously (only for non-transient library tracks)
+        if (!track.isTransient) {
+          track.playCount = (track.playCount || 0) + 1;
+          saveTrack(track).catch(() => {});
+          setTracks((prev) => prev.map((t) => (t.id === track.id ? { ...t, playCount: track.playCount } : t)));
+        }
 
         // Proactive Gapless Pre-buffering: prefetch next track audio in background for music tracks
         if (playerSettings.gaplessPlayback && !isVideoTrack && targetQueue.length > 1) {
@@ -612,7 +614,7 @@ export default function App() {
               setIsPlaying(true);
             }).catch(console.warn);
             const curTrack = curQueue[currentTrackIndexRef.current];
-            if (curTrack) {
+            if (curTrack && !curTrack.isTransient) {
               curTrack.playCount = (curTrack.playCount || 0) + 1;
               saveTrack(curTrack).catch(() => {});
             }
@@ -1350,6 +1352,60 @@ export default function App() {
     };
   }, [handleTogglePlay, handleNext, handlePrev, handleStop]);
 
+  const lastExternalOpenTimeRef = useRef<number>(0);
+
+  // Dedicated handler for files opened on the fly from Windows Explorer
+  const handleOpenExternalFiles = useCallback(
+    (incomingTracks: Track[]) => {
+      if (!incomingTracks || incomingTracks.length === 0) return;
+
+      const now = Date.now();
+      const isSubsequentBurst = now - lastExternalOpenTimeRef.current < 2500;
+      lastExternalOpenTimeRef.current = now;
+
+      // Mark tracks as ephemeral/transient (no persistent DB or disk cache)
+      const transientTracks: Track[] = incomingTracks.map((t) => ({
+        ...t,
+        isTransient: true,
+        source: 'ephemeral',
+        isCachedOffline: false,
+      }));
+
+      const curQueue = queueRef.current;
+      const curIndex = currentTrackIndexRef.current;
+      const isCurrentlyPlaying = curIndex >= 0 && curIndex < curQueue.length;
+
+      if (isSubsequentBurst && isCurrentlyPlaying) {
+        // Subsequent secondary process from the same explorer multi-select launch:
+        // Append smoothly to the queue so track 0 continues playing uninterrupted!
+        const existingIds = new Set(curQueue.map((t) => t.id));
+        const newToAdd = transientTracks.filter((t) => !existingIds.has(t.id));
+        if (newToAdd.length > 0) {
+          const updatedQueue = [...curQueue, ...newToAdd];
+          setQueue(updatedQueue);
+          queueRef.current = updatedQueue;
+        }
+      } else {
+        // Initial launch or fresh explorer multi-file opening:
+        // Item 0 begins playing, and all subsequent items properly populate the queue in order!
+        const incomingIds = new Set(transientTracks.map((t) => t.id));
+        const remainingOldQueue = curQueue.filter((t) => !incomingIds.has(t.id));
+        const newQueue = [...transientTracks, ...remainingOldQueue];
+
+        setQueue(newQueue);
+        queueRef.current = newQueue;
+
+        currentTrackIndexRef.current = 0;
+        setCurrentTrackIndex(0);
+        playTrackAt(0, newQueue, true);
+        if (transientTracks[0]?.isVideo) {
+          setVideoMode('theater');
+        }
+      }
+    },
+    [playTrackAt]
+  );
+
   // Listen for files opened directly from Windows (double-click or Open With)
   useEffect(() => {
     if (!window.electronAPI?.onOpenFiles) return;
@@ -1359,12 +1415,12 @@ export default function App() {
         const resp = await fetch('/api/library/add-files', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ filePaths }),
+          body: JSON.stringify({ filePaths, isTransient: true }),
         });
         if (resp.ok) {
           const data = await resp.json();
           if (data.success && Array.isArray(data.tracks) && data.tracks.length > 0) {
-            applyImportedTracks(data.tracks, true);
+            handleOpenExternalFiles(data.tracks);
           }
         }
       } catch (err) {
@@ -1374,7 +1430,7 @@ export default function App() {
     return () => {
       unsubscribe?.();
     };
-  }, [applyImportedTracks]);
+  }, [handleOpenExternalFiles]);
 
   // Media element listeners for both Audio and Video players
   useEffect(() => {
@@ -1432,7 +1488,9 @@ export default function App() {
             const updated = { ...curTrack, duration: rounded };
             setQueue((prev) => prev.map((t) => (t.id === updated.id ? updated : t)));
             setTracks((prev) => prev.map((t) => (t.id === updated.id ? updated : t)));
-            saveTrack(updated).catch(() => {});
+            if (!curTrack.isTransient) {
+              saveTrack(updated).catch(() => {});
+            }
           }
         }
       };
@@ -1660,6 +1718,7 @@ export default function App() {
             playlists={playlists.filter((p) => p.id !== 'playlist-offline' && p.id !== 'playlist-youtube')}
             onAddToPlaylist={handleAddToPlaylist}
             onCreatePlaylist={handleSaveNewPlaylist}
+            settings={playerSettings}
           />
         );
       }
@@ -1694,6 +1753,7 @@ export default function App() {
           onBulkUpdatePins={handleBulkUpdatePins}
           onOpenManageSidebar={() => setIsManageSidebarOpen(true)}
           accent={playerSettings.accent}
+          settings={playerSettings}
         />
       );
     }
@@ -1725,6 +1785,7 @@ export default function App() {
           onDeleteTracks={handleDeleteTracks}
           onOpenTrimmer={handleOpenTrimmer}
           accent={playerSettings.accent}
+          settings={playerSettings}
         />
       );
     }
@@ -2020,7 +2081,12 @@ export default function App() {
       </div>
       {/* Native Windows Frameless TitleBar */}
       {!isMiniPlayer && (
-        <TitleBar currentTrack={currentPlayingTrack} isPlaying={isPlaying} accent={playerSettings.accent} />
+        <TitleBar
+          currentTrack={currentPlayingTrack}
+          isPlaying={isPlaying}
+          accent={playerSettings.accent}
+          settings={playerSettings}
+        />
       )}
 
       {/* Dedicated HTMLAudioElement for music playback (connected to Web Audio engine) */}
@@ -2114,6 +2180,7 @@ export default function App() {
         onUpdateMarathonConfig={(newCfg) => handleUpdatePlayerSettings({ ...playerSettings, marathonConfig: newCfg })}
         videoSkipForwardInterval={playerSettings.videoSkipForwardInterval ?? 10}
         videoAspectRatio={playerSettings.videoAspectRatio ?? 'contain'}
+        settings={playerSettings}
         onClose={() => {
           setVideoMode('hidden');
           handleStop();
@@ -2379,6 +2446,7 @@ export default function App() {
           setActivePlaylistId(newPl.id);
         }}
         accent={playerSettings.accent}
+        settings={playerSettings}
       />
 
       {/* Create Playlist Modal */}

@@ -237,8 +237,8 @@ export async function processLocalAudioFile(file: File): Promise<Track> {
     videoHeight,
   };
 
-  // Only store blob in IndexedDB if there is no direct local path AND it is not an oversized video file
-  if (!localPath && (!isVideo || file.size < 50 * 1024 * 1024)) {
+  // Restrict caching to strictly essential audio files: never store large video files in IndexedDB audioBlobs
+  if (!localPath && !isVideo) {
     try {
       await saveAudioBlob(track.id, file);
     } catch (err) {

@@ -12,7 +12,8 @@ import {
   X,
   Check,
 } from 'lucide-react';
-import { Track, AccentColor } from '../types';
+import { Track, AccentColor, PlayerSettings } from '../types';
+import { getT } from '../i18n';
 
 interface VideosViewProps {
   tracks: Track[];
@@ -27,6 +28,7 @@ interface VideosViewProps {
   onPlayTracksBatch?: (tracks: Track[], startIndex?: number) => void;
   onOpenTrimmer?: (track: Track) => void;
   accent: AccentColor;
+  settings?: PlayerSettings;
 }
 
 const ACCENT_BTN: Record<AccentColor, string> = {
@@ -60,7 +62,9 @@ export const VideosView: React.FC<VideosViewProps> = ({
   onPlayTracksBatch,
   onOpenTrimmer,
   accent,
+  settings,
 }) => {
+  const t = getT(settings?.language);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [isSelectionMode, setIsSelectionMode] = useState(false);
   const [selectedTrackIds, setSelectedTrackIds] = useState<Set<string>>(new Set());
@@ -173,7 +177,7 @@ export const VideosView: React.FC<VideosViewProps> = ({
     } else {
       onPlayTrack(selectedVideos[0], selectedVideos);
     }
-    showNotification(`${selectedVideos.length} vidéo(s) lancée(s) en lecture`);
+    showNotification(t.videosLaunchedToast.replace('{count}', String(selectedVideos.length)));
   };
 
   const handleAddSelectionToQueue = () => {
@@ -183,7 +187,7 @@ export const VideosView: React.FC<VideosViewProps> = ({
     if (onAddTracksToQueue) {
       onAddTracksToQueue(selectedVideos);
     }
-    showNotification(`${selectedVideos.length} vidéo(s) ajoutée(s) à la file d'attente`);
+    showNotification(t.videosAddedToQueueToast.replace('{count}', String(selectedVideos.length)));
     handleClearSelection();
   };
 
@@ -197,7 +201,7 @@ export const VideosView: React.FC<VideosViewProps> = ({
       const selectedVideos = videoTracks.filter((t) => selectedTrackIds.has(t.id));
       selectedVideos.forEach((v) => onDeleteTrack(v));
     }
-    showNotification(`${ids.length} vidéo(s) supprimée(s)`);
+    showNotification(t.videosDeletedToast.replace('{count}', String(ids.length)));
     handleClearSelection();
   };
 
@@ -240,9 +244,9 @@ export const VideosView: React.FC<VideosViewProps> = ({
           <div className="p-4 rounded-3xl bg-sky-500/20 text-sky-400 mb-4 animate-bounce">
             <Upload className="w-12 h-12" />
           </div>
-          <h2 className="text-xl font-bold text-white mb-2">Déposez vos fichiers vidéo ici</h2>
+          <h2 className="text-xl font-bold text-white mb-2">{t.dropVideosHere}</h2>
           <p className="text-xs text-neutral-300">
-            Toutes les vidéos sélectionnées seront importées et ajoutées à la file de lecture en un seul lot.
+            {t.dropVideosDesc}
           </p>
         </div>
       )}
@@ -273,13 +277,13 @@ export const VideosView: React.FC<VideosViewProps> = ({
           </div>
           <div>
             <h1 className="text-2xl font-black text-neutral-900 dark:text-white tracking-tight flex items-center gap-2.5">
-              <span>Lecteur Vidéo</span>
+              <span>{t.videosTitle}</span>
               <span className="text-xs font-mono font-semibold px-2 py-0.5 rounded-full bg-sky-500/10 dark:bg-sky-500/15 border border-sky-500/20 dark:border-sky-500/30 text-sky-700 dark:text-sky-400">
-                {videoTracks.length} {videoTracks.length > 1 ? 'vidéos' : 'vidéo'}
+                {videoTracks.length} {videoTracks.length > 1 ? t.videosPlural : t.videoSingle}
               </span>
             </h1>
             <p className="text-xs text-neutral-600 dark:text-neutral-400 mt-0.5 font-medium">
-              Lecture fluide MP4, WebM, MKV, MOV avec son Hi-Fi et gestion de sélection par lot
+              {t.videosSubtitle}
             </p>
           </div>
         </div>
@@ -300,10 +304,10 @@ export const VideosView: React.FC<VideosViewProps> = ({
                   ? 'bg-sky-500/20 border-sky-500/50 text-sky-300 shadow-sm'
                   : 'bg-neutral-900/60 hover:bg-neutral-800 border-neutral-700 text-neutral-200'
               }`}
-              title="Activer la sélection multiple pour lire, ajouter à la file ou supprimer par lot"
+              title={t.selectionModeTooltip}
             >
               <CheckSquare className="w-4 h-4" />
-              <span>{isSelectionMode ? 'Quitter la sélection' : 'Mode sélection'}</span>
+              <span>{isSelectionMode ? t.exitSelectionMode : t.selectionMode}</span>
             </button>
           )}
 
@@ -313,7 +317,7 @@ export const VideosView: React.FC<VideosViewProps> = ({
             className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-sky-600 hover:bg-sky-500 text-white text-xs font-bold transition-all shadow-lg hover:shadow-sky-500/20 active:scale-95 cursor-pointer"
           >
             <Upload className="w-4 h-4" />
-            <span>Importer des vidéos...</span>
+            <span>{t.importVideos}</span>
           </button>
         </div>
       </div>
@@ -332,11 +336,11 @@ export const VideosView: React.FC<VideosViewProps> = ({
               ) : (
                 <Square className="w-4 h-4 text-neutral-500" />
               )}
-              <span>{isAllSelected ? 'Tout désélectionner' : `Tout sélectionner (${videoTracks.length})`}</span>
+              <span>{isAllSelected ? t.deselectAll : t.selectAllWithCount.replace('{count}', String(videoTracks.length))}</span>
             </button>
             <span className="text-neutral-600">|</span>
             <span className="font-semibold text-white">
-              {selectedTrackIds.size} vidéo{selectedTrackIds.size > 1 ? 's' : ''} sélectionnée{selectedTrackIds.size > 1 ? 's' : ''}
+              {t.selectedVideosCount.replace('{count}', String(selectedTrackIds.size))}
             </span>
           </div>
 
@@ -347,10 +351,10 @@ export const VideosView: React.FC<VideosViewProps> = ({
                   type="button"
                   onClick={handlePlaySelection}
                   className="px-3.5 py-1.5 rounded-xl bg-sky-600 hover:bg-sky-500 text-white font-bold flex items-center gap-1.5 transition-all shadow-md active:scale-95 cursor-pointer"
-                  title="Lire immédiatement toutes les vidéos sélectionnées dans la file d'attente"
+                  title={t.playSelectionTooltip}
                 >
                   <Play className="w-3.5 h-3.5 fill-current" />
-                  <span>Lire la sélection ({selectedTrackIds.size})</span>
+                  <span>{t.playSelection.replace('{count}', String(selectedTrackIds.size))}</span>
                 </button>
 
                 {onAddTracksToQueue && (
@@ -358,10 +362,10 @@ export const VideosView: React.FC<VideosViewProps> = ({
                     type="button"
                     onClick={handleAddSelectionToQueue}
                     className="px-3 py-1.5 rounded-xl bg-neutral-800 hover:bg-neutral-700 text-neutral-200 font-medium flex items-center gap-1.5 transition-colors cursor-pointer"
-                    title="Ajouter l'ensemble des vidéos sélectionnées à la fin de la file d'attente"
+                    title={t.addToQueueSelectionTooltip}
                   >
                     <ListPlus className="w-3.5 h-3.5 text-sky-400" />
-                    <span>Ajouter à la file ({selectedTrackIds.size})</span>
+                    <span>{t.addToQueueSelection.replace('{count}', String(selectedTrackIds.size))}</span>
                   </button>
                 )}
 
@@ -370,10 +374,10 @@ export const VideosView: React.FC<VideosViewProps> = ({
                     type="button"
                     onClick={handleDeleteSelection}
                     className="px-3 py-1.5 rounded-xl bg-red-600 hover:bg-red-500 text-white font-bold flex items-center gap-1.5 transition-colors shadow-sm cursor-pointer"
-                    title="Supprimer les vidéos sélectionnées"
+                    title={t.deleteSelectionTooltip}
                   >
                     <Trash2 className="w-3.5 h-3.5" />
-                    <span>Supprimer ({selectedTrackIds.size})</span>
+                    <span>{t.deleteSelection.replace('{count}', String(selectedTrackIds.size))}</span>
                   </button>
                 )}
               </>
@@ -383,7 +387,7 @@ export const VideosView: React.FC<VideosViewProps> = ({
               type="button"
               onClick={handleClearSelection}
               className="p-1.5 text-neutral-400 hover:text-neutral-200 rounded-lg hover:bg-neutral-800 transition-colors cursor-pointer"
-              title="Fermer la sélection"
+              title={t.closeSelection}
             >
               <X className="w-4 h-4" />
             </button>
@@ -414,7 +418,7 @@ export const VideosView: React.FC<VideosViewProps> = ({
             <div className="flex flex-col min-w-0">
               <span className="text-[10px] font-mono uppercase tracking-wider text-sky-400 font-bold flex items-center gap-1.5">
                 <span className="w-2 h-2 rounded-full bg-sky-400 animate-ping" />
-                En cours de lecture
+                {t.nowPlayingVideo}
               </span>
               <h3 className="text-neutral-900 dark:text-white font-bold text-sm md:text-base truncate mt-0.5">
                 {currentVideo.title}
@@ -431,7 +435,7 @@ export const VideosView: React.FC<VideosViewProps> = ({
             className="w-full md:w-auto flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-white text-black hover:bg-neutral-200 text-xs font-bold transition-all shadow-md active:scale-95 cursor-pointer shrink-0"
           >
             <Maximize2 className="w-4 h-4" />
-            <span>Ouvrir en mode Cinéma</span>
+            <span>{t.openTheaterMode}</span>
           </button>
         </div>
       )}
@@ -442,9 +446,9 @@ export const VideosView: React.FC<VideosViewProps> = ({
           <div className="w-16 h-16 rounded-2xl bg-white/5 border border-white/10 flex items-center justify-center text-sky-400 mb-4 shadow-inner backdrop-blur-md">
             <Film className="w-8 h-8" />
           </div>
-          <h2 className="text-lg font-bold text-neutral-900 dark:text-white mb-1.5">Aucune vidéo importée</h2>
+          <h2 className="text-lg font-bold text-neutral-900 dark:text-white mb-1.5">{t.noVideosImported}</h2>
           <p className="text-xs text-neutral-500 dark:text-neutral-400 max-w-md mb-6 leading-relaxed">
-            Glissez-déposez vos fichiers vidéo (MP4, WebM, MKV, MOV, AVI) ou cliquez sur le bouton ci-dessous pour lancer la lecture par lot avec accélération et son Hi-Fi.
+            {t.noVideosImportedDesc}
           </p>
           <button
             type="button"
@@ -452,7 +456,7 @@ export const VideosView: React.FC<VideosViewProps> = ({
             className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-sky-600 hover:bg-sky-500 text-white text-xs font-bold transition-all shadow-lg active:scale-95 cursor-pointer"
           >
             <Upload className="w-4 h-4" />
-            <span>Choisir un fichier vidéo sur votre PC</span>
+            <span>{t.chooseVideoFile}</span>
           </button>
         </div>
       ) : (
@@ -504,7 +508,7 @@ export const VideosView: React.FC<VideosViewProps> = ({
                         ? 'bg-black/70 text-white/80 opacity-100 hover:bg-black/90'
                         : 'bg-black/60 text-white/70 opacity-0 group-hover:opacity-100 hover:text-white hover:bg-black/80'
                     }`}
-                    title={isSelected ? 'Désélectionner' : 'Sélectionner'}
+                    title={isSelected ? t.deselectVideo : t.selectVideo}
                   >
                     {isSelected ? (
                       <CheckSquare className="w-4 h-4" />
@@ -557,10 +561,10 @@ export const VideosView: React.FC<VideosViewProps> = ({
                         onClick={(e) => {
                           e.stopPropagation();
                           onAddTracksToQueue([track]);
-                          showNotification('Vidéo ajoutée à la file');
+                          showNotification(t.videoAddedToQueueToast);
                         }}
                         className="p-1 rounded-lg text-neutral-500 hover:text-sky-400 hover:bg-neutral-800 transition-colors cursor-pointer"
-                        title="Ajouter à la file d'attente"
+                        title={t.playbackQueue}
                       >
                         <ListPlus className="w-3.5 h-3.5" />
                       </button>
@@ -574,7 +578,7 @@ export const VideosView: React.FC<VideosViewProps> = ({
                           onOpenTrimmer(track);
                         }}
                         className="p-1 rounded-lg text-neutral-500 hover:text-emerald-400 hover:bg-neutral-800 transition-colors cursor-pointer"
-                        title="Découper la vidéo"
+                        title={t.trimVideo}
                       >
                         <Scissors className="w-3.5 h-3.5" />
                       </button>
@@ -588,7 +592,7 @@ export const VideosView: React.FC<VideosViewProps> = ({
                           onDeleteTrack(track);
                         }}
                         className="p-1 rounded-lg text-neutral-500 hover:text-red-400 hover:bg-neutral-800 transition-colors cursor-pointer"
-                        title="Supprimer la vidéo"
+                        title={t.deleteVideo}
                       >
                         <Trash2 className="w-3.5 h-3.5" />
                       </button>

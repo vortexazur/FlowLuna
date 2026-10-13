@@ -833,7 +833,9 @@ export async function resolveVideoMarkersCascade(
     snapped,
   };
 
-  setCachedMarkers(trackKey, result, actualDuration);
+  if (!track.isTransient) {
+    setCachedMarkers(trackKey, result, actualDuration);
+  }
   return result;
 }
 

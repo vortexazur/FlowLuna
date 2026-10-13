@@ -1,4 +1,4 @@
-export const APP_VERSION = '1.21.5';
+export const APP_VERSION = '1.21.6';
 
 export type MediaFormat =
   | 'mp3'
@@ -26,9 +26,10 @@ export interface Track {
   bitrate?: number; // e.g. 320
   url: string; // Blob URL or audio stream URL
   coverUrl?: string;
-  source: 'local' | 'youtube' | 'cloud_drive' | 'cloud_onedrive' | 'default';
+  source: 'local' | 'youtube' | 'cloud_drive' | 'cloud_onedrive' | 'default' | 'ephemeral';
   isFavorite: boolean;
   isCachedOffline: boolean;
+  isTransient?: boolean; // Set true for on-the-fly explorer opened files (no persistent DB or disk cache)
   cachedAt?: number; // timestamp
   playCount: number;
   addedAt: number;

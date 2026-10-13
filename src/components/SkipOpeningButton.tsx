@@ -1,6 +1,7 @@
 import React from 'react';
 import { FastForward, ToggleLeft, ToggleRight, AlertTriangle } from 'lucide-react';
-import { SkipInterval } from '../types';
+import { SkipInterval, PlayerSettings, LanguageCode } from '../types';
+import { getT, Translations } from '../i18n';
 
 interface SkipOpeningButtonProps {
   isVisible: boolean;
@@ -10,44 +11,49 @@ interface SkipOpeningButtonProps {
   onToggleAutoSkip: (enabled: boolean) => void;
   autoSkippedToast?: string | null;
   driftDetected?: boolean;
+  settings?: PlayerSettings;
+  language?: LanguageCode;
 }
 
 function getSourceBadge(
   interval: SkipInterval,
-  driftDetected?: boolean
+  driftDetected?: boolean,
+  t?: Translations
 ): { label: string; colorClass: string; isWarning: boolean; isSnapped?: boolean } {
   let label = '';
   let colorClass = '';
   let isWarning = false;
 
+  const trans = t || getT();
+
   if (interval.source === 'chapter') {
-    label = 'Chapitre';
+    label = trans.badgeChapter;
     colorClass = 'text-emerald-400 bg-emerald-500/15 border-emerald-500/30';
   } else if (interval.source === 'acoustic') {
-    label = 'Empreinte Audio Locale';
+    label = trans.badgeAcoustic;
     colorClass = 'text-indigo-400 bg-indigo-500/15 border-indigo-500/30';
   } else if (interval.source === 'subtitle') {
-    label = 'Sous-titres';
+    label = trans.badgeSubtitle;
     colorClass = 'text-purple-400 bg-purple-500/15 border-purple-500/30';
   } else if (interval.source === 'heuristic') {
-    label = 'Heuristique (Incertain)';
+    label = trans.badgeHeuristic;
     colorClass = 'text-slate-300 bg-slate-500/20 border-slate-500/40';
     isWarning = true;
   } else {
     // interval.source === 'api'
     const isDrift = !!driftDetected || interval.confidence === 'moderate';
     if (isDrift) {
-      label = 'API (Décalage possible)';
+      label = trans.badgeApiDrift;
       colorClass = 'text-amber-400 bg-amber-500/15 border-amber-500/30';
       isWarning = true;
     } else {
-      label = 'API';
+      label = trans.badgeApi;
       colorClass = 'text-sky-400 bg-sky-500/15 border-sky-500/30';
     }
   }
 
   if (interval.snapped) {
-    label += ' • Calé au silence';
+    label += ` • ${trans.badgeSilenceSnapped}`;
   }
 
   return { label, colorClass, isWarning, isSnapped: !!interval.snapped };
@@ -61,7 +67,11 @@ export const SkipOpeningButton: React.FC<SkipOpeningButtonProps> = ({
   onToggleAutoSkip,
   autoSkippedToast,
   driftDetected,
+  settings,
+  language,
 }) => {
+  const t = getT(settings?.language || language);
+
   // Détection de l'incertitude (Heuristique ou Drift temporel)
   const isUncertain =
     interval?.source === 'heuristic' || !!driftDetected || interval?.confidence === 'moderate';
@@ -69,17 +79,17 @@ export const SkipOpeningButton: React.FC<SkipOpeningButtonProps> = ({
   // Forcer l'affichage du bouton manuel en cas d'incertitude même si autoSkipEnabled est actif
   const shouldShowButton = isVisible && interval && (!autoSkipEnabled || isUncertain);
 
-  const badge = interval ? getSourceBadge(interval, driftDetected) : null;
+  const badge = interval ? getSourceBadge(interval, driftDetected, t) : null;
 
   const actionLabel = interval
     ? interval.type === 'recap'
-      ? 'Passer le résumé'
+      ? t.skipRecap
       : interval.type === 'preview'
-        ? 'Passer au teaser'
+        ? t.skipTeaser
         : interval.type === 'ed'
-          ? "Passer l'ending"
-          : "Passer l'opening"
-    : "Passer l'opening";
+          ? t.skipEnding
+          : t.skipOpening
+    : t.skipOpening;
 
   return (
     <>
@@ -161,8 +171,8 @@ export const SkipOpeningButton: React.FC<SkipOpeningButtonProps> = ({
             onClick={() => onToggleAutoSkip(!autoSkipEnabled)}
             title={
               autoSkipEnabled
-                ? 'Saut automatique activé (Désactivé pour les segments incertains)'
-                : 'Activer le saut automatique pour les prochains épisodes'
+                ? t.autoSkipEnabledTooltip
+                : t.autoSkipDisabledTooltip
             }
             className="p-2 rounded-2xl bg-neutral-900/90 hover:bg-neutral-800/95 border border-white/10 text-neutral-300 hover:text-sky-300 transition-colors shadow-2xl backdrop-blur-md flex items-center justify-center cursor-pointer"
           >

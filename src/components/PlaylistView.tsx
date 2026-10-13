@@ -23,7 +23,8 @@ import {
   Tag,
   FolderPlus,
 } from 'lucide-react';
-import { Playlist, Track, AccentColor } from '../types';
+import { Playlist, Track, AccentColor, PlayerSettings } from '../types';
+import { getT } from '../i18n';
 import { exportPlaylistToM3U } from '../services/backupService';
 import { ExportTracksModal } from './ExportTracksModal';
 import { AddToPlaylistModal } from './AddToPlaylistModal';
@@ -50,6 +51,7 @@ interface PlaylistViewProps {
   playlists?: Playlist[];
   onAddToPlaylist?: (playlistId: string, trackId: string) => void;
   onCreatePlaylist?: (title: string) => Promise<string | void> | void;
+  settings?: PlayerSettings;
 }
 
 const ACCENT_BTN: Record<AccentColor, string> = {
@@ -108,7 +110,9 @@ export const PlaylistView: React.FC<PlaylistViewProps> = ({
   playlists = [],
   onAddToPlaylist,
   onCreatePlaylist,
+  settings,
 }) => {
+  const t = getT(settings?.language);
   const [isEditingTitle, setIsEditingTitle] = useState(false);
   const [titleInput, setTitleInput] = useState(playlist.title);
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
@@ -301,13 +305,13 @@ export const PlaylistView: React.FC<PlaylistViewProps> = ({
           </p>
 
           <div className="flex items-center gap-2 text-xs text-neutral-400 mt-2 font-medium">
-            <span>{tracks.length} morceaux</span>
+            <span>{tracks.length} {t.playlistTracksCount}</span>
             <span>•</span>
-            <span>~{totalMinutes} minutes d'écoute</span>
+            <span>{t.playlistListeningTime.replace('{minutes}', totalMinutes.toString())}</span>
             <span>•</span>
             <span className={`${ACCENT_TEXT[accent] || 'text-emerald-400'} flex items-center gap-1 font-semibold`}>
               <CheckCircle2 className="w-3.5 h-3.5" />
-              Prêt pour hors-ligne
+              {t.readyOffline}
             </span>
           </div>
         </div>
@@ -326,7 +330,7 @@ export const PlaylistView: React.FC<PlaylistViewProps> = ({
             }`}
           >
             <Play className="w-4 h-4 fill-current ml-0.5" />
-            Tout Lire
+            {t.playAll}
           </button>
 
           <button
@@ -337,7 +341,7 @@ export const PlaylistView: React.FC<PlaylistViewProps> = ({
             className="px-4 py-2.5 rounded-xl text-sm font-semibold bg-neutral-900 hover:bg-neutral-800 text-neutral-200 border border-neutral-800 transition-colors flex items-center gap-2 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
           >
             <Shuffle className="w-4 h-4" />
-            Aléatoire
+            {t.shufflePlay}
           </button>
         </div>
 
@@ -351,9 +355,9 @@ export const PlaylistView: React.FC<PlaylistViewProps> = ({
               setIsHeaderMenuOpen(!isHeaderMenuOpen);
             }}
             className="px-3.5 py-2.5 rounded-xl text-xs font-semibold flex items-center gap-2 border border-neutral-700/80 bg-neutral-900/90 hover:bg-neutral-800 text-neutral-200 hover:text-white transition-all shadow-xs cursor-pointer"
-            title="Options et actions de la playlist"
+            title={t.playlistActionsTooltip}
           >
-            <span>Actions</span>
+            <span>{t.playlistActions}</span>
             <ChevronDown className={`w-3.5 h-3.5 text-neutral-400 transition-transform ${isHeaderMenuOpen ? 'rotate-180' : ''}`} />
           </button>
 
@@ -373,7 +377,7 @@ export const PlaylistView: React.FC<PlaylistViewProps> = ({
                     className="w-full text-left px-3 py-2 rounded-lg text-xs hover:bg-neutral-800 text-neutral-200 font-medium flex items-center gap-2.5 transition-colors cursor-pointer"
                   >
                     <Palette className={`w-4 h-4 ${ACCENT_TEXT[accent] || 'text-emerald-400'}`} />
-                    <span>Personnaliser l'icône & style</span>
+                    <span>{t.customizePlaylist}</span>
                   </button>
 
                   <button
@@ -390,12 +394,12 @@ export const PlaylistView: React.FC<PlaylistViewProps> = ({
                     {playlist.isPinned !== false ? (
                       <>
                         <Pin className={`w-4 h-4 fill-current ${ACCENT_TEXT[accent] || 'text-emerald-400'}`} />
-                        <span>Visible dans le menu de gauche</span>
+                        <span>{t.visibleInSidebar}</span>
                       </>
                     ) : (
                       <>
                         <PinOff className="w-4 h-4 text-neutral-400" />
-                        <span>Masquée du menu de gauche</span>
+                        <span>{t.hiddenFromSidebar}</span>
                       </>
                     )}
                   </button>
@@ -414,7 +418,7 @@ export const PlaylistView: React.FC<PlaylistViewProps> = ({
                   className={`w-full text-left px-3 py-2 rounded-lg text-xs hover:bg-neutral-800 font-medium flex items-center gap-2.5 transition-colors cursor-pointer ${ACCENT_TEXT[accent] || 'text-emerald-400'}`}
                 >
                   <FolderDown className={`w-4 h-4 ${ACCENT_TEXT[accent] || 'text-emerald-400'}`} />
-                  <span>Exporter sur PC ({tracks.length})</span>
+                  <span>{t.exportToPc.replace('{count}', tracks.length.toString())}</span>
                 </button>
               )}
 
@@ -465,15 +469,15 @@ export const PlaylistView: React.FC<PlaylistViewProps> = ({
           <table className="w-full table-fixed text-left text-xs border-collapse">
             <thead>
               <tr className="border-b border-neutral-800 text-neutral-400 uppercase tracking-wider font-semibold">
-                <th className="py-3 px-3 w-10 text-center">#</th>
-                <th className="py-3 px-3">Titre & Artiste</th>
-                <th className="py-3 px-3 hidden sm:table-cell w-36 lg:w-48">Album</th>
-                <th className="py-3 px-3 hidden md:table-cell w-16 sm:w-20">Format</th>
-                <th className="py-3 px-2 w-14 text-center">Favori</th>
+                <th className="py-3 px-3 w-10 text-center">{t.colIndex}</th>
+                <th className="py-3 px-3">{t.colTitleArtist}</th>
+                <th className="py-3 px-3 hidden sm:table-cell w-36 lg:w-48">{t.colAlbum}</th>
+                <th className="py-3 px-3 hidden md:table-cell w-16 sm:w-20">{t.colFormat}</th>
+                <th className="py-3 px-2 w-14 text-center">{t.colFavorite}</th>
                 <th className="py-3 px-2 w-20 text-center">
                   <Clock className="w-3.5 h-3.5 inline" />
                 </th>
-                <th className="py-3 px-3 w-24 text-center pr-4">Actions</th>
+                <th className="py-3 px-3 w-24 text-center pr-4">{t.colActions}</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-neutral-800/40">
@@ -738,13 +742,15 @@ export const PlaylistView: React.FC<PlaylistViewProps> = ({
                 <Trash2 className="w-5 h-5" />
               </div>
               <div>
-                <h3 className="font-bold text-base text-white">Supprimer la playlist</h3>
+                <h3 className="font-bold text-base text-white">{t.deletePlaylistModalTitle}</h3>
                 <p className="text-xs text-neutral-400">Cette action est irréversible</p>
               </div>
             </div>
 
             <p className="text-xs text-neutral-300">
-              Voulez-vous vraiment supprimer la playlist <strong className="text-white">"{playlist.title}"</strong> ? Les morceaux resteront disponibles dans votre bibliothèque musicale.
+              {t.deletePlaylistModalConfirm.split('{title}')[0]}
+              <strong className="text-white">"{playlist.title}"</strong>
+              {t.deletePlaylistModalConfirm.split('{title}')[1] || ''}
             </p>
 
             <div className="flex items-center justify-end gap-2.5 pt-2">
@@ -753,7 +759,7 @@ export const PlaylistView: React.FC<PlaylistViewProps> = ({
                 onClick={() => setIsDeleteModalOpen(false)}
                 className="px-4 py-2 rounded-xl text-xs font-semibold text-neutral-300 hover:text-white bg-neutral-800 hover:bg-neutral-700 transition-colors"
               >
-                Annuler
+                {t.clearCacheCancel}
               </button>
               <button
                 type="button"
@@ -767,7 +773,7 @@ export const PlaylistView: React.FC<PlaylistViewProps> = ({
                 className="px-4 py-2 rounded-xl text-xs font-bold text-white bg-red-600 hover:bg-red-500 flex items-center gap-1.5 transition-colors shadow-sm shadow-red-950"
               >
                 <Trash2 className="w-3.5 h-3.5" />
-                Supprimer
+                {t.deleteBtn}
               </button>
             </div>
           </div>

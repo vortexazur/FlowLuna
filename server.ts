@@ -493,7 +493,7 @@ function getCurrentAppVersion(): string {
     const pkg = JSON.parse(fs.readFileSync(path.join(process.cwd(), 'package.json'), 'utf-8'));
     if (pkg.version) return pkg.version;
   } catch {}
-  return '1.21.5';
+  return '1.21.6';
 }
 
 app.get('/api/app/check-update', async (req, res) => {
@@ -2823,7 +2823,7 @@ interface ScannedAudioTrack {
   bitrate: number;
   url: string;
   coverUrl?: string;
-  source: 'local' | 'default';
+  source: 'local' | 'default' | 'ephemeral';
   isFavorite: boolean;
   isCachedOffline: boolean;
   cachedAt: number;
@@ -2834,6 +2834,7 @@ interface ScannedAudioTrack {
   genre?: string;
   year?: string;
   isVideo?: boolean;
+  isTransient?: boolean;
 }
 
 function getCustomScannedDirs(): string[] {
@@ -3206,7 +3207,8 @@ async function resolveCoverAndMetadata(
 async function buildTrackMetadataFromFile(
   filePath: string,
   isPublic: boolean = false,
-  fetchOnline: boolean = false
+  fetchOnline: boolean = false,
+  isTransient: boolean = false
 ): Promise<ScannedAudioTrack | null> {
   if (!fs.existsSync(filePath)) return null;
 
@@ -3247,8 +3249,17 @@ async function buildTrackMetadataFromFile(
       artist = isVideo ? 'Vidéo' : 'Artiste Local';
     }
 
-    const trackHash = getTrackHash(filePath);
-    const enriched = await resolveCoverAndMetadata(filePath, trackHash, title, artist, album, genre, year, fetchOnline);
+    let enriched: { coverUrl: string; album?: string; artist?: string; title?: string; genre?: string; year?: string } = {
+      coverUrl: '',
+    };
+
+    if (isTransient) {
+      // Ephemeral on-the-fly opening: NO disk cache, NO ffmpeg frame extraction!
+      enriched.coverUrl = '';
+    } else {
+      const trackHash = getTrackHash(filePath);
+      enriched = await resolveCoverAndMetadata(filePath, trackHash, title, artist, album, genre, year, fetchOnline);
+    }
 
     if (enriched.album) album = enriched.album;
     if (enriched.artist) artist = enriched.artist;
@@ -3277,10 +3288,10 @@ async function buildTrackMetadataFromFile(
       bitrate,
       url: playableUrl,
       coverUrl: enriched.coverUrl,
-      source: isPublic && filePath.startsWith(publicDir) ? 'default' : 'local',
+      source: isTransient ? 'ephemeral' : (isPublic && filePath.startsWith(publicDir) ? 'default' : 'local'),
       isFavorite: false,
-      isCachedOffline: true,
-      cachedAt: stats.mtimeMs,
+      isCachedOffline: !isTransient,
+      cachedAt: isTransient ? 0 : stats.mtimeMs,
       playCount: 0,
       addedAt: stats.mtimeMs,
       sizeInBytes: stats.size,
@@ -3288,6 +3299,7 @@ async function buildTrackMetadataFromFile(
       genre,
       year,
       isVideo,
+      isTransient,
     };
   } catch (err) {
     console.warn(`Error building track metadata for ${filePath}:`, err);
@@ -3392,17 +3404,19 @@ const explicitlyAddedFiles = new Set<string>();
 // Endpoint to probe and return track metadata for a list of file paths (from native file dialog)
 app.post('/api/library/add-files', express.json(), async (req, res) => {
   try {
-    const { filePaths } = req.body;
+    const { filePaths, isTransient } = req.body;
     if (!Array.isArray(filePaths) || filePaths.length === 0) {
       return res.status(400).json({ error: 'Aucun fichier fourni' });
     }
 
     const validPaths = filePaths.filter((fp: any) => typeof fp === 'string' && fs.existsSync(fp));
-    for (const fp of validPaths) {
-      explicitlyAddedFiles.add(path.resolve(fp));
+    if (!isTransient) {
+      for (const fp of validPaths) {
+        explicitlyAddedFiles.add(path.resolve(fp));
+      }
     }
 
-    const tasks = validPaths.map((fp: string) => buildTrackMetadataFromFile(fp, false));
+    const tasks = validPaths.map((fp: string) => buildTrackMetadataFromFile(fp, false, false, !!isTransient));
     const results = await Promise.all(tasks);
     const tracks = results.filter((t): t is ScannedAudioTrack => t !== null);
 

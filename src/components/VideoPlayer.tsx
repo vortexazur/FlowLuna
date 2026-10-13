@@ -26,10 +26,11 @@ import {
   ListFilter,
   Zap,
 } from 'lucide-react';
-import { Track, AccentColor, MarathonConfig, VideoAspectRatio } from '../types';
+import { Track, AccentColor, MarathonConfig, VideoAspectRatio, PlayerSettings } from '../types';
 import { SkipOpeningButton } from './SkipOpeningButton';
 import { MarathonCountdownOverlay } from './MarathonCountdownOverlay';
 import { useMarathonController } from '../hooks/useMarathonController';
+import { getT } from '../i18n';
 
 export type VideoDisplayMode = 'theater' | 'pip' | 'hidden';
 export type { VideoAspectRatio };
@@ -70,6 +71,7 @@ interface VideoPlayerProps {
   videoSkipForwardInterval?: number;
   videoAspectRatio?: VideoAspectRatio;
   enableSilenceSnapping?: boolean;
+  settings?: PlayerSettings;
 }
 
 export const VideoPlayer: React.FC<VideoPlayerProps> = ({
@@ -108,7 +110,9 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
   onUpdateMarathonConfig,
   videoSkipForwardInterval = 10,
   videoAspectRatio = 'contain',
+  settings,
 }) => {
+  const t = getT(settings?.language);
   const [areControlsVisible, setAreControlsVisible] = useState(true);
   const [playbackSpeed, setPlaybackSpeed] = useState<number>(1);
   const [isSpeedMenuOpen, setIsSpeedMenuOpen] = useState(false);
@@ -680,7 +684,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
                   e.stopPropagation();
                   triggerSeek(-10);
                 }}
-                title="Reculer de 10 secondes (Double-tap gauche ou ←)"
+                title={t.rewind10s}
                 className={`w-12 h-12 md:w-14 md:h-14 rounded-full bg-neutral-900/85 hover:bg-neutral-800 border text-white flex items-center justify-center shadow-2xl backdrop-blur-md cursor-pointer transition-all duration-200 ${
                   leftIndicatorActive
                     ? 'scale-125 bg-neutral-800 border-sky-400 text-sky-400 ring-4 ring-sky-500/30'
@@ -705,7 +709,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
                   e.stopPropagation();
                   triggerSeek(videoSkipForwardInterval);
                 }}
-                title={`Avancer de ${videoSkipForwardInterval} secondes (Double-tap droite ou →)`}
+                title={t.forwardInterval.replace('{seconds}', String(videoSkipForwardInterval))}
                 className={`w-12 h-12 md:w-14 md:h-14 rounded-full bg-neutral-900/85 hover:bg-neutral-800 border text-white flex items-center justify-center shadow-2xl backdrop-blur-md cursor-pointer transition-all duration-200 ${
                   rightIndicatorActive
                     ? 'scale-125 bg-neutral-800 border-sky-400 text-sky-400 ring-4 ring-sky-500/30'
@@ -760,10 +764,10 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
                     type="button"
                     onClick={() => fileInputRef.current?.click()}
                     className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-neutral-800/80 hover:bg-neutral-700/80 border border-neutral-700/60 text-xs font-semibold text-neutral-200 hover:text-white transition-colors cursor-pointer"
-                    title="Ajouter un fichier à la file d'attente"
+                    title={t.addMediaToQueue}
                   >
                     <FolderPlus className="w-4 h-4 text-emerald-400" />
-                    <span>Ajouter un fichier</span>
+                    <span>{t.addMediaToQueue}</span>
                   </button>
 
                   <div className="flex items-center gap-1.5">
@@ -772,7 +776,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
                         type="button"
                         onClick={onClearQueue}
                         className="p-1.5 rounded-lg bg-neutral-800/70 hover:bg-red-950/60 text-neutral-400 hover:text-red-400 border border-neutral-700/50 transition-colors cursor-pointer"
-                        title="Vider la file"
+                        title={t.clearQueueTooltip}
                       >
                         <Trash2 className="w-4 h-4" />
                       </button>
@@ -783,7 +787,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
                         type="button"
                         onClick={onSaveQueueAsPlaylist}
                         className="p-1.5 rounded-lg bg-neutral-800/70 hover:bg-neutral-700/80 text-neutral-400 hover:text-sky-300 border border-neutral-700/50 transition-colors cursor-pointer flex items-center gap-0.5"
-                        title="Enregistrer comme playlist"
+                        title={t.savePlaylistTooltip}
                       >
                         <PlusSquare className="w-4 h-4" />
                         <ChevronDown className="w-3 h-3 text-neutral-500" />
@@ -793,7 +797,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
                     <button
                       type="button"
                       className="p-1.5 rounded-lg bg-neutral-800/70 text-neutral-400 hover:text-white border border-neutral-700/50 transition-colors cursor-pointer"
-                      title="File de lecture"
+                      title={t.playbackQueue}
                     >
                       <ListFilter className="w-4 h-4" />
                     </button>
@@ -822,7 +826,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
                     </div>
                   ) : (
                     <div className="text-center py-6 text-xs text-neutral-500">
-                      Aucun média en cours de lecture
+                      {t.noMediaPlaying}
                     </div>
                   )}
 
@@ -830,7 +834,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
                   {queue && queue.slice(currentTrackIndex + 1).length > 0 && (
                     <div className="flex flex-col gap-1.5 mt-1">
                       <span className="text-[10px] uppercase font-bold tracking-wider text-neutral-400 px-1">
-                        À suivre ({queue.slice(currentTrackIndex + 1).length})
+                        {t.upNext.replace('{count}', String(queue.slice(currentTrackIndex + 1).length))}
                       </span>
 
                       {queue.slice(currentTrackIndex + 1).map((track, i) => {
@@ -858,7 +862,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
                                     onRemoveFromQueue(realIdx);
                                   }}
                                   className="p-1 text-neutral-500 hover:text-red-400 opacity-0 group-hover:opacity-100 transition-opacity"
-                                  title="Retirer de la file"
+                                  title={t.removeFromQueueTooltip}
                                 >
                                   <X className="w-3.5 h-3.5" />
                                 </button>
@@ -888,7 +892,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
                 <button
                   type="button"
                   onClick={() => onSetVideoMode('pip')}
-                  title="Réduire en lecteur flottant"
+                  title={t.minimizeToPip}
                   className="p-2 rounded-xl bg-neutral-900/80 hover:bg-neutral-800 border border-neutral-700/70 text-neutral-300 hover:text-white transition-colors cursor-pointer shrink-0"
                 >
                   <ChevronDown className="w-5 h-5" />
@@ -898,7 +902,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
                 <button
                   type="button"
                   onClick={() => setIsQueueOpen((prev) => !prev)}
-                  title="File d'attente"
+                  title={t.queuePanelTitle.replace(' ({count})', '')}
                   className={`p-2 rounded-xl border transition-all cursor-pointer shrink-0 ${
                     isQueueOpen
                       ? 'bg-sky-500/20 text-sky-400 border-sky-500/50 shadow-lg shadow-sky-950/40'
@@ -914,8 +918,8 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
                   onClick={toggleMarathon}
                   title={
                     marathonConfig?.enabled
-                      ? 'Mode Marathon activé (Transitions automatiques & Auto-skip) - Raccourci N'
-                      : 'Activer le Mode Marathon (Transitions automatiques)'
+                      ? t.marathonEnabledTooltip
+                      : t.marathonDisabledTooltip
                   }
                   className={`p-2 rounded-xl border transition-all cursor-pointer shrink-0 flex items-center justify-center ${
                     marathonConfig?.enabled
@@ -951,7 +955,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
                     e.stopPropagation();
                     toggleFullscreen();
                   }}
-                  title={isFullscreen ? 'Quitter le plein écran (F)' : 'Plein écran (F)'}
+                  title={isFullscreen ? t.exitFullscreenTooltip : t.enterFullscreenTooltip}
                   className="p-2 rounded-xl bg-neutral-900/80 hover:bg-neutral-800 border border-neutral-700/70 text-neutral-300 hover:text-white transition-colors cursor-pointer"
                 >
                   {isFullscreen ? <Minimize className="w-4 h-4" /> : <Maximize className="w-4 h-4" />}
@@ -961,7 +965,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
                 <button
                   type="button"
                   onClick={handleClose}
-                  title="Fermer la vidéo"
+                  title={t.closeVideoTooltip}
                   className="p-2 rounded-xl bg-neutral-900/80 hover:bg-red-950/80 hover:text-red-400 border border-neutral-700/70 text-neutral-300 transition-colors cursor-pointer"
                 >
                   <X className="w-4 h-4" />
@@ -979,6 +983,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
                 onToggleAutoSkip={(enabled) => onToggleAutoSkip?.(enabled)}
                 autoSkippedToast={marathonToast}
                 driftDetected={markers?.driftDetected}
+                settings={settings}
               />
             )}
 
@@ -1086,7 +1091,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
                     type="button"
                     onClick={onPrev}
                     className="p-2 rounded-lg text-neutral-300 hover:text-white hover:bg-white/10 transition-colors cursor-pointer"
-                    title="Précédent"
+                    title={t.previous}
                   >
                     <SkipBack className="w-4 h-4" />
                   </button>
@@ -1096,7 +1101,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
                     type="button"
                     onClick={() => triggerSeek(-10)}
                     className="p-2 rounded-lg text-neutral-300 hover:text-white hover:bg-white/10 transition-colors cursor-pointer"
-                    title="Reculer de 10 secondes (Double-tap gauche ou ←)"
+                    title={t.rewind10s}
                   >
                     <RotateCcw className="w-4 h-4" />
                   </button>
@@ -1106,7 +1111,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
                     type="button"
                     onClick={onTogglePlay}
                     className="p-3 rounded-full bg-white text-black hover:scale-105 active:scale-95 transition-transform shadow-lg cursor-pointer"
-                    title={isPlaying ? 'Mettre en pause (Espace)' : 'Lire (Espace)'}
+                    title={isPlaying ? t.pause : t.play}
                   >
                     {isPlaying ? (
                       <Pause className="w-5 h-5 fill-current" />
@@ -1120,7 +1125,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
                     type="button"
                     onClick={() => triggerSeek(videoSkipForwardInterval)}
                     className="p-2 rounded-lg text-neutral-300 hover:text-white hover:bg-white/10 transition-colors cursor-pointer"
-                    title={`Avancer de ${videoSkipForwardInterval} secondes (Double-tap droite ou →)`}
+                    title={t.forwardInterval.replace('{seconds}', String(videoSkipForwardInterval))}
                   >
                     <RotateCw className="w-4 h-4" />
                   </button>
@@ -1130,7 +1135,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
                     type="button"
                     onClick={onNext}
                     className="p-2 rounded-lg text-neutral-300 hover:text-white hover:bg-white/10 transition-colors cursor-pointer"
-                    title="Suivant"
+                    title={t.next}
                   >
                     <SkipForward className="w-4 h-4" />
                   </button>
@@ -1173,7 +1178,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
                       type="button"
                       onClick={() => setIsSpeedMenuOpen((prev) => !prev)}
                       className="px-2.5 py-1.5 rounded-lg text-xs font-mono font-semibold bg-neutral-900/80 hover:bg-neutral-800 border border-neutral-700/60 text-neutral-300 hover:text-white transition-colors cursor-pointer flex items-center gap-1"
-                      title="Vitesse de lecture"
+                      title={t.playbackSpeedTooltip}
                     >
                       <Gauge className="w-3.5 h-3.5 text-amber-400" />
                       <span>{playbackSpeed}x</span>
@@ -1207,7 +1212,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
                       toggleFullscreen();
                     }}
                     className="p-2 rounded-lg text-neutral-300 hover:text-white hover:bg-white/10 transition-colors cursor-pointer"
-                    title={isFullscreen ? 'Quitter le plein écran (F)' : 'Plein écran (F)'}
+                    title={isFullscreen ? t.exitFullscreenTooltip : t.enterFullscreenTooltip}
                   >
                     {isFullscreen ? <Minimize className="w-4 h-4" /> : <Maximize className="w-4 h-4" />}
                   </button>
@@ -1237,7 +1242,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
                 <button
                   type="button"
                   onClick={toggleFullscreen}
-                  title="Agrandir en plein écran (Mode cinéma)"
+                  title={t.maximizeTheaterTooltip}
                   className="p-1 rounded-md bg-black/60 hover:bg-neutral-800 text-white cursor-pointer"
                 >
                   <Maximize2 className="w-3.5 h-3.5" />
@@ -1246,7 +1251,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
                 <button
                   type="button"
                   onClick={handleNativePiP}
-                  title="Sortir en fenêtre flottante OS"
+                  title={t.nativePipTooltip}
                   className="p-1 rounded-md bg-black/60 hover:bg-neutral-800 text-white cursor-pointer"
                 >
                   <PictureInPicture className="w-3.5 h-3.5" />
@@ -1255,7 +1260,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
                 <button
                   type="button"
                   onClick={handleClose}
-                  title="Fermer la vidéo"
+                  title={t.closeVideoTooltip}
                   className="p-1 rounded-md bg-black/60 hover:bg-red-900/80 text-white cursor-pointer"
                 >
                   <X className="w-3.5 h-3.5" />

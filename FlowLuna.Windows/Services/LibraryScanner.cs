@@ -29,7 +29,8 @@ public record ScannedAudioTrack(
     [property: JsonPropertyName("filePath")] string FilePath,
     [property: JsonPropertyName("genre")] string? Genre = null,
     [property: JsonPropertyName("year")] string? Year = null,
-    [property: JsonPropertyName("isVideo")] bool IsVideo = false
+    [property: JsonPropertyName("isVideo")] bool IsVideo = false,
+    [property: JsonPropertyName("isTransient")] bool IsTransient = false
 );
 
 public static class LibraryScanner
@@ -437,7 +438,7 @@ public static class LibraryScanner
         return (DefaultCovers[coverIndex], resAlbum, resArtist, resTitle, resGenre, resYear);
     }
 
-    public static async Task<ScannedAudioTrack?> BuildTrackMetadataAsync(string filePath, bool isPublic = false, bool fetchOnline = false)
+    public static async Task<ScannedAudioTrack?> BuildTrackMetadataAsync(string filePath, bool isPublic = false, bool fetchOnline = false, bool isTransient = false)
     {
         if (!File.Exists(filePath)) return null;
 
@@ -492,8 +493,8 @@ public static class LibraryScanner
                 }
             }
 
-            // If ffprobe wasn't available or couldn't read duration, use ffmpeg!
-            if (duration <= 0)
+            // If ffprobe wasn't available or couldn't read duration, use ffmpeg only for permanent imports
+            if (duration <= 0 && !isTransient)
             {
                 var ffmpegProbe = await ProbeWithFfmpegAsync(filePath);
                 if (ffmpegProbe.HasValue)
@@ -540,9 +541,29 @@ public static class LibraryScanner
                 artist = "Artiste Local";
             }
 
-            var trackHash = GetTrackHash(filePath);
-            var (coverUrl, enrichedAlbum, enrichedArtist, enrichedTitle, enrichedGenre, enrichedYear) =
-                await ResolveCoverAndMetadataAsync(filePath, trackHash, title, artist, album, genre, year, fetchOnline);
+            string? coverUrl = null;
+            string? enrichedAlbum = album;
+            string? enrichedArtist = artist;
+            string? enrichedTitle = title;
+            string? enrichedGenre = genre;
+            string? enrichedYear = year;
+
+            if (isTransient)
+            {
+                // On-the-fly ephemeral opening: NO disk cache, NO ffmpeg frame extraction!
+                coverUrl = "";
+            }
+            else
+            {
+                var trackHash = GetTrackHash(filePath);
+                var resolved = await ResolveCoverAndMetadataAsync(filePath, trackHash, title, artist, album, genre, year, fetchOnline);
+                coverUrl = resolved.coverUrl;
+                enrichedAlbum = resolved.enrichedAlbum;
+                enrichedArtist = resolved.enrichedArtist;
+                enrichedTitle = resolved.enrichedTitle;
+                enrichedGenre = resolved.enrichedGenre;
+                enrichedYear = resolved.enrichedYear;
+            }
 
             if (!string.IsNullOrWhiteSpace(enrichedAlbum)) album = enrichedAlbum;
             if (!string.IsNullOrWhiteSpace(enrichedArtist)) artist = enrichedArtist;
@@ -566,17 +587,18 @@ public static class LibraryScanner
                 Bitrate: bitrate,
                 Url: playableUrl,
                 CoverUrl: coverUrl,
-                Source: isPublic ? "default" : "local",
+                Source: isTransient ? "ephemeral" : (isPublic ? "default" : "local"),
                 IsFavorite: false,
-                IsCachedOffline: true,
-                CachedAt: mtime,
+                IsCachedOffline: !isTransient,
+                CachedAt: isTransient ? 0 : mtime,
                 PlayCount: 0,
                 AddedAt: mtime,
                 SizeInBytes: fileInfo.Length,
                 FilePath: filePath,
                 Genre: genre,
                 Year: year,
-                IsVideo: isVideo
+                IsVideo: isVideo,
+                IsTransient: isTransient
             );
         }
         catch
