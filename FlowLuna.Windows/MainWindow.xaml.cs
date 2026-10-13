@@ -144,7 +144,7 @@ public partial class MainWindow : Window
 
                 if (_batchFilesTimer == null)
                 {
-                    _batchFilesTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(250) };
+                    _batchFilesTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(600) };
                     _batchFilesTimer.Tick += (s, e) =>
                     {
                         _batchFilesTimer.Stop();

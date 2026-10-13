@@ -22,7 +22,7 @@ interface QueueDrawerProps {
   onMoveQueueItem: (from: number, to: number) => void;
   onClearQueue: () => void;
   onSaveQueueAsPlaylist?: () => void;
-  onAddMediaToQueue?: (files: FileList | File[]) => void;
+  onAddMediaToQueue?: (files: FileList | File[] | Track[]) => void;
   accent: AccentColor;
 }
 
@@ -55,7 +55,29 @@ export const QueueDrawer: React.FC<QueueDrawerProps> = ({
   const currentTrack = queue[currentTrackIndex];
   const upcomingTracks = queue.slice(currentTrackIndex + 1);
 
-  const handleAddClick = () => {
+  const handleAddClick = async () => {
+    if (window.electronAPI?.selectMusicFiles) {
+      try {
+        const filePaths = await window.electronAPI.selectMusicFiles();
+        if (filePaths && filePaths.length > 0) {
+          const resp = await fetch('/api/library/add-files', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ filePaths }),
+          });
+          if (resp.ok) {
+            const data = await resp.json();
+            if (data.success && Array.isArray(data.tracks) && data.tracks.length > 0) {
+              onAddMediaToQueue?.(data.tracks);
+              return;
+            }
+          }
+        }
+        return;
+      } catch (err) {
+        console.warn('Native picker error in QueueDrawer:', err);
+      }
+    }
     fileInputRef.current?.click();
   };
 

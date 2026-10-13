@@ -493,7 +493,7 @@ function getCurrentAppVersion(): string {
     const pkg = JSON.parse(fs.readFileSync(path.join(process.cwd(), 'package.json'), 'utf-8'));
     if (pkg.version) return pkg.version;
   } catch {}
-  return '1.21.4';
+  return '1.21.5';
 }
 
 app.get('/api/app/check-update', async (req, res) => {
@@ -3397,15 +3397,14 @@ app.post('/api/library/add-files', express.json(), async (req, res) => {
       return res.status(400).json({ error: 'Aucun fichier fourni' });
     }
 
-    const tracks: ScannedAudioTrack[] = [];
-    for (const fp of filePaths) {
-      if (typeof fp === 'string' && fs.existsSync(fp)) {
-        const resolvedPath = path.resolve(fp);
-        explicitlyAddedFiles.add(resolvedPath);
-        const track = await buildTrackMetadataFromFile(fp, false);
-        if (track) tracks.push(track);
-      }
+    const validPaths = filePaths.filter((fp: any) => typeof fp === 'string' && fs.existsSync(fp));
+    for (const fp of validPaths) {
+      explicitlyAddedFiles.add(path.resolve(fp));
     }
+
+    const tasks = validPaths.map((fp: string) => buildTrackMetadataFromFile(fp, false));
+    const results = await Promise.all(tasks);
+    const tracks = results.filter((t): t is ScannedAudioTrack => t !== null);
 
     res.json({
       success: true,

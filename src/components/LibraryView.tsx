@@ -56,6 +56,8 @@ interface LibraryViewProps {
   onRemoveFromPlaylist?: (playlistId: string, trackId: string) => void;
   onCreatePlaylist?: (title: string) => Promise<string | void> | void;
   onAddToQueue: (track: Track) => void;
+  onAddTracksToQueue?: (tracks: Track[]) => void;
+  onPlayTracksBatch?: (tracks: Track[], startIndex?: number) => void;
   onDeleteTrack?: (trackId: string) => void;
   onDeleteTracks?: (trackIds: string[]) => void;
   onImportFiles: (files: FileList | File[]) => void;
@@ -126,6 +128,8 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
   onRemoveFromPlaylist,
   onCreatePlaylist,
   onAddToQueue,
+  onAddTracksToQueue,
+  onPlayTracksBatch,
   onDeleteTrack,
   onDeleteTracks,
   onImportFiles,
@@ -783,7 +787,30 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
                   type="button"
                   onClick={() => {
                     const selectedTracks = musicTracks.filter((t) => selectedTrackIds.has(t.id));
-                    selectedTracks.forEach((t) => onAddToQueue(t));
+                    if (onPlayTracksBatch) {
+                      onPlayTracksBatch(selectedTracks, 0);
+                    } else if (onPlayAll) {
+                      onPlayAll(selectedTracks, false);
+                    }
+                  }}
+                  className={`px-3 py-1.5 rounded-lg font-bold flex items-center gap-1.5 transition-colors shadow-sm ${
+                    ACCENT_BTN[accent] || ACCENT_BTN.emerald
+                  }`}
+                  title="Lire immédiatement les morceaux sélectionnés dans l'ordre"
+                >
+                  <Play className="w-3.5 h-3.5 fill-current" />
+                  <span>Lire ({selectedTrackIds.size})</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    const selectedTracks = musicTracks.filter((t) => selectedTrackIds.has(t.id));
+                    if (onAddTracksToQueue) {
+                      onAddTracksToQueue(selectedTracks);
+                    } else {
+                      selectedTracks.forEach((t) => onAddToQueue(t));
+                    }
                     setNotification({
                       message: `${selectedTracks.length} morceau(x) ajouté(s) à la file d'attente`,
                       type: 'info',

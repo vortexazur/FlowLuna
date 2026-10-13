@@ -186,16 +186,19 @@ public class HttpServer
             using var doc = JsonDocument.Parse(bodyText);
             var filePathsElement = doc.RootElement.GetProperty("filePaths");
 
-            var tracks = new System.Collections.Generic.List<ScannedAudioTrack>();
+            var validFps = new System.Collections.Generic.List<string>();
             foreach (var item in filePathsElement.EnumerateArray())
             {
                 var fp = item.GetString();
                 if (!string.IsNullOrWhiteSpace(fp) && File.Exists(fp))
                 {
-                    var track = await LibraryScanner.BuildTrackMetadataAsync(fp);
-                    if (track != null) tracks.Add(track);
+                    validFps.Add(fp);
                 }
             }
+
+            var tasks = validFps.Select(async fp => await LibraryScanner.BuildTrackMetadataAsync(fp));
+            var results = await Task.WhenAll(tasks);
+            var tracks = results.Where(t => t != null).Select(t => t!).ToList();
 
             return Results.Json(new
             {

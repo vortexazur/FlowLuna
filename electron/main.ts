@@ -47,6 +47,7 @@ function filterMediaFiles(args: string[]): string[] {
 // Prevent multiple instances
 let openFilesBatch: string[] = [];
 let openFilesTimer: NodeJS.Timeout | null = null;
+let earlyOpenFiles: string[] = [];
 
 function dispatchOpenFiles(files: string[]): void {
   for (const f of files) {
@@ -59,10 +60,14 @@ function dispatchOpenFiles(files: string[]): void {
     openFilesTimer = null;
     const batch = [...openFilesBatch];
     openFilesBatch = [];
-    if (batch.length > 0 && mainWindow && mainWindow.webContents) {
-      mainWindow.webContents.send('open-files', batch);
+    if (batch.length > 0) {
+      if (mainWindow && mainWindow.webContents && !mainWindow.webContents.isLoading()) {
+        mainWindow.webContents.send('open-files', batch);
+      } else {
+        earlyOpenFiles.push(...batch);
+      }
     }
-  }, 250);
+  }, 600);
 }
 
 const gotTheLock = app.requestSingleInstanceLock();
@@ -70,15 +75,14 @@ if (!gotTheLock) {
   app.quit();
 } else {
   app.on('second-instance', (_event, commandLine) => {
+    const mediaFiles = filterMediaFiles(commandLine);
+    if (mediaFiles.length > 0) {
+      dispatchOpenFiles(mediaFiles);
+    }
     if (mainWindow) {
       if (mainWindow.isMinimized()) mainWindow.restore();
       if (!mainWindow.isVisible()) mainWindow.show();
       mainWindow.focus();
-
-      const mediaFiles = filterMediaFiles(commandLine);
-      if (mediaFiles.length > 0) {
-        dispatchOpenFiles(mediaFiles);
-      }
     }
   });
 }
@@ -263,8 +267,10 @@ function createMainWindow(): void {
 
   mainWindow.webContents.once('did-finish-load', () => {
     const initialFiles = filterMediaFiles(process.argv);
-    if (initialFiles.length > 0) {
-      dispatchOpenFiles(initialFiles);
+    const allFiles = [...initialFiles, ...earlyOpenFiles];
+    earlyOpenFiles = [];
+    if (allFiles.length > 0) {
+      dispatchOpenFiles(allFiles);
     }
   });
 
@@ -475,9 +481,20 @@ function setupIpcHandlers(): void {
   ipcMain.handle('select-music-files', async () => {
     if (!mainWindow) return [];
     const result = await dialog.showOpenDialog(mainWindow, {
-      title: 'Sélectionner des fichiers musicaux - FlowLuna',
+      title: 'Sélectionner des fichiers multimédias - FlowLuna',
       properties: ['openFile', 'multiSelections'],
       filters: [
+        {
+          name: 'Tous les fichiers multimédias',
+          extensions: [
+            'mp3', 'flac', 'wav', 'ogg', 'm4a', 'aac', 'webm', 'opus', 'wma', 'alac',
+            'mp4', 'mkv', 'mov', 'avi', 'm4v'
+          ],
+        },
+        {
+          name: 'Fichiers vidéo',
+          extensions: ['mp4', 'mkv', 'webm', 'mov', 'avi', 'm4v'],
+        },
         {
           name: 'Fichiers audio',
           extensions: ['mp3', 'flac', 'wav', 'ogg', 'm4a', 'aac', 'webm', 'opus', 'wma', 'alac'],

@@ -161,9 +161,9 @@ public class NativeBridge
         {
             var dialog = new OpenFileDialog
             {
-                Title = "Sélectionner des morceaux de musique - FlowLuna",
+                Title = "Sélectionner des fichiers multimédias - FlowLuna",
                 Multiselect = true,
-                Filter = "Fichiers audio (*.mp3;*.flac;*.wav;*.ogg;*.m4a;*.aac;*.webm;*.opus;*.wma;*.alac)|*.mp3;*.flac;*.wav;*.ogg;*.m4a;*.aac;*.webm;*.opus;*.wma;*.alac|Tous les fichiers (*.*)|*.*"
+                Filter = "Tous les médias (*.mp3;*.flac;*.wav;*.ogg;*.m4a;*.aac;*.webm;*.opus;*.mp4;*.mkv;*.mov;*.avi;*.m4v)|*.mp3;*.flac;*.wav;*.ogg;*.m4a;*.aac;*.webm;*.opus;*.mp4;*.mkv;*.mov;*.avi;*.m4v|Fichiers vidéo (*.mp4;*.mkv;*.webm;*.mov;*.avi;*.m4v)|*.mp4;*.mkv;*.webm;*.mov;*.avi;*.m4v|Fichiers audio (*.mp3;*.flac;*.wav;*.ogg;*.m4a;*.aac;*.webm;*.opus)|*.mp3;*.flac;*.wav;*.ogg;*.m4a;*.aac;*.webm;*.opus|Tous les fichiers (*.*)|*.*"
             };
 
             var result = dialog.ShowDialog(_window);

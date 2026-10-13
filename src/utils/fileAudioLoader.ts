@@ -84,14 +84,18 @@ export async function extractVideoMetadata(
     };
 
     const safetyTimeout = setTimeout(() => {
-      done(undefined, video.videoWidth, video.videoHeight);
-    }, 4500);
+      done(undefined, video.videoWidth || undefined, video.videoHeight || undefined);
+    }, 2000);
 
     video.onloadedmetadata = () => {
       // Seek slightly into the video to avoid initial black frames
       const rawDur = typeof video.duration === 'number' && Number.isFinite(video.duration) && video.duration > 0 ? video.duration : 10;
       const seekTarget = Math.min(2.0, Math.max(0, rawDur * 0.15));
-      video.currentTime = seekTarget;
+      try {
+        video.currentTime = seekTarget;
+      } catch {
+        done(undefined, video.videoWidth || undefined, video.videoHeight || undefined);
+      }
     };
 
     video.onseeked = () => {
@@ -205,6 +209,9 @@ export async function processLocalAudioFile(file: File): Promise<Track> {
     } catch {}
   }
 
+  const localPath = (file as any).path || (file as any).webkitRelativePath || undefined;
+  const playableUrl = localPath ? `/api/library/stream?file=${encodeURIComponent(localPath)}` : URL.createObjectURL(file);
+
   const track: Track = {
     id: trackId,
     title: resolvedTitle,
@@ -215,24 +222,36 @@ export async function processLocalAudioFile(file: File): Promise<Track> {
     duration: Math.round(duration),
     format,
     bitrate: format === 'flac' || format === 'wav' ? 1411 : isVideo ? 1080 : 320,
-    url: '', // Will be loaded from blob in indexedDB
+    url: playableUrl,
     coverUrl,
     source: 'local',
     isFavorite: false,
-    isCachedOffline: true,
+    isCachedOffline: !localPath,
     cachedAt: Date.now(),
     playCount: 0,
     addedAt: Date.now(),
     sizeInBytes: file.size,
+    filePath: localPath,
     isVideo,
     videoWidth,
     videoHeight,
   };
 
-  // Save blob to IndexedDB for offline persistence
-  await saveAudioBlob(track.id, file);
-  // Save track metadata
-  await saveTrack(track);
+  // Only store blob in IndexedDB if there is no direct local path AND it is not an oversized video file
+  if (!localPath && (!isVideo || file.size < 50 * 1024 * 1024)) {
+    try {
+      await saveAudioBlob(track.id, file);
+    } catch (err) {
+      console.warn('Could not cache file blob to IndexedDB, fallback to memory URL:', err);
+    }
+  }
+
+  // Save track metadata safely
+  try {
+    await saveTrack(track);
+  } catch (err) {
+    console.warn('Could not save track metadata:', err);
+  }
 
   return track;
 }

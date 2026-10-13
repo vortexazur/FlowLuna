@@ -1049,74 +1049,186 @@ export default function App() {
     setTracks((prev) => [newTrack, ...prev]);
   };
 
-  // Open local files or folders (Screenbox)
-  const handleImportFiles = async (files: FileList | File[] | Track[]) => {
+  // Batch resolve mixed inputs (File[], FileList, Track[], or files with .path) into Track[]
+  const resolveFilesToTracks = useCallback(async (files: FileList | File[] | Track[]): Promise<Track[]> => {
     const fileList = Array.isArray(files) ? files : Array.from(files);
-    const imported: Track[] = [];
+    if (fileList.length === 0) return [];
+
+    const resolvedTracks: Track[] = [];
+    const nativeFilePaths: string[] = [];
+    const nonNativeFiles: File[] = [];
+
     for (const item of fileList) {
-      try {
-        if ('url' in item && 'format' in item && 'id' in item) {
-          imported.push(item as Track);
+      if ('url' in item && 'format' in item && 'id' in item) {
+        resolvedTracks.push(item as Track);
+      } else {
+        const file = item as File;
+        const filePath = (file as any).path || (file as any).webkitRelativePath;
+        if (typeof filePath === 'string' && (filePath.includes(':\\') || filePath.startsWith('\\\\') || filePath.startsWith('/'))) {
+          nativeFilePaths.push(filePath);
         } else {
-          const track = await processLocalAudioFile(item as File);
-          imported.push(track);
+          nonNativeFiles.push(file);
         }
-      } catch (err) {
-        console.warn('File processing error:', err);
       }
     }
-    if (imported.length > 0) {
+
+    if (nativeFilePaths.length > 0) {
+      try {
+        const resp = await fetch('/api/library/add-files', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ filePaths: nativeFilePaths }),
+        });
+        if (resp.ok) {
+          const data = await resp.json();
+          if (data.success && Array.isArray(data.tracks) && data.tracks.length > 0) {
+            resolvedTracks.push(...data.tracks);
+          }
+        }
+      } catch (err) {
+        console.warn('API /api/library/add-files batch error:', err);
+      }
+    }
+
+    if (nonNativeFiles.length > 0) {
+      for (const f of nonNativeFiles) {
+        try {
+          const t = await processLocalAudioFile(f);
+          resolvedTracks.push(t);
+        } catch (err) {
+          console.warn('File processing error for non-native file:', err);
+        }
+      }
+    }
+
+    return resolvedTracks;
+  }, []);
+
+  // Atomically apply newly imported files or playlist batch (Screenbox model: item 0 starts, rest populated in queue)
+  const applyImportedTracks = useCallback(
+    (imported: Track[], autoPlay: boolean = true) => {
+      if (!imported || imported.length === 0) return;
+
+      // Ensure all imported tracks are saved/updated in library
       setTracks((prev) => {
-        const existingIds = new Set(prev.map((t) => t.id));
-        const newOnes = imported.filter((t) => !existingIds.has(t.id));
-        return [...newOnes, ...prev];
+        const existingMap = new Map(prev.map((t) => [t.id, t]));
+        for (const t of imported) {
+          existingMap.set(t.id, t);
+        }
+        return Array.from(existingMap.values());
       });
-      setQueue((prev) => {
-        const existingIds = new Set(prev.map((t) => t.id));
-        const newTracks = imported.filter((t) => !existingIds.has(t.id));
-        return [...newTracks, ...prev];
+
+      // Construct queue: place imported tracks first, keep remaining deduplicated old tracks
+      const incomingIds = new Set(imported.map((t) => t.id));
+      const curQueue = queueRef.current;
+      const remainingOldQueue = curQueue.filter((t) => !incomingIds.has(t.id));
+      const newQueue = [...imported, ...remainingOldQueue];
+
+      // Synchronously update both ref and React state
+      setQueue(newQueue);
+      queueRef.current = newQueue;
+
+      if (autoPlay) {
+        currentTrackIndexRef.current = 0;
+        setCurrentTrackIndex(0);
+        playTrackAt(0, newQueue, true);
+        if (imported[0]?.isVideo) {
+          setVideoMode('theater');
+        }
+      }
+    },
+    [playTrackAt]
+  );
+
+  // Atomically append multiple tracks to the existing queue
+  const handleAddTracksToQueue = useCallback(
+    (tracksToAdd: Track[]) => {
+      if (!tracksToAdd || tracksToAdd.length === 0) return;
+
+      setTracks((prev) => {
+        const existingMap = new Map(prev.map((t) => [t.id, t]));
+        for (const t of tracksToAdd) {
+          if (!existingMap.has(t.id)) {
+            existingMap.set(t.id, t);
+          }
+        }
+        return Array.from(existingMap.values());
       });
-      // Start playing the newly opened track immediately
-      const newQueue = [...imported, ...queue.filter((t) => !imported.some((imp) => imp.id === t.id))];
-      playTrackAt(0, newQueue);
-      if (imported[0]?.isVideo) {
+
+      const curQueue = queueRef.current;
+      const existingQueueIds = new Set(curQueue.map((t) => t.id));
+      const newTracks = tracksToAdd.filter((t) => !existingQueueIds.has(t.id));
+      const newQueue = [...curQueue, ...newTracks];
+
+      setQueue(newQueue);
+      queueRef.current = newQueue;
+
+      if (currentTrackIndexRef.current === -1 && curQueue.length === 0 && newQueue.length > 0) {
+        currentTrackIndexRef.current = 0;
+        setCurrentTrackIndex(0);
+        playTrackAt(0, newQueue, true);
+        if (newQueue[0]?.isVideo) {
+          setVideoMode('theater');
+        }
+      }
+    },
+    [playTrackAt]
+  );
+
+  // Play a batch of tracks starting from a specified index (Screenbox Selection playback)
+  const handlePlayTracksBatch = useCallback(
+    (batchTracks: Track[], startIndex: number = 0) => {
+      if (!batchTracks || batchTracks.length === 0) return;
+
+      setTracks((prev) => {
+        const map = new Map(prev.map((t) => [t.id, t]));
+        for (const t of batchTracks) {
+          map.set(t.id, t);
+        }
+        return Array.from(map.values());
+      });
+
+      const batchIds = new Set(batchTracks.map((t) => t.id));
+      const curQueue = queueRef.current;
+      const remainingOldQueue = curQueue.filter((t) => !batchIds.has(t.id));
+      const newQueue = [...batchTracks, ...remainingOldQueue];
+
+      setQueue(newQueue);
+      queueRef.current = newQueue;
+
+      const targetIdx = Math.max(0, Math.min(startIndex, batchTracks.length - 1));
+      currentTrackIndexRef.current = targetIdx;
+      setCurrentTrackIndex(targetIdx);
+      playTrackAt(targetIdx, newQueue, true);
+
+      if (batchTracks[targetIdx]?.isVideo) {
         setVideoMode('theater');
       }
-    }
-  };
+    },
+    [playTrackAt]
+  );
+
+  // Open local files or folders (Screenbox batch mode)
+  const handleImportFiles = useCallback(
+    async (files: FileList | File[] | Track[]) => {
+      const imported = await resolveFilesToTracks(files);
+      if (imported.length > 0) {
+        applyImportedTracks(imported, true);
+      }
+    },
+    [resolveFilesToTracks, applyImportedTracks]
+  );
 
   // Add media (videos or songs) to the queue from the QueueDrawer '+' button
-  const handleAddMediaToQueue = async (files: FileList | File[] | Track[]) => {
-    const fileList = Array.isArray(files) ? files : Array.from(files);
-    const imported: Track[] = [];
-    for (const item of fileList) {
-      try {
-        if ('url' in item && 'format' in item && 'id' in item) {
-          imported.push(item as Track);
-        } else {
-          const track = await processLocalAudioFile(item as File);
-          imported.push(track);
-        }
-      } catch (err) {
-        console.warn('File processing error in queue:', err);
+  const handleAddMediaToQueue = useCallback(
+    async (files: FileList | File[] | Track[]) => {
+      const imported = await resolveFilesToTracks(files);
+      if (imported.length > 0) {
+        handleAddTracksToQueue(imported);
       }
-    }
-    if (imported.length > 0) {
-      setTracks((prev) => {
-        const existingIds = new Set(prev.map((t) => t.id));
-        const newOnes = imported.filter((t) => !existingIds.has(t.id));
-        return [...newOnes, ...prev];
-      });
-      setQueue((prev) => {
-        const existingIds = new Set(prev.map((t) => t.id));
-        const newOnes = imported.filter((t) => !existingIds.has(t.id));
-        return [...prev, ...newOnes];
-      });
-      if (currentTrackIndex === -1 && queue.length === 0) {
-        playTrackAt(0, imported);
-      }
-    }
-  };
+    },
+    [resolveFilesToTracks, handleAddTracksToQueue]
+  );
 
   // Global Keyboard Shortcuts
   useEffect(() => {
@@ -1252,27 +1364,7 @@ export default function App() {
         if (resp.ok) {
           const data = await resp.json();
           if (data.success && Array.isArray(data.tracks) && data.tracks.length > 0) {
-            const incoming: Track[] = data.tracks;
-            setTracks((prev) => {
-              const existingMap = new Map(prev.map((t) => [t.id, t]));
-              for (const t of incoming) {
-                existingMap.set(t.id, t);
-              }
-              return Array.from(existingMap.values());
-            });
-
-            // Bug 3 fix: Lancer le 1er fichier et insérer l'intégralité des autres fichiers sélectionnés dans la file d'attente (playlist)
-            const incomingIds = new Set(incoming.map((t) => t.id));
-            const curQueue = queueRef.current;
-            const remainingOldQueue = curQueue.filter((t) => !incomingIds.has(t.id));
-            const newQueue = [...incoming, ...remainingOldQueue];
-
-            setQueue(newQueue);
-            queueRef.current = newQueue;
-            playTrackAt(0, newQueue);
-            if (incoming[0]?.isVideo) {
-              setVideoMode('theater');
-            }
+            applyImportedTracks(data.tracks, true);
           }
         }
       } catch (err) {
@@ -1282,7 +1374,7 @@ export default function App() {
     return () => {
       unsubscribe?.();
     };
-  }, [playTrackAt]);
+  }, [applyImportedTracks]);
 
   // Media element listeners for both Audio and Video players
   useEffect(() => {
@@ -1619,6 +1711,8 @@ export default function App() {
             setIsPlaying(true);
             playTrackAt(idx !== -1 ? idx : 0, q);
           }}
+          onPlayTracksBatch={handlePlayTracksBatch}
+          onAddTracksToQueue={handleAddTracksToQueue}
           onOpenVideoTheater={() => {
             setVideoMode('theater');
             setIsPlaying(true);
@@ -1628,6 +1722,7 @@ export default function App() {
           }}
           onImportFiles={handleImportFiles}
           onDeleteTrack={(track) => handleDeleteTrack(track.id)}
+          onDeleteTracks={handleDeleteTracks}
           onOpenTrimmer={handleOpenTrimmer}
           accent={playerSettings.accent}
         />
@@ -1672,11 +1767,13 @@ export default function App() {
           playTrackAt(idx !== -1 ? idx : 0, q);
         }}
         onPlayAll={handlePlayAllInPlaylist}
+        onPlayTracksBatch={handlePlayTracksBatch}
         onToggleFavorite={handleToggleFavorite}
         onAddToPlaylist={handleAddToPlaylist}
         onRemoveFromPlaylist={handleRemoveTrackFromPlaylist}
         onCreatePlaylist={handleSaveNewPlaylist}
         onAddToQueue={handleAddToQueue}
+        onAddTracksToQueue={handleAddTracksToQueue}
         onDeleteTrack={handleDeleteTrack}
         onDeleteTracks={handleDeleteTracks}
         onImportFiles={handleImportFiles}
