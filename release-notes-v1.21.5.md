@@ -40,3 +40,7 @@
 # Vérification d'intégrité SHA256 (PowerShell)
 Get-FileHash -Algorithm SHA256 "FlowLuna-Setup-1.21.5.exe"
 ```
+
+| Fichier | Empreinte Numérique SHA256 |
+|---|---|
+| `FlowLuna-Setup-1.21.5.exe` | `693519386B53B8033F0AAFCC903EA8B99BDC6F72EC76ABE7A93F519CF39ED3D6` |
