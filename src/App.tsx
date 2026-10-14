@@ -1408,26 +1408,62 @@ export default function App() {
 
   // Listen for files opened directly from Windows (double-click or Open With)
   useEffect(() => {
-    if (!window.electronAPI?.onOpenFiles) return;
-    const unsubscribe = window.electronAPI.onOpenFiles(async (filePaths) => {
+    if (!window.electronAPI) return;
+
+    let isMounted = true;
+    let lastHandledKey = '';
+    let lastHandledTimestamp = 0;
+
+    const processIncomingFiles = async (filePaths: string[]) => {
       if (!Array.isArray(filePaths) || filePaths.length === 0) return;
+
+      const validFiles = filePaths.filter((fp) => typeof fp === 'string' && fp.trim().length > 0);
+      if (validFiles.length === 0) return;
+
+      // Prevent processing duplicate bursts within 1.5s (e.g. from both push and pull)
+      const currentKey = [...validFiles].sort().join('|');
+      const now = Date.now();
+      if (currentKey === lastHandledKey && now - lastHandledTimestamp < 1500) {
+        return;
+      }
+      lastHandledKey = currentKey;
+      lastHandledTimestamp = now;
+
       try {
         const resp = await fetch('/api/library/add-files', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ filePaths, isTransient: true }),
+          body: JSON.stringify({ filePaths: validFiles, isTransient: true }),
         });
-        if (resp.ok) {
+        if (resp.ok && isMounted) {
           const data = await resp.json();
           if (data.success && Array.isArray(data.tracks) && data.tracks.length > 0) {
             handleOpenExternalFiles(data.tracks);
+            window.electronAPI?.ackOpenFiles?.(validFiles);
           }
         }
       } catch (err) {
         console.warn('Failed to open incoming files from Windows:', err);
       }
-    });
+    };
+
+    // 1. Subscribe to real-time events from main process (e.g. second-instance)
+    const unsubscribe = window.electronAPI.onOpenFiles?.(processIncomingFiles);
+
+    // 2. Proactively fetch any pending startup files queued before React mounted
+    if (window.electronAPI.getPendingOpenFiles) {
+      window.electronAPI
+        .getPendingOpenFiles()
+        .then((pending) => {
+          if (isMounted && Array.isArray(pending) && pending.length > 0) {
+            processIncomingFiles(pending);
+          }
+        })
+        .catch((err) => console.warn('Failed to fetch pending open files:', err));
+    }
+
     return () => {
+      isMounted = false;
       unsubscribe?.();
     };
   }, [handleOpenExternalFiles]);

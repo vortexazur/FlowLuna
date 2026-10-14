@@ -26,58 +26,124 @@ app.setAppUserModelId('com.flowluna.player');
 app.commandLine.appendSwitch('disable-gpu-shader-disk-cache');
 
 const MEDIA_EXTS = new Set([
-  '.mp3', '.flac', '.wav', '.ogg', '.m4a', '.aac', '.webm', '.opus', '.wma', '.alac',
-  '.mp4', '.mkv', '.mov', '.avi', '.m4v'
+  // Audio
+  '.mp3', '.flac', '.wav', '.ogg', '.oga', '.m4a', '.aac', '.opus', '.wma', '.alac', '.aiff', '.aif', '.m4b',
+  // Video
+  '.mp4', '.mkv', '.webm', '.mov', '.avi', '.m4v', '.wmv', '.flv', '.3gp', '.ts', '.m2ts', '.ogv'
 ]);
 
-function filterMediaFiles(args: string[]): string[] {
-  const result: string[] = [];
-  for (const arg of args) {
-    if (!arg || arg.startsWith('--') || arg.startsWith('-')) continue;
-    try {
-      const ext = path.extname(arg).toLowerCase();
-      if (MEDIA_EXTS.has(ext) && fs.existsSync(arg)) {
-        result.push(path.resolve(arg));
-      }
-    } catch {}
+function cleanPathArgument(rawArg: string, cwd?: string): string | null {
+  if (!rawArg || typeof rawArg !== 'string') return null;
+  let cleaned = rawArg.trim();
+
+  // Strip leading/trailing quotes often preserved by Windows shell/registry
+  if ((cleaned.startsWith('"') && cleaned.endsWith('"')) || (cleaned.startsWith("'") && cleaned.endsWith("'"))) {
+    cleaned = cleaned.slice(1, -1).trim();
   }
+
+  if (!cleaned) return null;
+
+  // Ignore CLI switches (e.g. --hidden, -v, etc.)
+  if (cleaned.startsWith('-')) return null;
+
+  // Convert file:// URI to standard path
+  if (cleaned.toLowerCase().startsWith('file://')) {
+    try {
+      const url = new URL(cleaned);
+      cleaned = decodeURIComponent(url.pathname);
+      if (process.platform === 'win32' && cleaned.startsWith('/') && cleaned.length > 2 && cleaned[2] === ':') {
+        cleaned = cleaned.slice(1);
+      }
+    } catch {
+      cleaned = cleaned.replace(/^file:\/\/\/?/i, '');
+      try {
+        cleaned = decodeURIComponent(cleaned);
+      } catch {}
+    }
+  }
+
+  // Resolve relative paths with working directory (crucial for second-instance)
+  const resolved = cwd ? path.resolve(cwd, cleaned) : path.resolve(cleaned);
+
+  try {
+    const ext = path.extname(resolved).toLowerCase();
+    if (MEDIA_EXTS.has(ext) && fs.existsSync(resolved)) {
+      const stat = fs.statSync(resolved);
+      if (stat.isFile()) {
+        return resolved;
+      }
+    }
+  } catch {}
+
+  return null;
+}
+
+function filterMediaFiles(args: string[], cwd?: string): string[] {
+  if (!Array.isArray(args)) return [];
+  const result: string[] = [];
+
+  for (let i = 0; i < args.length; i++) {
+    const arg = args[i];
+    if (!arg || typeof arg !== 'string') continue;
+
+    // Skip executable binaries
+    if (i === 0 && (arg.toLowerCase().endsWith('electron.exe') || arg.toLowerCase().endsWith('node.exe') || arg.toLowerCase().endsWith('flowluna.exe'))) {
+      continue;
+    }
+    // In dev, skip '.' or main script entry
+    if (i === 1 && (arg === '.' || arg.endsWith('main.cjs') || arg.endsWith('main.ts') || arg.endsWith('main.js'))) {
+      continue;
+    }
+
+    const validPath = cleanPathArgument(arg, cwd);
+    if (validPath && !result.includes(validPath)) {
+      result.push(validPath);
+    }
+  }
+
   return result;
 }
 
-// Prevent multiple instances
-let openFilesBatch: string[] = [];
+// Manage pending files across cold boot & subsequent second-instance bursts
+let pendingOpenFiles: string[] = [];
 let openFilesTimer: NodeJS.Timeout | null = null;
-let earlyOpenFiles: string[] = [];
 
-function dispatchOpenFiles(files: string[]): void {
+function queueOpenFiles(files: string[]): void {
   for (const f of files) {
-    if (!openFilesBatch.includes(f)) {
-      openFilesBatch.push(f);
+    if (!pendingOpenFiles.includes(f)) {
+      pendingOpenFiles.push(f);
     }
   }
+
   if (openFilesTimer) clearTimeout(openFilesTimer);
   openFilesTimer = setTimeout(() => {
     openFilesTimer = null;
-    const batch = [...openFilesBatch];
-    openFilesBatch = [];
-    if (batch.length > 0) {
-      if (mainWindow && mainWindow.webContents && !mainWindow.webContents.isLoading()) {
-        mainWindow.webContents.send('open-files', batch);
-      } else {
-        earlyOpenFiles.push(...batch);
-      }
-    }
-  }, 120);
+    flushOpenFilesToRenderer();
+  }, 100);
+}
+
+function flushOpenFilesToRenderer(): void {
+  if (pendingOpenFiles.length === 0) return;
+  if (mainWindow && mainWindow.webContents && !mainWindow.webContents.isLoading()) {
+    const batch = [...pendingOpenFiles];
+    mainWindow.webContents.send('open-files', batch);
+  }
+}
+
+// Proactively inspect process.argv on startup
+const startupMediaFiles = filterMediaFiles(process.argv);
+if (startupMediaFiles.length > 0) {
+  queueOpenFiles(startupMediaFiles);
 }
 
 const gotTheLock = app.requestSingleInstanceLock();
 if (!gotTheLock) {
   app.quit();
 } else {
-  app.on('second-instance', (_event, commandLine) => {
-    const mediaFiles = filterMediaFiles(commandLine);
+  app.on('second-instance', (_event, commandLine, workingDirectory) => {
+    const mediaFiles = filterMediaFiles(commandLine, workingDirectory);
     if (mediaFiles.length > 0) {
-      dispatchOpenFiles(mediaFiles);
+      queueOpenFiles(mediaFiles);
     }
     if (mainWindow) {
       if (mainWindow.isMinimized()) mainWindow.restore();
@@ -266,12 +332,14 @@ function createMainWindow(): void {
   });
 
   mainWindow.webContents.once('did-finish-load', () => {
-    const initialFiles = filterMediaFiles(process.argv);
-    const allFiles = [...initialFiles, ...earlyOpenFiles];
-    earlyOpenFiles = [];
-    if (allFiles.length > 0) {
-      dispatchOpenFiles(allFiles);
+    const currentArgvFiles = filterMediaFiles(process.argv);
+    if (currentArgvFiles.length > 0) {
+      queueOpenFiles(currentArgvFiles);
     }
+    // Give renderer a short moment to finish React hydration/mounting and flush
+    setTimeout(() => {
+      flushOpenFilesToRenderer();
+    }, 250);
   });
 
   mainWindow.loadURL(targetUrl);
@@ -521,6 +589,19 @@ function setupIpcHandlers(): void {
       } catch {}
     }
   });
+
+  ipcMain.handle('get-pending-open-files', () => {
+    return [...pendingOpenFiles];
+  });
+
+  ipcMain.handle('ack-open-files', (_event, filesAcknowledged: string[]) => {
+    if (Array.isArray(filesAcknowledged)) {
+      const ackSet = new Set(filesAcknowledged);
+      pendingOpenFiles = pendingOpenFiles.filter((f) => !ackSet.has(f));
+    } else {
+      pendingOpenFiles = [];
+    }
+  });
 }
 
 // App lifecycle
@@ -541,7 +622,10 @@ app.whenReady().then(async () => {
 
 app.on('open-file', (event, filePath) => {
   event.preventDefault();
-  dispatchOpenFiles([filePath]);
+  const cleaned = cleanPathArgument(filePath);
+  if (cleaned) {
+    queueOpenFiles([cleaned]);
+  }
 });
 
 app.on('will-quit', () => {

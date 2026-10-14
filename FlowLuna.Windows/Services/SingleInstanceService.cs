@@ -131,14 +131,38 @@ public static class SingleInstanceService
     private static List<string> CleanArgs(string[] args)
     {
         var result = new List<string>();
+        if (args == null) return result;
+
         foreach (var arg in args)
         {
             if (string.IsNullOrWhiteSpace(arg)) continue;
-            var path = arg.Trim().Trim('"');
-            if (File.Exists(path) || Directory.Exists(path))
+            var path = arg.Trim().Trim('"', '\'');
+            if (string.IsNullOrWhiteSpace(path) || path.StartsWith("-")) continue;
+
+            if (path.StartsWith("file://", StringComparison.OrdinalIgnoreCase))
             {
-                result.Add(path);
+                try
+                {
+                    if (Uri.TryCreate(path, UriKind.Absolute, out var uri))
+                    {
+                        path = uri.LocalPath;
+                    }
+                }
+                catch { }
             }
+
+            try
+            {
+                var fullPath = Path.GetFullPath(path);
+                if (File.Exists(fullPath) || Directory.Exists(fullPath))
+                {
+                    if (!result.Contains(fullPath, StringComparer.OrdinalIgnoreCase))
+                    {
+                        result.Add(fullPath);
+                    }
+                }
+            }
+            catch { }
         }
         return result;
     }

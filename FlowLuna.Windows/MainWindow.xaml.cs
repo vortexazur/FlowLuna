@@ -284,6 +284,26 @@ public partial class MainWindow : Window
             // 4. Inject polyfill script so window.electronAPI is automatically available
             const string polyfillScript = @"
             (function() {
+                var __flowluna_openFilesBuffer = [];
+                var __flowluna_openFilesListeners = [];
+
+                window.addEventListener('flowluna-open-files', function(e) {
+                    var files = e.detail;
+                    if (Array.isArray(files) && files.length > 0) {
+                        if (__flowluna_openFilesListeners.length > 0) {
+                            for (var i = 0; i < __flowluna_openFilesListeners.length; i++) {
+                                try { __flowluna_openFilesListeners[i](files); } catch(err) { console.error(err); }
+                            }
+                        } else {
+                            for (var j = 0; j < files.length; j++) {
+                                if (__flowluna_openFilesBuffer.indexOf(files[j]) === -1) {
+                                    __flowluna_openFilesBuffer.push(files[j]);
+                                }
+                            }
+                        }
+                    }
+                });
+
                 window.electronAPI = {
                     isElectron: true,
                     platform: 'win32',
@@ -353,9 +373,25 @@ public partial class MainWindow : Window
                         } catch {}
                     },
                     onOpenFiles: (callback) => {
-                        const handler = (e) => callback(e.detail);
-                        window.addEventListener('flowluna-open-files', handler);
-                        return () => window.removeEventListener('flowluna-open-files', handler);
+                        __flowluna_openFilesListeners.push(callback);
+                        if (__flowluna_openFilesBuffer.length > 0) {
+                            var buffered = __flowluna_openFilesBuffer.slice();
+                            __flowluna_openFilesBuffer = [];
+                            setTimeout(function() {
+                                try { callback(buffered); } catch (err) { console.error(err); }
+                            }, 0);
+                        }
+                        return () => {
+                            __flowluna_openFilesListeners = __flowluna_openFilesListeners.filter(function(cb) { return cb !== callback; });
+                        };
+                    },
+                    getPendingOpenFiles: async () => {
+                        var buffered = __flowluna_openFilesBuffer.slice();
+                        __flowluna_openFilesBuffer = [];
+                        return buffered;
+                    },
+                    ackOpenFiles: async (files) => {
+                        return;
                     },
                     toggleFullscreen: () => {
                         try {

@@ -23,6 +23,20 @@
   "asarUnpack": [
     "**/bin/**"
   ],
+  "fileAssociations": [
+    {
+      "ext": ["mp3", "flac", "wav", "ogg", "oga", "m4a", "aac", "opus", "wma", "alac", "aiff", "aif", "m4b"],
+      "name": "FlowLuna Audio File",
+      "description": "Fichier audio FlowLuna",
+      "role": "Viewer"
+    },
+    {
+      "ext": ["mp4", "mkv", "webm", "mov", "avi", "m4v", "wmv", "flv", "3gp", "ts", "m2ts", "ogv"],
+      "name": "FlowLuna Video File",
+      "description": "Fichier vidéo FlowLuna",
+      "role": "Viewer"
+    }
+  ],
   "win": {
     "target": [
       {

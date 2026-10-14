@@ -21,11 +21,36 @@ export interface ElectronAPI {
   applyUpdate?: (installerPath?: string) => Promise<any>;
   openDefaultAppsSettings?: () => Promise<void>;
   onOpenFiles?: (callback: (filePaths: string[]) => void) => () => void;
+  getPendingOpenFiles?: () => Promise<string[]>;
+  ackOpenFiles?: (files: string[]) => Promise<void>;
   toggleFullscreen: () => Promise<boolean>;
   setFullScreen: (enabled: boolean) => Promise<boolean>;
   isFullScreen: () => Promise<boolean>;
   onFullScreenChange?: (callback: (fullscreen: boolean) => void) => () => void;
 }
+
+// Proactive buffer for incoming files (sent from main before React subscribes)
+let openFilesListeners: ((files: string[]) => void)[] = [];
+let preloadBufferedFiles: string[] = [];
+
+ipcRenderer.on('open-files', (_event, files: string[]) => {
+  if (!Array.isArray(files) || files.length === 0) return;
+  if (openFilesListeners.length > 0) {
+    for (const listener of openFilesListeners) {
+      try {
+        listener(files);
+      } catch (err) {
+        console.error('[Preload] Error in open-files listener:', err);
+      }
+    }
+  } else {
+    for (const f of files) {
+      if (!preloadBufferedFiles.includes(f)) {
+        preloadBufferedFiles.push(f);
+      }
+    }
+  }
+});
 
 const api: ElectronAPI = {
   isElectron: true,
@@ -62,12 +87,37 @@ const api: ElectronAPI = {
     ipcRenderer.invoke('window-set-backdrop', effect, theme),
   openDefaultAppsSettings: () => ipcRenderer.invoke('open-default-apps-settings'),
   onOpenFiles: (callback: (filePaths: string[]) => void) => {
-    const subscription = (_event: any, filePaths: string[]) => callback(filePaths);
-    ipcRenderer.on('open-files', subscription);
+    openFilesListeners.push(callback);
+    if (preloadBufferedFiles.length > 0) {
+      const buffered = [...preloadBufferedFiles];
+      preloadBufferedFiles = [];
+      setTimeout(() => {
+        try {
+          callback(buffered);
+        } catch (err) {
+          console.error('[Preload] Error flushing buffered files:', err);
+        }
+      }, 0);
+    }
     return () => {
-      ipcRenderer.removeListener('open-files', subscription);
+      openFilesListeners = openFilesListeners.filter((cb) => cb !== callback);
     };
   },
+  getPendingOpenFiles: async () => {
+    const buffered = [...preloadBufferedFiles];
+    preloadBufferedFiles = [];
+    try {
+      const fromMain = await ipcRenderer.invoke('get-pending-open-files');
+      const combined = Array.from(new Set([...buffered, ...(Array.isArray(fromMain) ? fromMain : [])]));
+      if (combined.length > 0) {
+        ipcRenderer.invoke('ack-open-files', combined).catch(() => {});
+      }
+      return combined;
+    } catch {
+      return buffered;
+    }
+  },
+  ackOpenFiles: (files: string[]) => ipcRenderer.invoke('ack-open-files', files),
   applyUpdate: (installerPath?: string) =>
     fetch('/api/app/apply-update', {
       method: 'POST',

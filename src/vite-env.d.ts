@@ -36,6 +36,8 @@ export interface ElectronAPIType {
   applyUpdate?: (installerPath?: string) => Promise<any> | void;
   openDefaultAppsSettings?: () => Promise<void> | void;
   onOpenFiles?: (callback: (filePaths: string[]) => void) => () => void;
+  getPendingOpenFiles?: () => Promise<string[]>;
+  ackOpenFiles?: (files: string[]) => Promise<void>;
   toggleFullscreen?: () => Promise<boolean> | void;
   setFullScreen?: (enabled: boolean) => Promise<boolean> | void;
   isFullScreen?: () => Promise<boolean> | boolean;

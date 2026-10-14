@@ -2809,8 +2809,12 @@ app.post('/api/audio/convert', async (req, res) => {
 // Automatically discovers local audio files
 // ==========================================
 
-const AUDIO_EXTENSIONS = new Set(['.mp3', '.flac', '.wav', '.ogg', '.m4a', '.aac', '.webm', '.opus', '.wma', '.alac']);
-const VIDEO_EXTENSIONS = new Set(['.mp4', '.mkv', '.webm', '.mov', '.avi', '.m4v']);
+const AUDIO_EXTENSIONS = new Set([
+  '.mp3', '.flac', '.wav', '.ogg', '.oga', '.m4a', '.aac', '.webm', '.opus', '.wma', '.alac', '.aiff', '.aif', '.m4b'
+]);
+const VIDEO_EXTENSIONS = new Set([
+  '.mp4', '.mkv', '.webm', '.mov', '.avi', '.m4v', '.wmv', '.flv', '.3gp', '.ts', '.m2ts', '.ogv'
+]);
 const ALL_MEDIA_EXTENSIONS = new Set([...AUDIO_EXTENSIONS, ...VIDEO_EXTENSIONS]);
 
 interface ScannedAudioTrack {
@@ -3410,10 +3414,9 @@ app.post('/api/library/add-files', express.json(), async (req, res) => {
     }
 
     const validPaths = filePaths.filter((fp: any) => typeof fp === 'string' && fs.existsSync(fp));
-    if (!isTransient) {
-      for (const fp of validPaths) {
-        explicitlyAddedFiles.add(path.resolve(fp));
-      }
+    // Always whitelist explicitly opened files for streaming, even if transient
+    for (const fp of validPaths) {
+      explicitlyAddedFiles.add(path.resolve(fp));
     }
 
     const tasks = validPaths.map((fp: string) => buildTrackMetadataFromFile(fp, false, false, !!isTransient));
@@ -3478,17 +3481,27 @@ app.get('/api/library/stream', (req, res) => {
     '.flac': 'audio/flac',
     '.wav': 'audio/wav',
     '.ogg': 'audio/ogg',
+    '.oga': 'audio/ogg',
     '.m4a': 'audio/mp4',
     '.aac': 'audio/aac',
     '.webm': 'video/webm',
     '.opus': 'audio/opus',
     '.wma': 'audio/x-ms-wma',
     '.alac': 'audio/alac',
+    '.aiff': 'audio/aiff',
+    '.aif': 'audio/aiff',
+    '.m4b': 'audio/mp4',
     '.mp4': 'video/mp4',
     '.mkv': 'video/x-matroska',
     '.mov': 'video/quicktime',
     '.avi': 'video/x-msvideo',
     '.m4v': 'video/x-m4v',
+    '.wmv': 'video/x-ms-wmv',
+    '.flv': 'video/x-flv',
+    '.3gp': 'video/3gpp',
+    '.ts': 'video/mp2t',
+    '.m2ts': 'video/mp2t',
+    '.ogv': 'video/ogg',
   };
 
   const stat = fs.statSync(resolved);
