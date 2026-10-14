@@ -4,10 +4,10 @@
 
 ---
 
-## 🎯 1. Ordonnancement Intelligent de la File d'Attente (Explorateur Windows)
-- **Priorité Absolue au Fichier Cliqué :** La lecture démarre impérativement et immédiatement sur le fichier précis sur lequel l'utilisateur a initié l'ouverture (double-clic ou Entrée) dans l'Explorateur Windows.
-- **Tri Naturel Préservant la Séquence Logique :** Le reste de la sélection multiple est réordonné selon le tri numérique et naturel Windows (`StrCmpLogicalW` / `Intl.Collator` numérique) pour que l'enchaînement des épisodes et pistes (ex: Ep 03 -> Ep 04 -> Ep 05 -> Ep 01 -> Ep 02) suive une logique séquentielle continue.
-- **Fusion Temporelle des Salves Multi-Processus :** Lorsque Windows Explorer lance plusieurs instances en parallèle pour une sélection multiple, les pistes arrivant lors de salves secondaires sont automatiquement intégrées et ordonnées dans la file d'attente sans interrompre la lecture de la piste initiale.
+## 🎯 1. Ordonnancement Naturel de la File d'Attente (Explorateur Windows)
+- **Tri Naturel Strict & Respect de la Chronologie :** L'ensemble des fichiers reçus lors d'une sélection multiple (ex: Épisode 1, Épisode 2) est trié selon un ordre numérique et naturel strict (`StrCmpLogicalW` en C# WPF et `localeCompare(undefined, { numeric: true, sensitivity: 'base' })` côté React/Electron). Cela garantit sans ambiguïté que la lecture démarre toujours par le premier épisode logique et que la suite se classe naturellement dans la file « À suivre ».
+- **Tampon d'Agrégation Temporelle (Debounce Buffer) :** Lorsque Windows Explorer lance plusieurs instances en parallèle pour une sélection multiple, un buffer de 220 à 250 ms rassemble et fusionne toutes les arrivées concurrentes dans une salve unique ordonnée.
+- **Protection Anti-Écrasement de la Piste Active :** L'arrivée de fichiers secondaires n'écrase plus la lecture en cours, évitant l'inversion de lecture causée par des réceptions asynchrones successives.
 
 ---
 
@@ -57,4 +57,4 @@ Get-FileHash -Algorithm SHA256 "FlowLuna-Setup-1.21.7.exe"
 
 | Fichier | Empreinte Numérique SHA256 |
 |---|---|
-| `FlowLuna-Setup-1.21.7.exe` | `9669BC75D6FE181858E090E59B2294BFE49418A85C236E2AC22BCFF5B26C0406` |
+| `FlowLuna-Setup-1.21.7.exe` | `CDBF06D185EA7615EA2003975EFAFABA65FDEDD089E427C41E56AB605C698FBA` |

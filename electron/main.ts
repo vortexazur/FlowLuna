@@ -106,17 +106,13 @@ function filterMediaFiles(args: string[], cwd?: string): string[] {
 
 const naturalCollator = new Intl.Collator(undefined, { numeric: true, sensitivity: 'base' });
 
-function sortMediaFilesPreservingFirst(files: string[]): string[] {
+function sortMediaFilesNaturally(files: string[]): string[] {
   if (!Array.isArray(files) || files.length <= 1) return files ? [...files] : [];
-  const first = files[0];
-  const sorted = [...files].sort((a, b) => {
-    const baseA = path.basename(a);
-    const baseB = path.basename(b);
-    return naturalCollator.compare(baseA, baseB);
+  return [...files].sort((a, b) => {
+    const nameA = path.basename(a);
+    const nameB = path.basename(b);
+    return nameA.localeCompare(nameB, undefined, { numeric: true, sensitivity: 'base' });
   });
-  const idx = sorted.indexOf(first);
-  if (idx === -1) return files;
-  return [first, ...sorted.slice(idx + 1), ...sorted.slice(0, idx)];
 }
 
 // Manage pending files across cold boot & subsequent second-instance bursts
@@ -134,16 +130,17 @@ function queueOpenFiles(files: string[]): void {
   openFilesTimer = setTimeout(() => {
     openFilesTimer = null;
     flushOpenFilesToRenderer();
-  }, 150);
+  }, 250);
 }
 
 function flushOpenFilesToRenderer(): void {
   if (pendingOpenFiles.length === 0) return;
   if (mainWindow && mainWindow.webContents && !mainWindow.webContents.isLoading()) {
-    const batch = sortMediaFilesPreservingFirst(pendingOpenFiles);
+    const batch = sortMediaFilesNaturally(pendingOpenFiles);
     mainWindow.webContents.send('open-files', batch);
   }
 }
+
 
 
 // Proactively inspect process.argv on startup
@@ -611,8 +608,9 @@ function setupIpcHandlers(): void {
   });
 
   ipcMain.handle('get-pending-open-files', () => {
-    return sortMediaFilesPreservingFirst(pendingOpenFiles);
+    return sortMediaFilesNaturally(pendingOpenFiles);
   });
+
 
   ipcMain.handle('ack-open-files', (_event, filesAcknowledged: string[]) => {
     if (Array.isArray(filesAcknowledged)) {

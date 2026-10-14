@@ -121,7 +121,10 @@ export default function App() {
   queueRef.current = queue;
   const currentTrackIndexRef = useRef<number>(-1);
   currentTrackIndexRef.current = currentTrackIndex;
+  const isPlayingRef = useRef<boolean>(false);
+  isPlayingRef.current = isPlaying;
   const playRequestIdRef = useRef<number>(0);
+
   const crossfadeAnimRef = useRef<number | null>(null);
   const isTransitioningRef = useRef<boolean>(false);
   const lastTrackStartTimeRef = useRef<number>(0);
@@ -1369,14 +1372,11 @@ export default function App() {
     };
   }, [handleTogglePlay, handleNext, handlePrev, handleStop]);
 
-  const lastExternalOpenTimeRef = useRef<number>(0);
-
   // Dedicated handler for files opened on the fly from Windows Explorer
   const handleOpenExternalFiles = useCallback(
     (incomingTracks: Track[]) => {
       if (!incomingTracks || incomingTracks.length === 0) return;
 
-      const naturalCollator = new Intl.Collator(undefined, { numeric: true, sensitivity: 'base' });
       const getFileName = (p: string) => {
         if (!p) return '';
         const clean = p.replace(/\\/g, '/');
@@ -1384,29 +1384,15 @@ export default function App() {
         return lastSlash >= 0 ? clean.substring(lastSlash + 1) : clean;
       };
 
-      const sortTracksPreservingActive = (trackList: Track[], activeId: string): Track[] => {
-        if (!Array.isArray(trackList) || trackList.length <= 1) return trackList;
-        const activeTrack = trackList.find((t) => t.id === activeId);
-        if (!activeTrack) return trackList;
-
-        const sorted = [...trackList].sort((a, b) => {
-          const nameA = a.title || getFileName(a.url);
-          const nameB = b.title || getFileName(b.url);
-          return naturalCollator.compare(nameA, nameB);
-        });
-
-        const sortedIdx = sorted.findIndex((t) => t.id === activeId);
-        if (sortedIdx === -1) return trackList;
-
-        return [activeTrack, ...sorted.slice(sortedIdx + 1), ...sorted.slice(0, sortedIdx)];
-      };
-
-      const now = Date.now();
-      const isSubsequentBurst = now - lastExternalOpenTimeRef.current < 2500;
-      lastExternalOpenTimeRef.current = now;
+      // 1. Strict natural sort on track title / filename (guarantees Episode 1 precedes Episode 2)
+      const sortedIncoming = [...incomingTracks].sort((a, b) => {
+        const nameA = a.title || getFileName(a.url) || a.id;
+        const nameB = b.title || getFileName(b.url) || b.id;
+        return nameA.localeCompare(nameB, undefined, { numeric: true, sensitivity: 'base' });
+      });
 
       // Mark tracks as ephemeral/transient (no persistent DB or disk cache)
-      const transientTracks: Track[] = incomingTracks.map((t) => ({
+      const transientTracks: Track[] = sortedIncoming.map((t) => ({
         ...t,
         isTransient: true,
         source: 'ephemeral',
@@ -1415,37 +1401,26 @@ export default function App() {
 
       const curQueue = queueRef.current;
       const curIndex = currentTrackIndexRef.current;
-      const isCurrentlyPlaying = curIndex >= 0 && curIndex < curQueue.length;
+      const isCurrentlyPlaying = isPlayingRef.current && curIndex >= 0 && curIndex < curQueue.length;
       const currentlyPlayingTrack = isCurrentlyPlaying ? curQueue[curIndex] : null;
 
-      if (isSubsequentBurst && currentlyPlayingTrack) {
-        // Subsequent secondary process from the same explorer multi-select launch:
-        // Merge seamlessly with existing queue, preserving current playing track at its head,
-        // and arranging the rest in logical order!
+      if (isCurrentlyPlaying && currentlyPlayingTrack) {
+        // Playback was already actively underway from earlier:
+        // Do NOT restart or overwrite playback! Append incoming tracks cleanly to the queue.
         const existingIds = new Set(curQueue.map((t) => t.id));
         const newToAdd = transientTracks.filter((t) => !existingIds.has(t.id));
         if (newToAdd.length > 0) {
-          const combined = [...curQueue, ...newToAdd];
-          const reorderedQueue = sortTracksPreservingActive(combined, currentlyPlayingTrack.id);
-          const newCurrentIndex = reorderedQueue.findIndex((t) => t.id === currentlyPlayingTrack.id);
-
-          setQueue(reorderedQueue);
-          queueRef.current = reorderedQueue;
-          if (newCurrentIndex >= 0) {
-            currentTrackIndexRef.current = newCurrentIndex;
-            setCurrentTrackIndex(newCurrentIndex);
-          }
+          const updatedQueue = [...curQueue, ...newToAdd];
+          setQueue(updatedQueue);
+          queueRef.current = updatedQueue;
         }
       } else {
         // Initial launch or fresh explorer multi-file opening:
-        // The first track (clicked by user in Explorer) is placed at index 0 and played immediately!
-        // The remaining files are arranged in logical natural sequence directly behind it.
-        const firstTrack = transientTracks[0];
-        const orderedTracks = sortTracksPreservingActive(transientTracks, firstTrack.id);
-
-        const incomingIds = new Set(orderedTracks.map((t) => t.id));
+        // Episode 1 (the first naturally sorted item) plays immediately!
+        // Episode 2 and subsequent episodes follow in order in the queue ("À SUIVRE").
+        const incomingIds = new Set(transientTracks.map((t) => t.id));
         const remainingOldQueue = curQueue.filter((t) => !incomingIds.has(t.id));
-        const newQueue = [...orderedTracks, ...remainingOldQueue];
+        const newQueue = [...transientTracks, ...remainingOldQueue];
 
         setQueue(newQueue);
         queueRef.current = newQueue;
@@ -1453,7 +1428,7 @@ export default function App() {
         currentTrackIndexRef.current = 0;
         setCurrentTrackIndex(0);
         playTrackAt(0, newQueue, true);
-        if (orderedTracks[0]?.isVideo) {
+        if (transientTracks[0]?.isVideo) {
           setVideoMode('theater');
         }
       }
@@ -1461,41 +1436,62 @@ export default function App() {
     [playTrackAt]
   );
 
-
-  // Listen for files opened directly from Windows (double-click or Open With)
+  // Listen for files opened directly from Windows (double-click, multi-select, or Open With)
   useEffect(() => {
     if (!window.electronAPI) return;
 
     let isMounted = true;
+    let pendingFileBuffer: string[] = [];
+    let fileDebounceTimer: NodeJS.Timeout | null = null;
     let lastHandledKey = '';
-    let lastHandledTimestamp = 0;
 
-    const processIncomingFiles = async (filePaths: string[]) => {
-      if (!Array.isArray(filePaths) || filePaths.length === 0) return;
+    const executeBatchProcessing = async () => {
+      if (pendingFileBuffer.length === 0) return;
+      const rawFiles = [...pendingFileBuffer];
+      pendingFileBuffer = [];
 
-      const validFiles = filePaths.filter((fp) => typeof fp === 'string' && fp.trim().length > 0);
-      if (validFiles.length === 0) return;
+      const getFileName = (p: string) => {
+        if (!p) return '';
+        const clean = p.replace(/\\/g, '/');
+        const lastSlash = clean.lastIndexOf('/');
+        return lastSlash >= 0 ? clean.substring(lastSlash + 1) : clean;
+      };
 
-      // Prevent processing duplicate bursts within 1.5s (e.g. from both push and pull)
-      const currentKey = [...validFiles].sort().join('|');
-      const now = Date.now();
-      if (currentKey === lastHandledKey && now - lastHandledTimestamp < 1500) {
+      // Deduplicate preserving case-insensitive uniqueness
+      const uniqueFiles: string[] = [];
+      const seen = new Set<string>();
+      for (const f of rawFiles) {
+        const lower = f.toLowerCase();
+        if (!seen.has(lower)) {
+          seen.add(lower);
+          uniqueFiles.push(f);
+        }
+      }
+
+      // 1. Strict natural ascending sort on file names: Episode 1 before Episode 2
+      uniqueFiles.sort((a, b) => {
+        const nameA = getFileName(a);
+        const nameB = getFileName(b);
+        return nameA.localeCompare(nameB, undefined, { numeric: true, sensitivity: 'base' });
+      });
+
+      const currentKey = uniqueFiles.join('|');
+      if (currentKey === lastHandledKey) {
         return;
       }
       lastHandledKey = currentKey;
-      lastHandledTimestamp = now;
 
       try {
         const resp = await fetch('/api/library/add-files', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ filePaths: validFiles, isTransient: true }),
+          body: JSON.stringify({ filePaths: uniqueFiles, isTransient: true }),
         });
         if (resp.ok && isMounted) {
           const data = await resp.json();
           if (data.success && Array.isArray(data.tracks) && data.tracks.length > 0) {
             handleOpenExternalFiles(data.tracks);
-            window.electronAPI?.ackOpenFiles?.(validFiles);
+            window.electronAPI?.ackOpenFiles?.(uniqueFiles);
           }
         }
       } catch (err) {
@@ -1503,8 +1499,28 @@ export default function App() {
       }
     };
 
+    const scheduleIncomingFiles = (filePaths: string[]) => {
+      if (!Array.isArray(filePaths) || filePaths.length === 0) return;
+      const valid = filePaths.filter((fp) => typeof fp === 'string' && fp.trim().length > 0);
+      if (valid.length === 0) return;
+
+      for (const vf of valid) {
+        if (!pendingFileBuffer.includes(vf)) {
+          pendingFileBuffer.push(vf);
+        }
+      }
+
+      // Debounce window (220ms): allows multiple Windows Explorer secondary processes / IPC bursts
+      // to aggregate into a SINGLE unified batch before initiating playback, preventing iteration overwrite!
+      if (fileDebounceTimer) clearTimeout(fileDebounceTimer);
+      fileDebounceTimer = setTimeout(() => {
+        fileDebounceTimer = null;
+        executeBatchProcessing();
+      }, 220);
+    };
+
     // 1. Subscribe to real-time events from main process (e.g. second-instance)
-    const unsubscribe = window.electronAPI.onOpenFiles?.(processIncomingFiles);
+    const unsubscribe = window.electronAPI.onOpenFiles?.(scheduleIncomingFiles);
 
     // 2. Proactively fetch any pending startup files queued before React mounted
     if (window.electronAPI.getPendingOpenFiles) {
@@ -1512,7 +1528,7 @@ export default function App() {
         .getPendingOpenFiles()
         .then((pending) => {
           if (isMounted && Array.isArray(pending) && pending.length > 0) {
-            processIncomingFiles(pending);
+            scheduleIncomingFiles(pending);
           }
         })
         .catch((err) => console.warn('Failed to fetch pending open files:', err));
@@ -1520,9 +1536,11 @@ export default function App() {
 
     return () => {
       isMounted = false;
+      if (fileDebounceTimer) clearTimeout(fileDebounceTimer);
       unsubscribe?.();
     };
   }, [handleOpenExternalFiles]);
+
 
   // Media element listeners for both Audio and Video players
   useEffect(() => {

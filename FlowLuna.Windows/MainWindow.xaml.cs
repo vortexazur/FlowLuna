@@ -144,7 +144,7 @@ public partial class MainWindow : Window
 
                 if (_batchFilesTimer == null)
                 {
-                    _batchFilesTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(160) };
+                    _batchFilesTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(250) };
                     _batchFilesTimer.Tick += (s, e) =>
                     {
                         _batchFilesTimer.Stop();
@@ -161,21 +161,13 @@ public partial class MainWindow : Window
     [DllImport("shlwapi.dll", CharSet = CharSet.Unicode, ExactSpelling = true)]
     private static extern int StrCmpLogicalW(string psz1, string psz2);
 
-    private static List<string> SortMediaFilesPreservingFirst(List<string> files)
+    private static List<string> SortMediaFilesNaturally(List<string> files)
     {
         if (files == null || files.Count <= 1) return files ?? new List<string>();
-        var first = files[0];
-
-        // Sort all files by file name using Windows Explorer's natural logical sort
-        var sorted = files.OrderBy(f => Path.GetFileName(f), Comparer<string>.Create((a, b) => StrCmpLogicalW(a, b))).ToList();
-        var idx = sorted.FindIndex(f => string.Equals(f, first, StringComparison.OrdinalIgnoreCase));
-        if (idx == -1) return files;
-
-        // Keep clicked file first, followed by remaining files in natural sequence (with wrap-around)
-        var result = new List<string>(files.Count) { first };
-        result.AddRange(sorted.Skip(idx + 1));
-        result.AddRange(sorted.Take(idx));
-        return result;
+        // Strict ascending natural sort on file names: Episode 1 always before Episode 2
+        return files
+            .OrderBy(f => Path.GetFileName(f), Comparer<string>.Create((a, b) => StrCmpLogicalW(a, b)))
+            .ToList();
     }
 
     private void DispatchBatchedFiles()
@@ -189,7 +181,7 @@ public partial class MainWindow : Window
 
         if (raw.Count == 0) return;
 
-        var toSend = SortMediaFilesPreservingFirst(raw);
+        var toSend = SortMediaFilesNaturally(raw);
 
         if (WebViewControl?.CoreWebView2 != null && _isUiReady)
         {
@@ -219,10 +211,11 @@ public partial class MainWindow : Window
         {
             if (_pendingFiles.Count > 0)
             {
-                var sorted = SortMediaFilesPreservingFirst(_pendingFiles);
+                var sorted = SortMediaFilesNaturally(_pendingFiles);
                 var json = JsonSerializer.Serialize(sorted);
                 _pendingFiles.Clear();
                 Dispatcher.Invoke(() =>
+
                 {
                     WebViewControl?.CoreWebView2?.ExecuteScriptAsync(
                         $"window.dispatchEvent(new CustomEvent('flowluna-open-files', {{ detail: {json} }}));"
