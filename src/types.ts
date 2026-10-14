@@ -1,4 +1,5 @@
-export const APP_VERSION = '1.21.6';
+declare const __APP_VERSION__: string | undefined;
+export const APP_VERSION = typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__ : '1.21.7';
 
 export type MediaFormat =
   | 'mp3'

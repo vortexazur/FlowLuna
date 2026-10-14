@@ -152,8 +152,23 @@ export default function App() {
   >('appearance');
 
   // Application Updates State
+  const [appVersion, setAppVersion] = useState<string>(APP_VERSION);
   const [appUpdateInfo, setAppUpdateInfo] = useState<AppUpdateInfo | null>(null);
   const [isUpdateToastDismissed, setIsUpdateToastDismissed] = useState<boolean>(false);
+
+  useEffect(() => {
+    if (window.electronAPI?.getAppVersion) {
+      window.electronAPI
+        .getAppVersion()
+        .then((v) => {
+          if (v && typeof v === 'string') {
+            setAppVersion(v.trim());
+          }
+        })
+        .catch(() => {});
+    }
+  }, []);
+
 
   // Video Mode: 'theater' (fullscreen/cinema), 'pip' (floating mini window), 'hidden' (audio-only)
   const [videoMode, setVideoMode] = useState<VideoDisplayMode>('theater');
@@ -355,10 +370,11 @@ export default function App() {
         const res = await fetch('/api/app/check-update');
         if (res.ok) {
           const data: AppUpdateInfo = await res.json();
-          const isReallyNewer = compareSemVer(data.latestVersion, APP_VERSION) > 0;
+          const effectiveCurrentVersion = appVersion || APP_VERSION;
+          const isReallyNewer = compareSemVer(data.latestVersion, effectiveCurrentVersion) > 0;
           const normalizedData: AppUpdateInfo = {
             ...data,
-            currentVersion: APP_VERSION,
+            currentVersion: effectiveCurrentVersion,
             hasUpdate: isReallyNewer,
           };
           setAppUpdateInfo(normalizedData);
@@ -386,7 +402,8 @@ export default function App() {
       clearTimeout(timer);
       clearInterval(interval);
     };
-  }, []);
+  }, [appVersion]);
+
 
   // Connect Web Audio API to the dedicated HTMLAudioElement (music tracks only)
   useEffect(() => {
@@ -1359,6 +1376,31 @@ export default function App() {
     (incomingTracks: Track[]) => {
       if (!incomingTracks || incomingTracks.length === 0) return;
 
+      const naturalCollator = new Intl.Collator(undefined, { numeric: true, sensitivity: 'base' });
+      const getFileName = (p: string) => {
+        if (!p) return '';
+        const clean = p.replace(/\\/g, '/');
+        const lastSlash = clean.lastIndexOf('/');
+        return lastSlash >= 0 ? clean.substring(lastSlash + 1) : clean;
+      };
+
+      const sortTracksPreservingActive = (trackList: Track[], activeId: string): Track[] => {
+        if (!Array.isArray(trackList) || trackList.length <= 1) return trackList;
+        const activeTrack = trackList.find((t) => t.id === activeId);
+        if (!activeTrack) return trackList;
+
+        const sorted = [...trackList].sort((a, b) => {
+          const nameA = a.title || getFileName(a.url);
+          const nameB = b.title || getFileName(b.url);
+          return naturalCollator.compare(nameA, nameB);
+        });
+
+        const sortedIdx = sorted.findIndex((t) => t.id === activeId);
+        if (sortedIdx === -1) return trackList;
+
+        return [activeTrack, ...sorted.slice(sortedIdx + 1), ...sorted.slice(0, sortedIdx)];
+      };
+
       const now = Date.now();
       const isSubsequentBurst = now - lastExternalOpenTimeRef.current < 2500;
       lastExternalOpenTimeRef.current = now;
@@ -1374,23 +1416,36 @@ export default function App() {
       const curQueue = queueRef.current;
       const curIndex = currentTrackIndexRef.current;
       const isCurrentlyPlaying = curIndex >= 0 && curIndex < curQueue.length;
+      const currentlyPlayingTrack = isCurrentlyPlaying ? curQueue[curIndex] : null;
 
-      if (isSubsequentBurst && isCurrentlyPlaying) {
+      if (isSubsequentBurst && currentlyPlayingTrack) {
         // Subsequent secondary process from the same explorer multi-select launch:
-        // Append smoothly to the queue so track 0 continues playing uninterrupted!
+        // Merge seamlessly with existing queue, preserving current playing track at its head,
+        // and arranging the rest in logical order!
         const existingIds = new Set(curQueue.map((t) => t.id));
         const newToAdd = transientTracks.filter((t) => !existingIds.has(t.id));
         if (newToAdd.length > 0) {
-          const updatedQueue = [...curQueue, ...newToAdd];
-          setQueue(updatedQueue);
-          queueRef.current = updatedQueue;
+          const combined = [...curQueue, ...newToAdd];
+          const reorderedQueue = sortTracksPreservingActive(combined, currentlyPlayingTrack.id);
+          const newCurrentIndex = reorderedQueue.findIndex((t) => t.id === currentlyPlayingTrack.id);
+
+          setQueue(reorderedQueue);
+          queueRef.current = reorderedQueue;
+          if (newCurrentIndex >= 0) {
+            currentTrackIndexRef.current = newCurrentIndex;
+            setCurrentTrackIndex(newCurrentIndex);
+          }
         }
       } else {
         // Initial launch or fresh explorer multi-file opening:
-        // Item 0 begins playing, and all subsequent items properly populate the queue in order!
-        const incomingIds = new Set(transientTracks.map((t) => t.id));
+        // The first track (clicked by user in Explorer) is placed at index 0 and played immediately!
+        // The remaining files are arranged in logical natural sequence directly behind it.
+        const firstTrack = transientTracks[0];
+        const orderedTracks = sortTracksPreservingActive(transientTracks, firstTrack.id);
+
+        const incomingIds = new Set(orderedTracks.map((t) => t.id));
         const remainingOldQueue = curQueue.filter((t) => !incomingIds.has(t.id));
-        const newQueue = [...transientTracks, ...remainingOldQueue];
+        const newQueue = [...orderedTracks, ...remainingOldQueue];
 
         setQueue(newQueue);
         queueRef.current = newQueue;
@@ -1398,13 +1453,14 @@ export default function App() {
         currentTrackIndexRef.current = 0;
         setCurrentTrackIndex(0);
         playTrackAt(0, newQueue, true);
-        if (transientTracks[0]?.isVideo) {
+        if (orderedTracks[0]?.isVideo) {
           setVideoMode('theater');
         }
       }
     },
     [playTrackAt]
   );
+
 
   // Listen for files opened directly from Windows (double-click or Open With)
   useEffect(() => {
@@ -2122,7 +2178,9 @@ export default function App() {
           isPlaying={isPlaying}
           accent={playerSettings.accent}
           settings={playerSettings}
+          appVersion={appVersion}
         />
+
       )}
 
       {/* Dedicated HTMLAudioElement for music playback (connected to Web Audio engine) */}
@@ -2362,6 +2420,7 @@ export default function App() {
         onDataReload={loadDatabase}
         initialTab={settingsInitialTab}
         appUpdateInfo={appUpdateInfo}
+        appVersion={appVersion}
       />
 
       {/* Update Notification Toast (Never shown over fullscreen video) */}
@@ -2376,7 +2435,9 @@ export default function App() {
         isFullscreenActive={isFullscreenActive}
         accent={playerSettings.accent}
         theme={playerSettings.theme}
+        appVersion={appVersion}
       />
+
 
       {/* Fullscreen & Synchronized Lyrics View */}
       <LyricsAndFullscreen

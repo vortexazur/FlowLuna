@@ -11,6 +11,7 @@ interface UpdateNotificationToastProps {
   isFullscreenActive: boolean;
   accent: AccentColor;
   theme: ThemeMode;
+  appVersion?: string;
 }
 
 const ACCENT_BTN: Record<AccentColor, string> = {
@@ -39,18 +40,21 @@ export const UpdateNotificationToast: React.FC<UpdateNotificationToastProps> = (
   isFullscreenActive,
   accent,
   theme,
+  appVersion,
 }) => {
+  const effectiveVersion = appVersion || APP_VERSION;
   // CRITICAL REQUIREMENT: Lors d'un visionnage d'une vidéo en plein écran, ne se montre pas en 1er plan !
-  // Strict SemVer: Ne JAMAIS afficher si latestVersion <= APP_VERSION
+  // Strict SemVer: Ne JAMAIS afficher si latestVersion <= effectiveVersion
   if (
     !updateInfo ||
     !updateInfo.hasUpdate ||
-    compareSemVer(updateInfo.latestVersion, APP_VERSION) <= 0 ||
+    compareSemVer(updateInfo.latestVersion, effectiveVersion) <= 0 ||
     isDismissed ||
     isFullscreenActive
   ) {
     return null;
   }
+
 
   const isLight = theme === 'light';
 

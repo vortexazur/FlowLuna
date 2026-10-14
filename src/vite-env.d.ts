@@ -42,10 +42,14 @@ export interface ElectronAPIType {
   setFullScreen?: (enabled: boolean) => Promise<boolean> | void;
   isFullScreen?: () => Promise<boolean> | boolean;
   onFullScreenChange?: (callback: (fullscreen: boolean) => void) => () => void;
+  getAppVersion?: () => Promise<string>;
 }
+
+declare const __APP_VERSION__: string;
 
 declare global {
   interface Window {
     electronAPI?: ElectronAPIType;
   }
 }
+

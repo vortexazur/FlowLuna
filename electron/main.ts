@@ -104,6 +104,21 @@ function filterMediaFiles(args: string[], cwd?: string): string[] {
   return result;
 }
 
+const naturalCollator = new Intl.Collator(undefined, { numeric: true, sensitivity: 'base' });
+
+function sortMediaFilesPreservingFirst(files: string[]): string[] {
+  if (!Array.isArray(files) || files.length <= 1) return files ? [...files] : [];
+  const first = files[0];
+  const sorted = [...files].sort((a, b) => {
+    const baseA = path.basename(a);
+    const baseB = path.basename(b);
+    return naturalCollator.compare(baseA, baseB);
+  });
+  const idx = sorted.indexOf(first);
+  if (idx === -1) return files;
+  return [first, ...sorted.slice(idx + 1), ...sorted.slice(0, idx)];
+}
+
 // Manage pending files across cold boot & subsequent second-instance bursts
 let pendingOpenFiles: string[] = [];
 let openFilesTimer: NodeJS.Timeout | null = null;
@@ -119,16 +134,17 @@ function queueOpenFiles(files: string[]): void {
   openFilesTimer = setTimeout(() => {
     openFilesTimer = null;
     flushOpenFilesToRenderer();
-  }, 100);
+  }, 150);
 }
 
 function flushOpenFilesToRenderer(): void {
   if (pendingOpenFiles.length === 0) return;
   if (mainWindow && mainWindow.webContents && !mainWindow.webContents.isLoading()) {
-    const batch = [...pendingOpenFiles];
+    const batch = sortMediaFilesPreservingFirst(pendingOpenFiles);
     mainWindow.webContents.send('open-files', batch);
   }
 }
+
 
 // Proactively inspect process.argv on startup
 const startupMediaFiles = filterMediaFiles(process.argv);
@@ -590,8 +606,12 @@ function setupIpcHandlers(): void {
     }
   });
 
+  ipcMain.handle('get-app-version', () => {
+    return app.getVersion();
+  });
+
   ipcMain.handle('get-pending-open-files', () => {
-    return [...pendingOpenFiles];
+    return sortMediaFilesPreservingFirst(pendingOpenFiles);
   });
 
   ipcMain.handle('ack-open-files', (_event, filesAcknowledged: string[]) => {
@@ -603,6 +623,7 @@ function setupIpcHandlers(): void {
     }
   });
 }
+
 
 // App lifecycle
 app.whenReady().then(async () => {

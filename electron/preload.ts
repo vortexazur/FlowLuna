@@ -27,7 +27,9 @@ export interface ElectronAPI {
   setFullScreen: (enabled: boolean) => Promise<boolean>;
   isFullScreen: () => Promise<boolean>;
   onFullScreenChange?: (callback: (fullscreen: boolean) => void) => () => void;
+  getAppVersion: () => Promise<string>;
 }
+
 
 // Proactive buffer for incoming files (sent from main before React subscribes)
 let openFilesListeners: ((files: string[]) => void)[] = [];
@@ -134,6 +136,8 @@ const api: ElectronAPI = {
       ipcRenderer.removeListener('window-fullscreen-changed', subscription);
     };
   },
+  getAppVersion: () => ipcRenderer.invoke('get-app-version'),
 };
 
 contextBridge.exposeInMainWorld('electronAPI', api);
+

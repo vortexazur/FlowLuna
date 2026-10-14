@@ -8,9 +8,11 @@ interface TitleBarProps {
   isPlaying?: boolean;
   accent?: AccentColor;
   settings?: PlayerSettings;
+  appVersion?: string;
 }
 
-export const TitleBar: React.FC<TitleBarProps> = ({ currentTrack, isPlaying, accent = 'emerald', settings }) => {
+export const TitleBar: React.FC<TitleBarProps> = ({ currentTrack, isPlaying, accent = 'emerald', settings, appVersion }) => {
+
   const t = getT(settings?.language);
   const [isMaximized, setIsMaximized] = useState(false);
   const isElectron = typeof window !== 'undefined' && !!window.electronAPI;
@@ -67,8 +69,9 @@ export const TitleBar: React.FC<TitleBarProps> = ({ currentTrack, isPlaying, acc
         </div>
         <span className="font-bold tracking-wider text-[11px] text-white flex items-center gap-1.5">
           <span>FlowLuna</span>
-          <span className="text-[9px] px-1.5 py-0.2 rounded bg-neutral-800 text-neutral-400 font-mono">v{APP_VERSION}</span>
+          <span className="text-[9px] px-1.5 py-0.2 rounded bg-neutral-800 text-neutral-400 font-mono">v{appVersion || APP_VERSION}</span>
         </span>
+
 
         {currentTrack && (
           <div className="hidden sm:flex items-center gap-1.5 text-[11px] text-neutral-400 border-l border-neutral-800 pl-2.5 max-w-[320px] truncate">

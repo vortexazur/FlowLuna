@@ -47,7 +47,9 @@ interface SettingsModalProps {
   onDataReload?: () => Promise<void> | void;
   initialTab?: SettingsTab;
   appUpdateInfo?: AppUpdateInfo | null;
+  appVersion?: string;
 }
+
 
 const ACCENT_OPTIONS: { id: AccentColor; label: string; colorHex: string }[] = [
   { id: 'emerald', label: 'Émeraude Moderne', colorHex: '#10b981' },
@@ -178,7 +180,9 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   onDataReload,
   initialTab,
   appUpdateInfo: initialAppUpdateInfo,
+  appVersion,
 }) => {
+  const effectiveVersion = appVersion || APP_VERSION;
   const [activeTab, setActiveTab] = useState<SettingsTab>(initialTab || 'appearance');
   const [binariesStatus, setBinariesStatus] = useState<any>(null);
   const [isUpdatingYtdlp, setIsUpdatingYtdlp] = useState(false);
@@ -203,14 +207,15 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
 
   useEffect(() => {
     if (initialAppUpdateInfo) {
-      const isReallyNewer = compareSemVer(initialAppUpdateInfo.latestVersion, APP_VERSION) > 0;
+      const isReallyNewer = compareSemVer(initialAppUpdateInfo.latestVersion, effectiveVersion) > 0;
       setAppUpdateInfo({
         ...initialAppUpdateInfo,
-        currentVersion: APP_VERSION,
+        currentVersion: effectiveVersion,
         hasUpdate: isReallyNewer,
       });
     }
-  }, [initialAppUpdateInfo]);
+  }, [initialAppUpdateInfo, effectiveVersion]);
+
 
   useEffect(() => {
     if (cacheToastMessage) {
@@ -396,10 +401,10 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
       const res = await fetch('/api/app/check-update');
       if (res.ok) {
         const data: AppUpdateInfo = await res.json();
-        const isReallyNewer = compareSemVer(data.latestVersion, APP_VERSION) > 0;
+        const isReallyNewer = compareSemVer(data.latestVersion, effectiveVersion) > 0;
         const normalizedData: AppUpdateInfo = {
           ...data,
-          currentVersion: APP_VERSION,
+          currentVersion: effectiveVersion,
           hasUpdate: isReallyNewer,
         };
         setAppUpdateInfo(normalizedData);
@@ -410,10 +415,11 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
           });
         } else {
           setUpdateAlertMessage({
-            text: `Votre application est à jour (v${APP_VERSION}).`,
+            text: `Votre application est à jour (v${effectiveVersion}).`,
             type: 'success',
           });
         }
+
       } else {
         throw new Error('Erreur lors de la vérification de mise à jour');
       }
@@ -1651,7 +1657,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                   </div>
                   <div className="flex items-center gap-2">
                     <span className="text-[11px] font-mono px-2.5 py-1 rounded-full bg-cyan-950/80 text-cyan-300 border border-cyan-500/30 font-semibold">
-                      v{APP_VERSION}
+                      v{effectiveVersion}
                     </span>
                     <button
                       type="button"
@@ -1693,7 +1699,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                 )}
 
                 {/* Application up to date panel */}
-                {(!appUpdateInfo || !appUpdateInfo.hasUpdate || compareSemVer(appUpdateInfo.latestVersion, APP_VERSION) <= 0) && (
+                {(!appUpdateInfo || !appUpdateInfo.hasUpdate || compareSemVer(appUpdateInfo.latestVersion, effectiveVersion) <= 0) && (
                   <div className="p-4 rounded-xl bg-emerald-950/20 border border-emerald-500/30 flex items-center justify-between animate-in fade-in">
                     <div className="flex items-center gap-3">
                       <div className="p-2.5 rounded-xl bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
@@ -1703,7 +1709,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                         <div className="flex items-center gap-2">
                           <span className="text-xs font-bold text-white">Votre application est à jour</span>
                           <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-300 font-semibold border border-emerald-500/30">
-                            v{APP_VERSION}
+                            v{effectiveVersion}
                           </span>
                         </div>
                         <p className="text-[11px] text-neutral-400 mt-0.5">
@@ -1715,7 +1721,8 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                 )}
 
                 {/* Update available panel */}
-                {appUpdateInfo?.hasUpdate && compareSemVer(appUpdateInfo.latestVersion, APP_VERSION) > 0 && (
+                {appUpdateInfo?.hasUpdate && compareSemVer(appUpdateInfo.latestVersion, effectiveVersion) > 0 && (
+
                   <div className="p-4 rounded-xl bg-cyan-950/30 border border-cyan-500/30 flex flex-col gap-3 animate-in fade-in">
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-2">
@@ -2069,8 +2076,9 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
         {/* Footer */}
         <div className="px-6 py-3.5 border-t border-white/10 bg-white/[0.04] dark:bg-black/[0.20] flex items-center justify-between backdrop-blur-md">
           <span className="text-[11px] text-neutral-500 font-mono">
-            FlowLuna v{APP_VERSION} • Tous les réglages sont sauvegardés automatiquement
+            FlowLuna v{effectiveVersion} • Tous les réglages sont sauvegardés automatiquement
           </span>
+
           <button
             type="button"
             onClick={onClose}

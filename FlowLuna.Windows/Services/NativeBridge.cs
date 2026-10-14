@@ -51,6 +51,12 @@ public class NativeBridge
         return _window.Dispatcher.Invoke(() => _window.WindowState == WindowState.Maximized);
     }
 
+    public string GetAppVersion()
+    {
+        return BinaryManager.CurrentAppVersion;
+    }
+
+
     public void ToggleFullScreen()
     {
         _window.Dispatcher.Invoke(() =>

@@ -64,10 +64,15 @@ function aistudioMediaPlugin(): Plugin {
 }
 // LINT.ThenChange(//depot/google3/java/com/google/alkali/boq/makersuite/applet_dev_service/templates/initializers/react_theme/vite.config.ts:aistudio_media_plugin)
 
+const pkg = JSON.parse(fs.readFileSync(path.resolve(__dirname, 'package.json'), 'utf-8'));
+
 export default defineConfig(() => {
   return {
     base: './',
     plugins: [react(), tailwindcss(), aistudioMediaPlugin()],
+    define: {
+      __APP_VERSION__: JSON.stringify(pkg.version || '1.21.7'),
+    },
     resolve: {
       alias: {
         '@': path.resolve(__dirname, '.'),

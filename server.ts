@@ -489,12 +489,31 @@ function compareSemVer(v1: string, v2: string): number {
 }
 
 function getCurrentAppVersion(): string {
-  try {
-    const pkg = JSON.parse(fs.readFileSync(path.join(process.cwd(), 'package.json'), 'utf-8'));
-    if (pkg.version) return pkg.version;
-  } catch {}
-  return '1.21.6';
+  if (process.env.FLOWLUNA_APP_VERSION) {
+    return process.env.FLOWLUNA_APP_VERSION.trim();
+  }
+  const candidatePaths = [
+    path.join(process.cwd(), 'package.json'),
+    path.join(__dirname, 'package.json'),
+    path.join(__dirname, '..', 'package.json'),
+  ];
+  if ((process as any).resourcesPath) {
+    candidatePaths.push(
+      path.join((process as any).resourcesPath, 'app', 'package.json'),
+      path.join((process as any).resourcesPath, 'package.json')
+    );
+  }
+  for (const candidate of candidatePaths) {
+    try {
+      if (fs.existsSync(candidate)) {
+        const pkg = JSON.parse(fs.readFileSync(candidate, 'utf-8'));
+        if (pkg && pkg.version) return pkg.version;
+      }
+    } catch {}
+  }
+  return '1.21.7';
 }
+
 
 app.get('/api/app/check-update', async (req, res) => {
   const currentVersion = getCurrentAppVersion();

@@ -144,7 +144,7 @@ public partial class MainWindow : Window
 
                 if (_batchFilesTimer == null)
                 {
-                    _batchFilesTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(120) };
+                    _batchFilesTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(160) };
                     _batchFilesTimer.Tick += (s, e) =>
                     {
                         _batchFilesTimer.Stop();
@@ -158,16 +158,38 @@ public partial class MainWindow : Window
         });
     }
 
+    [DllImport("shlwapi.dll", CharSet = CharSet.Unicode, ExactSpelling = true)]
+    private static extern int StrCmpLogicalW(string psz1, string psz2);
+
+    private static List<string> SortMediaFilesPreservingFirst(List<string> files)
+    {
+        if (files == null || files.Count <= 1) return files ?? new List<string>();
+        var first = files[0];
+
+        // Sort all files by file name using Windows Explorer's natural logical sort
+        var sorted = files.OrderBy(f => Path.GetFileName(f), Comparer<string>.Create((a, b) => StrCmpLogicalW(a, b))).ToList();
+        var idx = sorted.FindIndex(f => string.Equals(f, first, StringComparison.OrdinalIgnoreCase));
+        if (idx == -1) return files;
+
+        // Keep clicked file first, followed by remaining files in natural sequence (with wrap-around)
+        var result = new List<string>(files.Count) { first };
+        result.AddRange(sorted.Skip(idx + 1));
+        result.AddRange(sorted.Take(idx));
+        return result;
+    }
+
     private void DispatchBatchedFiles()
     {
-        List<string> toSend;
+        List<string> raw;
         lock (_batchedFilesLock)
         {
-            toSend = new List<string>(_batchedFiles);
+            raw = new List<string>(_batchedFiles);
             _batchedFiles.Clear();
         }
 
-        if (toSend.Count == 0) return;
+        if (raw.Count == 0) return;
+
+        var toSend = SortMediaFilesPreservingFirst(raw);
 
         if (WebViewControl?.CoreWebView2 != null && _isUiReady)
         {
@@ -197,7 +219,8 @@ public partial class MainWindow : Window
         {
             if (_pendingFiles.Count > 0)
             {
-                var json = JsonSerializer.Serialize(_pendingFiles);
+                var sorted = SortMediaFilesPreservingFirst(_pendingFiles);
+                var json = JsonSerializer.Serialize(sorted);
                 _pendingFiles.Clear();
                 Dispatcher.Invoke(() =>
                 {
@@ -208,6 +231,7 @@ public partial class MainWindow : Window
             }
         }
     }
+
 
     private const int WM_NCLBUTTONDOWN = 0xA1;
     private const int HTCAPTION = 0x2;
@@ -393,7 +417,16 @@ public partial class MainWindow : Window
                     ackOpenFiles: async (files) => {
                         return;
                     },
+                    getAppVersion: async () => {
+                        try {
+                            if (window.chrome?.webview?.hostObjects?.nativeHost) {
+                                return await window.chrome.webview.hostObjects.nativeHost.GetAppVersion();
+                            }
+                        } catch {}
+                        return '1.21.7';
+                    },
                     toggleFullscreen: () => {
+
                         try {
                             if (window.chrome?.webview?.hostObjects?.nativeHost) {
                                 window.chrome.webview.hostObjects.nativeHost.ToggleFullScreen();
