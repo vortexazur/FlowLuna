@@ -212,6 +212,9 @@ export class VLCMediaPlayer {
     });
 
     add('playing', () => {
+      if (this.audioContext && this.audioContext.state === 'suspended') {
+        this.audioContext.resume().catch(() => {});
+      }
       this.setState(VLCState.Playing);
       this.emit('playing');
     });
@@ -305,7 +308,9 @@ export class VLCMediaPlayer {
       // Analyser Node for Spectrum Visualizer
       this.analyserNode = this.audioContext.createAnalyser();
       this.analyserNode.fftSize = 256;
-      this.analyserNode.smoothingTimeConstant = 0.8;
+      this.analyserNode.minDecibels = -85;
+      this.analyserNode.maxDecibels = -10;
+      this.analyserNode.smoothingTimeConstant = 0.75;
 
       // Graph wiring:
       // source -> preamp -> eq[0..9] -> normalizer -> compressor -> limiter -> spatializer -> analyser -> destination
@@ -598,18 +603,23 @@ export class VLCMediaPlayer {
 
     const result: number[] = [];
     const totalBins = buffer.length;
+    const minBin = 1;
+    const maxBin = Math.min(totalBins - 1, 86);
 
     for (let i = 0; i < numBands; i++) {
-      const startBin = Math.floor(Math.pow(totalBins, i / numBands) - 1);
-      const endBin = Math.floor(Math.pow(totalBins, (i + 1) / numBands));
-      const s = Math.max(0, startBin);
-      const e = Math.min(totalBins - 1, Math.max(s + 1, endBin));
+      const ratio = i / numBands;
+      const nextRatio = (i + 1) / numBands;
+      const startBin = Math.floor(minBin * Math.pow(maxBin / minBin, ratio));
+      const endBin = Math.ceil(minBin * Math.pow(maxBin / minBin, nextRatio));
+      const s = Math.max(minBin, startBin);
+      const e = Math.min(maxBin + 1, Math.max(s + 1, endBin));
       let sum = 0;
       for (let j = s; j < e; j++) {
         sum += buffer[j];
       }
-      const avg = sum / (e - s || 1);
-      result.push(Math.min(1, avg / 255));
+      const avg = sum / Math.max(1, e - s);
+      const tilt = 1 + ratio * 0.25;
+      result.push(Math.min(1, (avg / 255) * tilt));
     }
     return result;
   }

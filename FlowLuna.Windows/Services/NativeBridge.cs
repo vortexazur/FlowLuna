@@ -117,6 +117,24 @@ public class NativeBridge
         });
     }
 
+    public string? ShowSaveFileDialog(string defaultFileName, string filter)
+    {
+        return _window.Dispatcher.Invoke(() =>
+        {
+            var dialog = new SaveFileDialog
+            {
+                Title = "Enregistrer sous - FlowLuna",
+                FileName = defaultFileName,
+                Filter = string.IsNullOrWhiteSpace(filter) ? "Tous les fichiers (*.*)|*.*" : filter,
+                AddExtension = true,
+                OverwritePrompt = true
+            };
+
+            var result = dialog.ShowDialog(_window);
+            return result == true ? dialog.FileName : null;
+        });
+    }
+
     private double _savedWidth = 1280;
     private double _savedHeight = 820;
     private WindowState _savedState = WindowState.Normal;

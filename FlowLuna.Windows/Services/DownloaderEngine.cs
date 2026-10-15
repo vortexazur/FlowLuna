@@ -318,13 +318,13 @@ public static class DownloaderEngine
         return await LibraryScanner.BuildTrackMetadataAsync(destPath);
     }
 
-    private static string CleanTrackTitle(string title)
+    public static string CleanTrackTitle(string title)
     {
         var cleaned = Regex.Replace(title, @"\s*(\(|\[)(official\s+(music\s+)?video|audio\s+officiel|clip\s+officiel|hq|hd|4k|lyrics?)(\)|\])", "", RegexOptions.IgnoreCase);
         return cleaned.Trim();
     }
 
-    private static string SanitizeFileName(string name)
+    public static string SanitizeFileName(string name)
     {
         var invalid = Path.GetInvalidFileNameChars();
         return string.Concat(name.Split(invalid, StringSplitOptions.RemoveEmptyEntries)).Trim();

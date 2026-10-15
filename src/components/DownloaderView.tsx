@@ -104,6 +104,52 @@ const SUPPORTED_SERVICES = [
   { name: 'Vimeo & Dailymotion', desc: 'Vidéos HD', color: 'text-indigo-400' },
 ];
 
+export function formatDownloadFileName(artist?: string, title?: string, ext: string = 'mp3'): string {
+  let cleanTitle = (title || '').trim();
+  let cleanArtist = (artist || '').trim();
+
+  // Remove bracket / parentheses junk from title
+  const bracketJunk = /[\[\(\{【][^\]\)\}】]*(?:official|officiel|video|clip|audio|lyric|lyrics|paroles|visualizer|remaster|remastered|4k|1080p|hd|hq|live|version|explicit|clean|prod\.|session|acoustic|studio)[^\]\)\}】]*[\]\)\}】]/gi;
+  cleanTitle = cleanTitle.replace(bracketJunk, ' ').trim();
+
+  // Trailing junk
+  const trailingJunk = /\s*(?:[-–—:|~/\\])\s*(?:official\s*(?:music\s*)?video|clip\s*officiel|official\s*audio|video\s*clip|audio\s*officiel|lyric\s*video|lyrics|paroles|visualizer|remastered(?:\s*\d{4})?|4k|hd|hq|live)\s*$/gi;
+  cleanTitle = cleanTitle.replace(trailingJunk, '').trim();
+
+  // Standalone junk
+  cleanTitle = cleanTitle.replace(/\s+(?:official\s*(?:music\s*)?video|clip\s*officiel|official\s*audio|video\s*clip|audio\s*officiel|lyric\s*video|lyrics|visualizer)\s*$/gi, '').trim();
+
+  // If title is formatted as "Artist - Title"
+  const sepMatch = cleanTitle.match(/^([^-–—:]+)\s*[-–—:]\s*(.+)$/);
+  if (sepMatch) {
+    const pArtist = sepMatch[1].trim();
+    const pTitle = sepMatch[2].trim();
+    if (!cleanArtist || /^(?:Artiste YouTube|YouTube|Inconnu|Unknown|Artiste|Artiste Inconnu|Musique YouTube|Créateur Web|Web)$/i.test(cleanArtist)) {
+      cleanArtist = pArtist;
+      cleanTitle = pTitle;
+    } else if (cleanArtist.toLowerCase() === pArtist.toLowerCase()) {
+      cleanTitle = pTitle;
+    }
+  }
+
+  // Remove duplicate artist prefix from title
+  if (cleanArtist) {
+    const escaped = cleanArtist.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    cleanTitle = cleanTitle.replace(new RegExp(`^${escaped}\\s*[-–—:]\\s*`, 'i'), '').trim();
+  }
+
+  // Sanitize Windows invalid filename characters: \ / : * ? " < > |
+  const sanitize = (str: string) => str.replace(/[\\/:*?"<>|]/g, '').replace(/\s+/g, ' ').trim();
+
+  cleanTitle = sanitize(cleanTitle) || 'Track';
+  cleanArtist = sanitize(cleanArtist);
+
+  const isGeneric = !cleanArtist || /^(?:Artiste YouTube|YouTube|Inconnu|Unknown|Artiste|Artiste Inconnu|Musique YouTube|Créateur Web|Web)$/i.test(cleanArtist);
+  const baseName = (!isGeneric && cleanArtist) ? `${cleanArtist} - ${cleanTitle}` : cleanTitle;
+  const cleanExt = ext.replace(/^\./, '').toLowerCase() || 'mp3';
+  return `${baseName}.${cleanExt}`;
+}
+
 export const DownloaderView: React.FC<DownloaderViewProps> = ({
   accent,
   onTrackImported,
@@ -236,9 +282,92 @@ export const DownloaderView: React.FC<DownloaderViewProps> = ({
     }
   };
 
-  // Download directly to PC via Browser with live progress
-  const handleDownloadToPC = () => {
+  // Download directly to PC via Native Save Dialog or Browser File Picker with live progress
+  const handleDownloadToPC = async () => {
     if (!inspectedMedia) return;
+
+    const ext = (mediaType === 'video' ? videoFormat : audioFormat).toLowerCase();
+    const suggestedFileName = formatDownloadFileName(
+      customArtist || inspectedMedia.artist,
+      customTitle || inspectedMedia.title,
+      ext
+    );
+
+    let chosenPath: string | null = null;
+    let fileHandle: any = null;
+
+    // 1. Electron Native Save Dialog
+    if (window.electronAPI?.showSaveDialog) {
+      try {
+        const filterName = mediaType === 'video' ? 'Fichier Vidéo' : 'Fichier Audio';
+        chosenPath = await window.electronAPI.showSaveDialog({
+          defaultPath: suggestedFileName,
+          filters: [
+            { name: `${filterName} (*.${ext})`, extensions: [ext] },
+            { name: 'Tous les fichiers (*.*)', extensions: ['*'] },
+          ],
+        });
+        if (!chosenPath) {
+          // User cancelled the dialog, abort cleanly
+          return;
+        }
+      } catch (dialogErr) {
+        console.warn('[Downloader] Electron showSaveDialog error:', dialogErr);
+      }
+    }
+
+    // 2. WPF WebView2 NativeBridge Save Dialog
+    const nativeHost = (window as any).chrome?.webview?.hostObjects?.nativeHost;
+    if (!chosenPath && nativeHost && typeof nativeHost.ShowSaveFileDialog === 'function') {
+      try {
+        const filter = mediaType === 'video'
+          ? `Fichier Vidéo (*.${ext})|*.${ext}|Tous les fichiers (*.*)|*.*`
+          : `Fichier Audio (*.${ext})|*.${ext}|Tous les fichiers (*.*)|*.*`;
+        chosenPath = await nativeHost.ShowSaveFileDialog(suggestedFileName, filter);
+        if (!chosenPath) {
+          // User cancelled the dialog
+          return;
+        }
+      } catch (nativeErr) {
+        console.warn('[Downloader] NativeBridge ShowSaveFileDialog error:', nativeErr);
+      }
+    }
+
+    // 3. Web / Chromium File System Access API (showSaveFilePicker)
+    if (!chosenPath && typeof (window as any).showSaveFilePicker === 'function') {
+      try {
+        const mimeMap: Record<string, string> = {
+          mp3: 'audio/mpeg',
+          flac: 'audio/flac',
+          wav: 'audio/wav',
+          m4a: 'audio/mp4',
+          ogg: 'audio/ogg',
+          opus: 'audio/opus',
+          mp4: 'video/mp4',
+          mkv: 'video/x-matroska',
+          webm: 'video/webm',
+        };
+        const mimeType = mimeMap[ext] || (mediaType === 'video' ? 'video/mp4' : 'audio/mpeg');
+
+        fileHandle = await (window as any).showSaveFilePicker({
+          suggestedName: suggestedFileName,
+          types: [
+            {
+              description: mediaType === 'video' ? 'Fichier Vidéo' : 'Fichier Audio',
+              accept: {
+                [mimeType]: [`.${ext}`],
+              },
+            },
+          ],
+        });
+      } catch (pickerErr: any) {
+        if (pickerErr?.name === 'AbortError') {
+          // User cancelled the browser save picker
+          return;
+        }
+        console.warn('[Downloader] showSaveFilePicker fallback:', pickerErr);
+      }
+    }
 
     setIsDownloading(true);
     setDownloadError(null);
@@ -259,7 +388,7 @@ export const DownloaderView: React.FC<DownloaderViewProps> = ({
           setDownloadProgressData({ percent: 100, message: t.downloadComplete });
           setDownloadProgressStep(t.downloadComplete);
           setDownloadSuccessMessage(
-            `"${customTitle || inspectedMedia.title}" a été téléchargé avec succès sur votre PC !`
+            `"${suggestedFileName}" a été téléchargé avec succès sur votre PC !`
           );
           setTimeout(() => {
             setIsDownloading(false);
@@ -285,29 +414,63 @@ export const DownloaderView: React.FC<DownloaderViewProps> = ({
       artist: customArtist,
     });
 
+    if (chosenPath) {
+      params.set('destinationPath', chosenPath);
+    }
+
     const downloadUrl = `/api/downloader/download?${params.toString()}`;
 
-    // Create anchor to initiate file download
-    const link = document.createElement('a');
-    link.href = downloadUrl;
-    link.setAttribute('download', '');
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
+    try {
+      if (fileHandle) {
+        // Stream directly to the user-selected file handle
+        const response = await fetch(downloadUrl);
+        if (!response.ok) {
+          throw new Error(`Erreur réseau (${response.status})`);
+        }
+        const writable = await fileHandle.createWritable();
+        if (response.body) {
+          await response.body.pipeTo(writable);
+        } else {
+          const blob = await response.blob();
+          await writable.write(blob);
+          await writable.close();
+        }
+      } else if (chosenPath) {
+        // Backend handles copying directly to destinationPath
+        const response = await fetch(downloadUrl);
+        if (!response.ok) {
+          throw new Error(`Erreur réseau (${response.status})`);
+        }
+      } else {
+        // Browser fallback: Anchor click with explicit suggestedFileName
+        const link = document.createElement('a');
+        link.href = downloadUrl;
+        link.setAttribute('download', suggestedFileName);
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+      }
 
-    // Save to history
-    saveHistoryItem({
-      id: `${inspectedMedia.id}-${Date.now()}`,
-      title: customTitle || inspectedMedia.title,
-      artist: customArtist || inspectedMedia.artist,
-      thumbnail: inspectedMedia.thumbnail,
-      type: mediaType,
-      format: mediaType === 'video' ? videoFormat : audioFormat,
-      quality: mediaType === 'video' ? `${videoQuality}p` : audioBitrate,
-      downloadUrl,
-      timestamp: Date.now(),
-      durationStr: inspectedMedia.durationStr,
-    });
+      // Save to history
+      saveHistoryItem({
+        id: `${inspectedMedia.id}-${Date.now()}`,
+        title: customTitle || inspectedMedia.title,
+        artist: customArtist || inspectedMedia.artist,
+        thumbnail: inspectedMedia.thumbnail,
+        type: mediaType,
+        format: mediaType === 'video' ? videoFormat : audioFormat,
+        quality: mediaType === 'video' ? `${videoQuality}p` : audioBitrate,
+        downloadUrl,
+        timestamp: Date.now(),
+        durationStr: inspectedMedia.durationStr,
+        filePath: chosenPath || undefined,
+      });
+    } catch (dlErr: any) {
+      console.error('[Downloader] Download execution error:', dlErr);
+      eventSource.close();
+      setIsDownloading(false);
+      setDownloadError(dlErr?.message || 'Erreur lors du téléchargement.');
+    }
   };
 
   // Save to App Library & Offline Cache with live progress
@@ -424,7 +587,6 @@ export const DownloaderView: React.FC<DownloaderViewProps> = ({
         const dlUrl = `/api/downloader/download?${params.toString()}`;
         const a = document.createElement('a');
         a.href = dlUrl;
-        a.setAttribute('download', '');
         document.body.appendChild(a);
         a.click();
         document.body.removeChild(a);
@@ -1193,7 +1355,7 @@ export const DownloaderView: React.FC<DownloaderViewProps> = ({
                     {item.downloadUrl && (
                       <a
                         href={item.downloadUrl}
-                        download
+                        download={formatDownloadFileName(item.artist, item.title, item.format)}
                         className="p-2 rounded-lg bg-white/10 hover:bg-white/20 text-neutral-700 dark:text-neutral-300 hover:text-black dark:hover:text-white border border-white/10 transition-colors"
                         title="Re-télécharger"
                       >

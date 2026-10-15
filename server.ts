@@ -799,7 +799,13 @@ function getBaseYtdlpArgs(): string[] {
 
 // Helper to sanitize filename
 function sanitizeFileName(name: string): string {
-  return name.replace(/[\\/:*?"<>|]/g, '_').replace(/\s+/g, ' ').trim();
+  return name.replace(/[\\/:*?"<>|]/g, '').replace(/\s+/g, ' ').trim();
+}
+
+// RFC 6266 / RFC 5987 compliant Content-Disposition header (avoids %20 in Windows filename)
+function getContentDispositionHeader(finalFileName: string): string {
+  const safeAscii = finalFileName.replace(/[^\x20-\x7E]/g, '_').replace(/["\\]/g, '');
+  return `attachment; filename="${safeAscii}"; filename*=UTF-8''${encodeURIComponent(finalFileName)}`;
 }
 
 function formatSeconds(seconds: number): string {
@@ -892,7 +898,8 @@ function cleanTrackTitleAndArtistServer(rawTitle: string, rawArtist?: string): {
   if (!title) title = rawTitle || 'Titre Audio';
   if (!artist) artist = 'Artiste YouTube';
 
-  const fileName = artist && artist !== 'Artiste YouTube' ? `${artist} - ${title}` : title;
+  const isGeneric = !artist || /^(?:Artiste YouTube|YouTube|Inconnu|Unknown|Artiste|Artiste Inconnu|Musique YouTube|Créateur Web|Web)$/i.test(artist.trim());
+  const fileName = (!isGeneric && artist) ? `${artist} - ${title}` : title;
   return { title, artist, fileName };
 }
 
@@ -1639,10 +1646,7 @@ app.get('/api/youtube/download', async (req, res) => {
     res.setHeader('Content-Type', mimeMap[format] || 'audio/mpeg');
     res.setHeader('Content-Length', stats.size);
     res.setHeader('Access-Control-Expose-Headers', 'Content-Disposition, X-Track-Title, X-Track-Artist, X-Track-Filename');
-    res.setHeader(
-      'Content-Disposition',
-      `attachment; filename="${encodeURIComponent(finalFileName)}"; filename*=UTF-8''${encodeURIComponent(finalFileName)}`
-    );
+    res.setHeader('Content-Disposition', getContentDispositionHeader(finalFileName));
     res.setHeader('X-Track-Title', encodeURIComponent(cleanMeta.title));
     res.setHeader('X-Track-Artist', encodeURIComponent(cleanMeta.artist));
     res.setHeader('X-Track-Filename', encodeURIComponent(finalFileName));
@@ -1939,6 +1943,7 @@ app.get(['/api/downloader/download', '/api/downloader/stream-file'], async (req,
   const videoQuality = ((req.query.videoQuality as string) || 'best').toLowerCase();
   const customTitle = (req.query.title as string)?.trim();
   const customArtist = (req.query.artist as string)?.trim();
+  const destinationPath = (req.query.destinationPath as string)?.trim();
 
   if (!url) {
     return res.status(400).json({ error: 'Paramètre url requis.' });
@@ -2025,10 +2030,7 @@ app.get(['/api/downloader/download', '/api/downloader/stream-file'], async (req,
         const finalFileName = `${sanitizeFileName(cleanMeta.fileName || cleanMeta.title)}.${convFormat}`;
         res.setHeader('Content-Type', mediaType === 'video' ? 'video/mp4' : 'audio/mpeg');
         res.setHeader('Access-Control-Expose-Headers', 'Content-Disposition, X-Track-Title, X-Track-Artist, X-Track-Filename, X-Media-Type');
-        res.setHeader(
-          'Content-Disposition',
-          `attachment; filename="${encodeURIComponent(finalFileName)}"; filename*=UTF-8''${encodeURIComponent(finalFileName)}`
-        );
+        res.setHeader('Content-Disposition', getContentDispositionHeader(finalFileName));
         res.setHeader('X-Track-Title', encodeURIComponent(cleanMeta.title));
         res.setHeader('X-Track-Artist', encodeURIComponent(cleanMeta.artist));
         res.setHeader('X-Track-Filename', encodeURIComponent(finalFileName));
@@ -2101,13 +2103,11 @@ app.get(['/api/downloader/download', '/api/downloader/stream-file'], async (req,
             const noTubeRes = await fetchNoTubeConversion(targetUrl, mediaType === 'video' ? 'mp4' : 'mp3');
             if (noTubeRes && noTubeRes.directDownloadUrl) {
               console.log(`[Downloader] noTube fallback success: ${noTubeRes.directDownloadUrl}`);
-              const finalFileName = `${sanitizeFileName(cleanMeta.fileName || cleanMeta.title)}.${mediaType === 'video' ? 'mp4' : 'mp3'}`;
+              const downloadName = sanitizeFileName(cleanMeta.fileName || `${cleanMeta.artist} - ${cleanMeta.title}`);
+              const finalFileName = `${downloadName}.${mediaType === 'video' ? 'mp4' : 'mp3'}`;
               res.setHeader('Content-Type', mediaType === 'video' ? 'video/mp4' : 'audio/mpeg');
               res.setHeader('Access-Control-Expose-Headers', 'Content-Disposition, X-Track-Title, X-Track-Artist, X-Track-Filename, X-Media-Type');
-              res.setHeader(
-                'Content-Disposition',
-                `attachment; filename="${encodeURIComponent(finalFileName)}"; filename*=UTF-8''${encodeURIComponent(finalFileName)}`
-              );
+              res.setHeader('Content-Disposition', getContentDispositionHeader(finalFileName));
               res.setHeader('X-Track-Title', encodeURIComponent(cleanMeta.title));
               res.setHeader('X-Track-Artist', encodeURIComponent(cleanMeta.artist));
               res.setHeader('X-Track-Filename', encodeURIComponent(finalFileName));
@@ -2149,14 +2149,25 @@ app.get(['/api/downloader/download', '/api/downloader/stream-file'], async (req,
                 const dlAlt = await executeAudioDownload(smartTarget, outputTemplate, chosenFormatExt, tempBase);
                 if (dlAlt.success && dlAlt.generatedFile) {
                   const stat = fs.statSync(dlAlt.generatedFile);
-                  const finalFileName = `${sanitizeFileName(cleanMeta.fileName || cleanMeta.title)}.${chosenFormatExt}`;
+                  const downloadName = sanitizeFileName(cleanMeta.fileName || `${cleanMeta.artist} - ${cleanMeta.title}`);
+                  const finalFileName = `${downloadName}.${chosenFormatExt}`;
+
+                  if (destinationPath) {
+                    try {
+                      const destDir = path.dirname(destinationPath);
+                      if (!fs.existsSync(destDir)) {
+                        fs.mkdirSync(destDir, { recursive: true });
+                      }
+                      fs.copyFileSync(dlAlt.generatedFile, destinationPath);
+                    } catch (copyErr) {
+                      console.error('[Downloader] Failed to copy alternative to destinationPath:', copyErr);
+                    }
+                  }
+
                   res.setHeader('Content-Type', mimeMap[chosenFormatExt] || 'audio/mpeg');
                   res.setHeader('Content-Length', stat.size);
                   res.setHeader('Access-Control-Expose-Headers', 'Content-Disposition, X-Track-Title, X-Track-Artist, X-Track-Filename, X-Media-Type');
-                  res.setHeader(
-                    'Content-Disposition',
-                    `attachment; filename="${encodeURIComponent(finalFileName)}"; filename*=UTF-8''${encodeURIComponent(finalFileName)}`
-                  );
+                  res.setHeader('Content-Disposition', getContentDispositionHeader(finalFileName));
                   res.setHeader('X-Track-Title', encodeURIComponent(cleanMeta.title));
                   res.setHeader('X-Track-Artist', encodeURIComponent(cleanMeta.artist));
                   res.setHeader('X-Track-Filename', encodeURIComponent(finalFileName));
@@ -2209,13 +2220,22 @@ app.get(['/api/downloader/download', '/api/downloader/stream-file'], async (req,
       const downloadName = sanitizeFileName(cleanMeta.fileName || `${cleanMeta.artist} - ${cleanMeta.title}`);
       const finalFileName = `${downloadName}.${finalExt}`;
 
+      if (destinationPath) {
+        try {
+          const destDir = path.dirname(destinationPath);
+          if (!fs.existsSync(destDir)) {
+            fs.mkdirSync(destDir, { recursive: true });
+          }
+          fs.copyFileSync(generatedFilePath, destinationPath);
+        } catch (copyErr) {
+          console.error('[Downloader] Failed to copy to destinationPath:', copyErr);
+        }
+      }
+
       res.setHeader('Content-Type', mimeMap[finalExt] || (mediaType === 'video' ? 'video/mp4' : 'audio/mpeg'));
       res.setHeader('Content-Length', fileStat.size);
       res.setHeader('Access-Control-Expose-Headers', 'Content-Disposition, X-Track-Title, X-Track-Artist, X-Track-Filename, X-Media-Type');
-      res.setHeader(
-        'Content-Disposition',
-        `attachment; filename="${encodeURIComponent(finalFileName)}"; filename*=UTF-8''${encodeURIComponent(finalFileName)}`
-      );
+      res.setHeader('Content-Disposition', getContentDispositionHeader(finalFileName));
       res.setHeader('X-Track-Title', encodeURIComponent(cleanMeta.title));
       res.setHeader('X-Track-Artist', encodeURIComponent(cleanMeta.artist));
       res.setHeader('X-Track-Filename', encodeURIComponent(finalFileName));
@@ -2787,11 +2807,7 @@ app.post('/api/audio/convert', async (req, res) => {
 
     res.setHeader('Content-Type', mimeMap[targetFormat] || 'audio/mpeg');
     res.setHeader('Content-Length', stats.size);
-    res.setHeader('Access-Control-Expose-Headers', 'Content-Disposition, X-Track-Title, X-Track-Artist, X-Track-Filename');
-    res.setHeader(
-      'Content-Disposition',
-      `attachment; filename="${encodeURIComponent(finalFileName)}"; filename*=UTF-8''${encodeURIComponent(finalFileName)}`
-    );
+    res.setHeader('Content-Disposition', getContentDispositionHeader(finalFileName));
     res.setHeader('X-Track-Title', encodeURIComponent(title));
     res.setHeader('X-Track-Artist', encodeURIComponent(artist));
     res.setHeader('X-Track-Filename', encodeURIComponent(finalFileName));

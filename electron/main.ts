@@ -559,6 +559,19 @@ function setupIpcHandlers(): void {
     return result.filePaths[0];
   });
 
+  ipcMain.handle('show-save-dialog', async (_event, options: { defaultPath?: string; filters?: { name: string; extensions: string[] }[] }) => {
+    if (!mainWindow) return null;
+    const result = await dialog.showSaveDialog(mainWindow, {
+      title: 'Enregistrer sous - FlowLuna',
+      defaultPath: options?.defaultPath,
+      filters: options?.filters || [{ name: 'Tous les fichiers', extensions: ['*'] }],
+    });
+    if (result.canceled || !result.filePath) {
+      return null;
+    }
+    return result.filePath;
+  });
+
   ipcMain.handle('select-music-files', async () => {
     if (!mainWindow) return [];
     const result = await dialog.showOpenDialog(mainWindow, {

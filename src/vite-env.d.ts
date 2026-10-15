@@ -43,6 +43,7 @@ export interface ElectronAPIType {
   isFullScreen?: () => Promise<boolean> | boolean;
   onFullScreenChange?: (callback: (fullscreen: boolean) => void) => () => void;
   getAppVersion?: () => Promise<string>;
+  showSaveDialog?: (options?: { defaultPath?: string; filters?: { name: string; extensions: string[] }[] }) => Promise<string | null>;
 }
 
 declare const __APP_VERSION__: string;

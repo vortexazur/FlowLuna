@@ -28,6 +28,7 @@ export interface ElectronAPI {
   isFullScreen: () => Promise<boolean>;
   onFullScreenChange?: (callback: (fullscreen: boolean) => void) => () => void;
   getAppVersion: () => Promise<string>;
+  showSaveDialog?: (options?: { defaultPath?: string; filters?: { name: string; extensions: string[] }[] }) => Promise<string | null>;
 }
 
 
@@ -137,6 +138,8 @@ const api: ElectronAPI = {
     };
   },
   getAppVersion: () => ipcRenderer.invoke('get-app-version'),
+  showSaveDialog: (options?: { defaultPath?: string; filters?: { name: string; extensions: string[] }[] }) =>
+    ipcRenderer.invoke('show-save-dialog', options),
 };
 
 contextBridge.exposeInMainWorld('electronAPI', api);

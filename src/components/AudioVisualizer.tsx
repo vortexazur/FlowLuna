@@ -122,10 +122,12 @@ export const AudioVisualizer: React.FC<AudioVisualizerProps> = ({
     const rawFreqArray = new Uint8Array(bufferLength);
     const timeDomainArray = new Uint8Array(bufferLength);
 
+    const numBands = Math.max(4, Math.min(barCount, 64));
+
     // Initialize peaks
-    if (peaksRef.current.length !== barCount) {
-      peaksRef.current = new Array(barCount).fill(0);
-      peakDecaySpeedRef.current = new Array(barCount).fill(0);
+    if (peaksRef.current.length !== numBands) {
+      peaksRef.current = new Array(numBands).fill(0);
+      peakDecaySpeedRef.current = new Array(numBands).fill(0);
     }
 
     const render = () => {
@@ -182,28 +184,67 @@ export const AudioVisualizer: React.FC<AudioVisualizerProps> = ({
         audioEngine.getFrequencyData(rawFreqArray);
         audioEngine.getTimeDomainData(timeDomainArray);
 
-        // Compute logarithmic bands for natural spectrum display across audible music frequencies (~30Hz to ~14kHz)
-        const bands: number[] = [];
-        const numBands = Math.max(4, Math.min(barCount, 64));
+        // Check if live audio frequencies are actively flowing
+        let sumTotal = 0;
+        let hasActiveAudio = false;
         const totalBins = rawFreqArray.length;
-        const maxBin = Math.min(totalBins, 86); // Focus on musically active range
+        for (let j = 0; j < totalBins; j++) {
+          sumTotal += rawFreqArray[j];
+          if (rawFreqArray[j] > 2) {
+            hasActiveAudio = true;
+          }
+        }
+        const avgBinValue = sumTotal / Math.max(1, totalBins);
+        // Anti-saturation detector: triggers if almost all bins are clipped to 255
+        const isSaturated = avgBinValue > 248;
+
+        // Compute logarithmic bands for natural spectrum display across audible music frequencies (~30Hz to ~15kHz)
+        const bands: number[] = [];
+        const minBin = 1; // Skip DC offset at bin 0
+        const maxBin = Math.min(totalBins - 1, 86); // Musically active spectrum up to ~15 kHz
+        const now = typeof performance !== 'undefined' ? performance.now() : Date.now();
 
         for (let i = 0; i < numBands; i++) {
           const ratio = i / numBands;
           const nextRatio = (i + 1) / numBands;
-          const startBin = Math.floor(Math.pow(maxBin, ratio) - 1);
-          const endBin = Math.ceil(Math.pow(maxBin, nextRatio));
-          const s = Math.max(0, startBin);
-          const e = Math.min(maxBin, Math.max(s + 1, endBin));
-          let sum = 0;
-          for (let j = s; j < e; j++) {
-            sum += rawFreqArray[j];
+          const startBin = Math.floor(minBin * Math.pow(maxBin / minBin, ratio));
+          const endBin = Math.ceil(minBin * Math.pow(maxBin / minBin, nextRatio));
+          const s = Math.max(minBin, startBin);
+          const e = Math.min(maxBin + 1, Math.max(s + 1, endBin));
+
+          let bandVal = 0;
+
+          if (hasActiveAudio && isPlaying) {
+            let sum = 0;
+            for (let j = s; j < e; j++) {
+              sum += rawFreqArray[j];
+            }
+            let rawAvg = sum / Math.max(1, e - s);
+
+            // Anti-saturation guard: if stream is heavily clipped, scale down to prevent full-height stuck bars
+            if (isSaturated) {
+              rawAvg = (rawAvg / 255) * 170;
+            }
+
+            // Balanced perceptual tilt: human ear is less sensitive to high frequencies
+            // Gentle factor (+25% at highest band) prevents saturating higher bands
+            const perceptualTilt = 1 + ratio * 0.25;
+            const normalized = Math.min(1.0, Math.max(0, (rawAvg / 255) * perceptualTilt));
+
+            // Scale to 238 max: provides clean headroom so bars and peak caps never jam against the container border
+            bandVal = Math.round(normalized * 238);
+          } else if (isPlaying) {
+            // Organic simulation fallback when stream is silent or CORS-restricted
+            // Controlled amplitude: pulses smoothly between 15% and 55% height, NEVER hits maximum continuous height
+            const t = now * 0.003;
+            const wave1 = Math.sin(t * 2.2 + i * 0.45);
+            const wave2 = Math.cos(t * 3.4 - i * 0.35);
+            const wave3 = Math.sin(t * 1.2 + i * 0.75);
+            const simNorm = (wave1 * 0.35 + wave2 * 0.25 + wave3 * 0.15 + 0.5) * 0.55;
+            bandVal = Math.round(Math.max(12, Math.min(135, simNorm * 255)));
           }
-          const rawAvg = isPlaying ? sum / Math.max(1, e - s) : 0;
-          // Perceptual weighting: human ear is less sensitive to treble, and audio files have naturally lower high-freq energy
-          const trebleEmphasis = 1 + ratio * 1.5;
-          const boosted = rawAvg * trebleEmphasis;
-          bands.push(Math.min(255, Math.max(0, boosted)));
+
+          bands.push(bandVal);
         }
 
         // Update peaks with gravity
@@ -230,7 +271,11 @@ export const AudioVisualizer: React.FC<AudioVisualizerProps> = ({
           let x = 0;
 
           for (let i = 0; i < timeDomainArray.length; i++) {
-            const v = timeDomainArray[i] / 128.0;
+            let v = timeDomainArray[i] / 128.0;
+            if (!hasActiveAudio && isPlaying) {
+              const t = now * 0.003;
+              v = 1.0 + Math.sin(t * 3 + i * 0.12) * 0.22;
+            }
             const y = (v * height) / 2;
 
             if (i === 0) {

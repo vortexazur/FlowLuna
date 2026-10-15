@@ -657,6 +657,8 @@ public class HttpServer
             var title = ctx.Request.Query["title"].ToString();
             var artist = ctx.Request.Query["artist"].ToString();
 
+            var destinationPath = ctx.Request.Query["destinationPath"].ToString();
+
             if (string.IsNullOrWhiteSpace(url)) return Results.BadRequest("Paramètre url requis");
 
             var req = new DownloadRequest(jobId, url, mediaType, audioFormat, audioBitrate, videoFormat, videoQuality, title, artist);
@@ -668,8 +670,34 @@ public class HttpServer
                     if (!string.IsNullOrWhiteSpace(jobId)) ActiveJobs[jobId] = prog;
                 });
 
-                var fileName = Path.GetFileName(filePath);
-                var mime = Path.GetExtension(filePath).ToLowerInvariant() switch
+                var ext = Path.GetExtension(filePath);
+                var cleanTitle = string.IsNullOrWhiteSpace(title) ? "Media" : DownloaderEngine.CleanTrackTitle(title);
+                var cleanArtist = string.IsNullOrWhiteSpace(artist) || artist.Equals("Artiste YouTube", StringComparison.OrdinalIgnoreCase) ? "" : artist.Trim();
+                var isGeneric = string.IsNullOrWhiteSpace(cleanArtist) || cleanArtist.Equals("Artiste", StringComparison.OrdinalIgnoreCase);
+
+                string baseName;
+                if (!isGeneric && !cleanTitle.StartsWith(cleanArtist + " -", StringComparison.OrdinalIgnoreCase))
+                {
+                    baseName = $"{cleanArtist} - {cleanTitle}";
+                }
+                else
+                {
+                    baseName = cleanTitle;
+                }
+
+                var finalFileName = $"{DownloaderEngine.SanitizeFileName(baseName)}{ext}";
+
+                // If destinationPath was chosen via Save Dialog, copy directly to destination
+                if (!string.IsNullOrWhiteSpace(destinationPath))
+                {
+                    var destDir = Path.GetDirectoryName(destinationPath);
+                    if (!string.IsNullOrWhiteSpace(destDir)) Directory.CreateDirectory(destDir);
+                    File.Copy(filePath, destinationPath, true);
+                    try { File.Delete(filePath); } catch {}
+                    return Results.Ok(new { success = true, savedPath = destinationPath, fileName = Path.GetFileName(destinationPath) });
+                }
+
+                var mime = ext.ToLowerInvariant() switch
                 {
                     ".flac" => "audio/flac",
                     ".wav" => "audio/wav",
@@ -681,7 +709,7 @@ public class HttpServer
                     _ => "audio/mpeg"
                 };
 
-                return Results.File(filePath, contentType: mime, fileDownloadName: fileName);
+                return Results.File(filePath, contentType: mime, fileDownloadName: finalFileName);
             }
             catch (Exception ex)
             {
