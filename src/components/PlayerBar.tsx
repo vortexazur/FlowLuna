@@ -280,11 +280,11 @@ export const PlayerBar: React.FC<PlayerBarProps> = ({
       </div>
 
       {/* Center: Playback Controls, Spectrum Soundwave & Timeline */}
-      <div className="flex flex-col items-center gap-1.5 flex-1 max-w-2xl px-2">
+      <div className="flex flex-col items-center gap-1.5 flex-1 max-w-2xl xl:max-w-3xl px-2">
         {/* Buttons Row & Audio Visualizer Container */}
         <div className="relative w-full flex items-center justify-center min-h-[38px]">
-          {/* Centered Controls */}
-          <div className="flex items-center gap-3 sm:gap-4">
+          {/* Centered Controls with Audio Visualizer shifted to the right */}
+          <div className="flex items-center gap-3 sm:gap-4 relative">
             <button
               type="button"
               id="player-shuffle-btn"
@@ -350,34 +350,34 @@ export const PlayerBar: React.FC<PlayerBarProps> = ({
               type="button"
               id="player-repeat-btn"
               onClick={onCycleRepeat}
-              className={`p-1.5 rounded-full transition-colors ${
+              className={`p-1.5 rounded-full transition-colors relative z-10 ${
                 repeatMode !== 'off' ? ACCENT_TEXT[accent] : 'text-neutral-400 hover:text-white'
               }`}
               title={`Répétition : ${repeatMode} (R)`}
             >
               {repeatMode === 'one' ? <Repeat1 className="w-4 h-4" /> : <Repeat className="w-4 h-4" />}
             </button>
-          </div>
 
-          {/* Integrated Real-Time Audio Visualizer Bubble (Right side of buttons row, above right seekbar) */}
-          {isVisualizerVisible && (
-            <div
-              id="player-bar-visualizer"
-              onClick={handleCycleVisualizerStyle}
-              className="hidden sm:flex items-center absolute right-0 top-1/2 -translate-y-1/2 h-8 w-36 md:w-44 px-2.5 py-1 rounded-xl bg-neutral-950/85 dark:bg-black/60 border border-neutral-800/80 hover:border-neutral-700 transition-all cursor-pointer overflow-hidden shadow-inner backdrop-blur-md group"
-              title={`Spectre audio temps réel (${STYLE_LABELS[currentStyle] || 'LEDs Micro'}) • Cliquer pour changer de style`}
-            >
-              <AudioVisualizer
-                isPlaying={isPlaying && !!currentTrack}
-                style={currentStyle}
-                accent={accent}
-                barCount={22}
-                showPeaks={true}
-                interactive={false}
-                className="w-full h-full"
-              />
-            </div>
-          )}
+            {/* Integrated Real-Time Audio Visualizer Bubble (Shifted right of Repeat button into open space) */}
+            {isVisualizerVisible && (
+              <div
+                id="player-bar-visualizer"
+                onClick={handleCycleVisualizerStyle}
+                className="hidden sm:flex items-center absolute left-full ml-4 md:ml-6 top-1/2 -translate-y-1/2 h-8 w-32 md:w-40 lg:w-44 px-2.5 py-1 rounded-xl bg-neutral-950/85 dark:bg-black/60 border border-neutral-800/80 hover:border-neutral-700 transition-all cursor-pointer overflow-hidden shadow-inner backdrop-blur-md group z-10"
+                title={`Spectre audio temps réel (${STYLE_LABELS[currentStyle] || 'LEDs Micro'}) • Cliquer pour changer de style`}
+              >
+                <AudioVisualizer
+                  isPlaying={isPlaying && !!currentTrack}
+                  style={currentStyle}
+                  accent={accent}
+                  barCount={22}
+                  showPeaks={true}
+                  interactive={false}
+                  className="w-full h-full"
+                />
+              </div>
+            )}
+          </div>
         </div>
 
         {/* Seek Bar with Timestamps */}
@@ -413,7 +413,7 @@ export const PlayerBar: React.FC<PlayerBarProps> = ({
       </div>
 
       {/* Right: Controls, Queue, Equalizer, Mini-Players & Volume */}
-      <div className="flex items-center justify-end gap-1.5 md:gap-2 w-1/4 min-w-[200px]">
+      <div className="flex items-center justify-end gap-1.5 md:gap-2 w-1/4 min-w-[200px] max-w-xs">
         {/* Lecteur Vidéo */}
         {currentTrack?.isVideo && onToggleVideo && (
           <button

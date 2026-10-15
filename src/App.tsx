@@ -12,6 +12,7 @@ import {
   APP_VERSION,
 } from './types';
 import { compareSemVer } from './utils/semver';
+import { fisherYatesShuffle } from './utils/shuffle';
 import {
   getAllTracks,
   saveTracks,
@@ -124,6 +125,9 @@ export default function App() {
   const [repeatMode, setRepeatMode] = useState<'off' | 'all' | 'one'>('all');
   const queueRef = useRef<Track[]>([]);
   queueRef.current = queue;
+  const originalQueueRef = useRef<Track[]>([]);
+  const shuffleRef = useRef<boolean>(false);
+  shuffleRef.current = shuffle;
   const currentTrackIndexRef = useRef<number>(-1);
   currentTrackIndexRef.current = currentTrackIndex;
   const isPlayingRef = useRef<boolean>(false);
@@ -654,24 +658,43 @@ export default function App() {
         return;
       }
 
+      const curIndex = currentTrackIndexRef.current;
       let nextIndex: number;
-      if (shuffle) {
-        if (curQueue.length > 1) {
-          let attempts = 0;
-          do {
-            nextIndex = Math.floor(Math.random() * curQueue.length);
-            attempts++;
-          } while (nextIndex === currentTrackIndexRef.current && attempts < 10);
-        } else {
-          nextIndex = 0;
-        }
-      } else if (currentTrackIndexRef.current < curQueue.length - 1) {
-        nextIndex = currentTrackIndexRef.current + 1;
-      } else if (repeatMode === 'all') {
+
+      if (curIndex < 0) {
         nextIndex = 0;
+      } else if (curIndex < curQueue.length - 1) {
+        // 3. Navigation cohérente Suivant : avance séquentiellement dans la file mélangée (ou normale)
+        nextIndex = curIndex + 1;
       } else {
-        setIsPlaying(false);
-        return;
+        // 4. Fin de cycle : Tous les morceaux ont été lus exactement une fois
+        if (repeatMode === 'all') {
+          if (shuffle && curQueue.length > 1) {
+            // Régénérer un nouveau mélange complet avec Fisher-Yates
+            const baseTracks = originalQueueRef.current.length > 0 ? originalQueueRef.current : curQueue;
+            const lastTrack = curQueue[curQueue.length - 1];
+            let newShuffled = fisherYatesShuffle(baseTracks);
+
+            // Éviter que le 1er titre du nouveau cycle soit identique au dernier titre du cycle précédent
+            if (newShuffled.length > 1 && newShuffled[0].id === lastTrack?.id) {
+              const swapIdx = 1 + Math.floor(Math.random() * (newShuffled.length - 1));
+              const temp = newShuffled[0];
+              newShuffled[0] = newShuffled[swapIdx];
+              newShuffled[swapIdx] = temp;
+            }
+
+            queueRef.current = newShuffled;
+            setQueue(newShuffled);
+            nextIndex = 0;
+          } else {
+            // Mode sans aléatoire : boucle normale au début de la liste
+            nextIndex = 0;
+          }
+        } else {
+          // repeatMode !== 'all' : fin de liste mélangée atteinte, arrêter la lecture
+          setIsPlaying(false);
+          return;
+        }
       }
 
       currentTrackIndexRef.current = nextIndex;
@@ -718,6 +741,82 @@ export default function App() {
     currentTrackIndexRef.current = prevIndex;
     playTrackAt(prevIndex, undefined, true);
   }, [repeatMode, playTrackAt]);
+
+  // Toggle shuffle mode with Fisher-Yates queue management
+  const handleToggleShuffle = useCallback(() => {
+    setShuffle((prevShuffle) => {
+      const nextShuffle = !prevShuffle;
+      shuffleRef.current = nextShuffle;
+      const curQueue = queueRef.current;
+      const curIndex = currentTrackIndexRef.current;
+      const curTrack = curIndex >= 0 && curIndex < curQueue.length ? curQueue[curIndex] : null;
+
+      if (nextShuffle) {
+        // ACTIVATION DU MODE ALÉATOIRE
+        // 1. Sauvegarder l'ordre initial s'il n'est pas encore conservé
+        const baseQueue = originalQueueRef.current.length > 0 ? originalQueueRef.current : [...curQueue];
+        originalQueueRef.current = baseQueue;
+
+        if (baseQueue.length > 1) {
+          if (curTrack) {
+            // 2. Exclusion du titre en cours : le placer en 1ère position et mélanger les morceaux restants
+            const remaining = baseQueue.filter((t) => t.id !== curTrack.id);
+            const shuffledRemaining = fisherYatesShuffle(remaining);
+            const newShuffledQueue = [curTrack, ...shuffledRemaining];
+
+            queueRef.current = newShuffledQueue;
+            setQueue(newShuffledQueue);
+            currentTrackIndexRef.current = 0;
+            setCurrentTrackIndex(0);
+          } else {
+            // Aucun titre en cours : mélanger toute la file
+            const newShuffledQueue = fisherYatesShuffle(baseQueue);
+            queueRef.current = newShuffledQueue;
+            setQueue(newShuffledQueue);
+            currentTrackIndexRef.current = -1;
+            setCurrentTrackIndex(-1);
+          }
+        }
+      } else {
+        // DÉSACTIVATION DU MODE ALÉATOIRE
+        // 5. Restaurer l'ordre initial de la playlist tout en conservant la position sur le morceau en cours
+        const originalList = originalQueueRef.current.length > 0 ? originalQueueRef.current : curQueue;
+        let restoredIndex = -1;
+        if (curTrack) {
+          restoredIndex = originalList.findIndex((t) => t.id === curTrack.id);
+        }
+        if (restoredIndex === -1 && curIndex >= 0 && curIndex < originalList.length) {
+          restoredIndex = curIndex;
+        }
+
+        queueRef.current = originalList;
+        setQueue(originalList);
+        currentTrackIndexRef.current = restoredIndex;
+        setCurrentTrackIndex(restoredIndex);
+      }
+
+      return nextShuffle;
+    });
+  }, []);
+
+  // Play a track within a specified list (handles shuffle if active)
+  const handlePlayTrackInList = useCallback(
+    (track: Track, list: Track[]) => {
+      if (!list || list.length === 0) return;
+      originalQueueRef.current = [...list];
+
+      if (shuffleRef.current && list.length > 1) {
+        // 2. Mode aléatoire actif : placer le morceau sélectionné en 1ère position et mélanger le reste
+        const remaining = list.filter((t) => t.id !== track.id);
+        const shuffledQueue = [track, ...fisherYatesShuffle(remaining)];
+        playTrackAt(0, shuffledQueue, true);
+      } else {
+        const idx = list.findIndex((t) => t.id === track.id);
+        playTrackAt(idx !== -1 ? idx : 0, list, true);
+      }
+    },
+    [playTrackAt]
+  );
 
   // Toggle play/pause
   const handleTogglePlay = useCallback(() => {
@@ -1324,7 +1423,7 @@ export default function App() {
       } else if (e.key === 'x' || e.key === 'X') {
         handleStop();
       } else if (e.key === 's' || e.key === 'S') {
-        setShuffle((prev) => !prev);
+        handleToggleShuffle();
       } else if (e.key === 'r' || e.key === 'R') {
         setRepeatMode((prev) => (prev === 'off' ? 'all' : prev === 'all' ? 'one' : 'off'));
       } else if (e.key === 'f' || e.key === 'F') {
@@ -1769,17 +1868,24 @@ export default function App() {
   };
 
   // Play All in playlist or library
-  const handlePlayAllInPlaylist = (playlistTracks: Track[], shuffleTracks: boolean) => {
-    if (playlistTracks.length === 0) return;
-    audioEngine.resume();
-    if (shuffleTracks) {
-      setShuffle(true);
-    }
-    const finalQueue = shuffleTracks
-      ? [...playlistTracks].sort(() => Math.random() - 0.5)
-      : [...playlistTracks];
-    playTrackAt(0, finalQueue, true);
-  };
+  const handlePlayAllInPlaylist = useCallback(
+    (playlistTracks: Track[], shuffleTracks: boolean) => {
+      if (playlistTracks.length === 0) return;
+      audioEngine.resume();
+      originalQueueRef.current = [...playlistTracks];
+      if (shuffleTracks) {
+        setShuffle(true);
+        shuffleRef.current = true;
+        const shuffled = fisherYatesShuffle(playlistTracks);
+        playTrackAt(0, shuffled, true);
+      } else {
+        setShuffle(false);
+        shuffleRef.current = false;
+        playTrackAt(0, playlistTracks, true);
+      }
+    },
+    [playTrackAt]
+  );
 
   // Save updated settings
   const handleUpdatePlayerSettings = async (settings: PlayerSettings) => {
@@ -1825,9 +1931,7 @@ export default function App() {
             playlist={playlist}
             tracks={playlistTracks}
             onPlayTrack={(track, list) => {
-              const q = list || playlistTracks;
-              const idx = q.findIndex((t) => t.id === track.id);
-              playTrackAt(idx !== -1 ? idx : 0, q);
+              handlePlayTrackInList(track, list || playlistTracks);
             }}
             onPlayAll={handlePlayAllInPlaylist}
             onToggleFavorite={handleToggleFavorite}
@@ -1871,7 +1975,7 @@ export default function App() {
               plTracks = tracks.filter((t) => set.has(t.id));
             }
             if (plTracks.length > 0) {
-              playTrackAt(0, plTracks);
+              handlePlayAllInPlaylist(plTracks, shuffleRef.current);
             }
           }}
           onDeletePlaylist={handleDeletePlaylist}
@@ -1892,11 +1996,9 @@ export default function App() {
           currentTrackId={currentPlayingTrack?.id}
           isPlaying={isPlaying}
           onPlayTrack={(track, list) => {
-            const q = list || tracks;
-            const idx = q.findIndex((t) => t.id === track.id);
             setVideoMode('theater');
             setIsPlaying(true);
-            playTrackAt(idx !== -1 ? idx : 0, q);
+            handlePlayTrackInList(track, list || tracks);
           }}
           onPlayTracksBatch={handlePlayTracksBatch}
           onAddTracksToQueue={handleAddTracksToQueue}
@@ -1950,9 +2052,7 @@ export default function App() {
         tracks={musicTracks}
         playlists={playlists.filter((p) => p.id !== 'playlist-offline' && p.id !== 'playlist-youtube')}
         onPlayTrack={(track, list) => {
-          const q = list || musicTracks;
-          const idx = q.findIndex((t) => t.id === track.id);
-          playTrackAt(idx !== -1 ? idx : 0, q);
+          handlePlayTrackInList(track, list || musicTracks);
         }}
         onPlayAll={handlePlayAllInPlaylist}
         onPlayTracksBatch={handlePlayTracksBatch}
@@ -2260,11 +2360,15 @@ export default function App() {
         currentTrackIndex={currentTrackIndex}
         onSelectTrack={(idx) => playTrackAt(idx)}
         onRemoveFromQueue={(idx) => {
+          const removedTrack = queueRef.current[idx];
           setQueue((prev) => {
             const next = prev.filter((_, i) => i !== idx);
             queueRef.current = next;
             return next;
           });
+          if (removedTrack) {
+            originalQueueRef.current = originalQueueRef.current.filter((t) => t.id !== removedTrack.id);
+          }
           if (idx < currentTrackIndex) {
             setCurrentTrackIndex((prev) => prev - 1);
             currentTrackIndexRef.current--;
@@ -2282,6 +2386,7 @@ export default function App() {
         onClearQueue={() => {
           setQueue(currentPlayingTrack ? [currentPlayingTrack] : []);
           queueRef.current = currentPlayingTrack ? [currentPlayingTrack] : [];
+          originalQueueRef.current = currentPlayingTrack ? [currentPlayingTrack] : [];
           setCurrentTrackIndex(currentPlayingTrack ? 0 : -1);
           currentTrackIndexRef.current = currentPlayingTrack ? 0 : -1;
         }}
@@ -2411,7 +2516,7 @@ export default function App() {
               if (currentPlayingTrack) handleToggleFavorite(currentPlayingTrack.id);
             }}
             shuffle={shuffle}
-            onToggleShuffle={() => setShuffle((p) => !p)}
+            onToggleShuffle={handleToggleShuffle}
             repeatMode={repeatMode}
             onCycleRepeat={() =>
               setRepeatMode((p) => (p === 'off' ? 'all' : p === 'all' ? 'one' : 'off'))
@@ -2496,7 +2601,7 @@ export default function App() {
           if (currentPlayingTrack) handleToggleFavorite(currentPlayingTrack.id);
         }}
         shuffle={shuffle}
-        onToggleShuffle={() => setShuffle((p) => !p)}
+        onToggleShuffle={handleToggleShuffle}
         repeatMode={repeatMode}
         onCycleRepeat={() =>
           setRepeatMode((p) => (p === 'off' ? 'all' : p === 'all' ? 'one' : 'off'))
@@ -2514,11 +2619,15 @@ export default function App() {
         currentTrackIndex={currentTrackIndex}
         onSelectTrack={(idx) => playTrackAt(idx)}
         onRemoveFromQueue={(idx) => {
+          const removedTrack = queueRef.current[idx];
           setQueue((prev) => {
             const next = prev.filter((_, i) => i !== idx);
             queueRef.current = next;
             return next;
           });
+          if (removedTrack) {
+            originalQueueRef.current = originalQueueRef.current.filter((t) => t.id !== removedTrack.id);
+          }
           if (idx < currentTrackIndex) {
             setCurrentTrackIndex((prev) => prev - 1);
             currentTrackIndexRef.current--;
@@ -2555,6 +2664,7 @@ export default function App() {
         onClearQueue={() => {
           setQueue(currentPlayingTrack ? [currentPlayingTrack] : []);
           queueRef.current = currentPlayingTrack ? [currentPlayingTrack] : [];
+          originalQueueRef.current = currentPlayingTrack ? [currentPlayingTrack] : [];
           setCurrentTrackIndex(currentPlayingTrack ? 0 : -1);
           currentTrackIndexRef.current = currentPlayingTrack ? 0 : -1;
         }}
@@ -2701,7 +2811,7 @@ export default function App() {
         onTogglePlay={handleTogglePlay}
         onNext={handleNext}
         onPrev={handlePrev}
-        onToggleShuffle={() => setShuffle((p) => !p)}
+        onToggleShuffle={handleToggleShuffle}
         onPlayTrack={(track) => playTrackAt(0, [track, ...queue.filter((t) => t.id !== track.id)])}
         onOpenPlaylist={(playlistId) => handleNavigate('playlist', playlistId)}
         onOpenEqualizer={() => setIsEqualizerOpen(true)}

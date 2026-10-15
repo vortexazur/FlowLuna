@@ -43,6 +43,7 @@ import { ExportTracksModal } from './ExportTracksModal';
 import { AddToPlaylistModal } from './AddToPlaylistModal';
 import { PlaylistIcon } from './PlaylistIcon';
 import { OpenFileDropdown } from './OpenFileDropdown';
+import { fisherYatesShuffle } from '../utils/shuffle';
 import { backgroundScanner } from '../services/backgroundScanner';
 import { getT } from '../i18n';
 
@@ -402,7 +403,7 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
     if (onPlayAll) {
       onPlayAll(listToPlay, shuffle);
     } else {
-      const q = shuffle ? [...listToPlay].sort(() => Math.random() - 0.5) : [...listToPlay];
+      const q = shuffle ? fisherYatesShuffle(listToPlay) : [...listToPlay];
       onPlayTrack(q[0], q);
     }
   };
