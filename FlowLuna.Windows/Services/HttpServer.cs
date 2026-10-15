@@ -831,7 +831,82 @@ public class HttpServer
             }
         });
 
-        // 5. Static React SPA files serving
+        // 5. AI Proxy & Model Management Endpoints
+        app.MapPost("/api/ai/chat", async (HttpContext ctx) =>
+        {
+            try
+            {
+                using var reader = new StreamReader(ctx.Request.Body);
+                var bodyText = await reader.ReadToEndAsync();
+                using var doc = JsonDocument.Parse(bodyText);
+                var root = doc.RootElement;
+
+                if (!root.TryGetProperty("config", out var config) || !root.TryGetProperty("messages", out var messages))
+                {
+                    return Results.BadRequest(new { error = "Paramètres config et messages requis." });
+                }
+
+                JsonElement? options = root.TryGetProperty("options", out var opt) ? opt : null;
+                var text = await AiProxyService.ExecuteAiChatAsync(config, messages, options, ctx.RequestAborted);
+                return Results.Ok(new { success = true, text });
+            }
+            catch (Exception ex)
+            {
+                return Results.Json(new { error = ex.Message }, statusCode: 500);
+            }
+        });
+
+        app.MapPost("/api/ai/test", async (HttpContext ctx) =>
+        {
+            var sw = Stopwatch.StartNew();
+            try
+            {
+                using var reader = new StreamReader(ctx.Request.Body);
+                var bodyText = await reader.ReadToEndAsync();
+                using var doc = JsonDocument.Parse(bodyText);
+                var root = doc.RootElement;
+
+                if (!root.TryGetProperty("config", out var config))
+                {
+                    return Results.BadRequest(new { success = false, message = "Configuration requise." });
+                }
+
+                using var pingDoc = JsonDocument.Parse("[{\"role\":\"user\",\"content\":\"Ping test FlowLuna: reponds uniquement par le mot OK.\"}]");
+                using var optDoc = JsonDocument.Parse("{\"maxTokens\":10,\"temperature\":0.1}");
+
+                var text = await AiProxyService.ExecuteAiChatAsync(config, pingDoc.RootElement, optDoc.RootElement, ctx.RequestAborted);
+                sw.Stop();
+
+                return Results.Ok(new
+                {
+                    success = true,
+                    message = $"Connexion réussie en {sw.ElapsedMilliseconds}ms ! (Réponse : \"{text.Trim()}\")",
+                    latencyMs = sw.ElapsedMilliseconds,
+                    response = text.Trim()
+                });
+            }
+            catch (Exception ex)
+            {
+                sw.Stop();
+                return Results.Json(new
+                {
+                    success = false,
+                    message = ex.Message
+                }, statusCode: 500);
+            }
+        });
+
+        app.MapGet("/api/ai/models", async (HttpContext ctx) =>
+        {
+            var provider = ctx.Request.Query["provider"].ToString().ToLowerInvariant();
+            var endpoint = ctx.Request.Query["endpoint"].ToString();
+            if (string.IsNullOrWhiteSpace(provider)) provider = "ollama";
+
+            var models = await AiProxyService.FetchAvailableModelsAsync(provider, endpoint, ctx.RequestAborted);
+            return Results.Ok(new { success = true, models });
+        });
+
+        // 6. Static React SPA files serving
         if (wwwroot != null)
         {
             app.UseStaticFiles(new StaticFileOptions
@@ -840,9 +915,17 @@ public class HttpServer
                 RequestPath = ""
             });
 
-            // SPA fallback: any non-API route returns index.html
+            // SPA fallback: any non-API route returns index.html. Never return index.html for /api routes!
             app.MapFallback(async (HttpContext ctx) =>
             {
+                if (ctx.Request.Path.StartsWithSegments("/api"))
+                {
+                    ctx.Response.StatusCode = 404;
+                    ctx.Response.ContentType = "application/json";
+                    await ctx.Response.WriteAsync("{\"error\":\"Endpoint API introuvable.\"}");
+                    return;
+                }
+
                 var indexFile = Path.Combine(wwwroot, "index.html");
                 if (File.Exists(indexFile))
                 {

@@ -132,14 +132,14 @@ async function testAgnosticCloudInference() {
     // 2. Google Gemini (generateContent format)
     if (urlStr.includes('generativelanguage.googleapis.com')) {
       assert.ok(urlStr.includes('key=AIzaSyTestKey'));
-      assert.ok(urlStr.includes('gemini-1.5-flash'));
+      assert.ok(urlStr.includes('gemini-flash-latest'));
 
       return new Response(
         JSON.stringify({
           candidates: [
             {
               content: {
-                parts: [{ text: 'Réponse officielle Google Gemini 1.5' }],
+                parts: [{ text: 'Réponse officielle Google Gemini Flash Latest' }],
               },
             },
           ],
@@ -197,7 +197,7 @@ async function testAgnosticCloudInference() {
     },
     [{ role: 'user', content: 'Dis bonjour' }]
   );
-  assert.strictEqual(geminiRes, 'Réponse officielle Google Gemini 1.5');
+  assert.strictEqual(geminiRes, 'Réponse officielle Google Gemini Flash Latest');
 
   // Test OpenAI
   const openaiRes = await callAiChatCompletion(

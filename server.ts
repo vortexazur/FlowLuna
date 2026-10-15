@@ -2466,7 +2466,7 @@ const SERVER_DEFAULT_MODELS: Record<string, string> = {
   openai: 'gpt-4o-mini',
   anthropic: 'claude-3-5-haiku-20241022',
   mistral: 'mistral-small-latest',
-  gemini: 'gemini-1.5-flash',
+  gemini: 'gemini-flash-latest',
   custom: 'llama-3.3-70b-versatile',
   ollama: 'llama3.2',
   lmstudio: 'local-model',
@@ -2525,20 +2525,35 @@ async function executeAiCallServer(
       .map((m) => `${m.role === 'system' ? '[Système]' : m.role === 'user' ? '[Utilisateur]' : '[Assistant]'}: ${m.content}`)
       .join('\n\n');
 
-    const url = `${cleanEndpoint}/models/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(key)}`;
-    const resp = await fetch(url, {
+    let geminiModel = model || 'gemini-flash-latest';
+    if (geminiModel === 'gemini-1.5-flash') geminiModel = 'gemini-flash-latest';
+    if (geminiModel === 'gemini-1.5-pro') geminiModel = 'gemini-pro-latest';
+
+    const buildUrl = (m: string) => `${cleanEndpoint}/models/${encodeURIComponent(m)}:generateContent?key=${encodeURIComponent(key)}`;
+    const makeBody = () => JSON.stringify({
+      contents: [{ parts: [{ text: fullPrompt }] }],
+      generationConfig: {
+        temperature: options?.temperature ?? 0.2,
+        maxOutputTokens: options?.maxTokens || 1024,
+        responseMimeType: options?.json ? 'application/json' : undefined,
+      },
+    });
+
+    let resp = await fetch(buildUrl(geminiModel), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        contents: [{ parts: [{ text: fullPrompt }] }],
-        generationConfig: {
-          temperature: options?.temperature ?? 0.2,
-          maxOutputTokens: options?.maxTokens || 1024,
-          responseMimeType: options?.json ? 'application/json' : undefined,
-        },
-      }),
+      body: makeBody(),
       signal: AbortSignal.timeout(30000),
     });
+
+    if (!resp.ok && resp.status === 404 && geminiModel !== 'gemini-flash-latest') {
+      resp = await fetch(buildUrl('gemini-flash-latest'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: makeBody(),
+        signal: AbortSignal.timeout(30000),
+      });
+    }
 
     if (!resp.ok) {
       const errData = await resp.json().catch(() => null) as any;

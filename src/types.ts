@@ -1,5 +1,5 @@
 declare const __APP_VERSION__: string | undefined;
-export const APP_VERSION = typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__ : '1.22.1';
+export const APP_VERSION = typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__ : '1.22.2';
 
 export type MediaFormat =
   | 'mp3'
@@ -300,7 +300,7 @@ export const DEFAULT_AI_SETTINGS: AISettings = {
   },
   gemini: {
     apiKey: '',
-    model: 'gemini-1.5-flash',
+    model: 'gemini-flash-latest',
     endpoint: 'https://generativelanguage.googleapis.com/v1beta',
   },
   custom: {

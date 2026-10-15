@@ -58,16 +58,17 @@ export const AI_PROVIDERS: Record<AIProviderId, AIProviderProfile> = {
     name: 'Google Gemini',
     category: 'cloud',
     defaultEndpoint: 'https://generativelanguage.googleapis.com/v1beta',
-    defaultModel: 'gemini-1.5-flash',
+    defaultModel: 'gemini-flash-latest',
     suggestedModels: [
-      'gemini-1.5-flash',
+      'gemini-flash-latest',
+      'gemini-pro-latest',
+      'gemini-2.5-flash',
       'gemini-2.0-flash',
-      'gemini-1.5-pro',
     ],
     requiresApiKey: true,
     keyUrl: 'https://aistudio.google.com/app/apikey',
-    keyPlaceholder: 'AIzaSy...',
-    description: 'Modèles Google Gemini 1.5 & 2.0 Flash avec grande fenêtre de contexte et latence ultra-faible.',
+    keyPlaceholder: 'Clé API Gemini (AIzaSy... ou AQ...)',
+    description: 'Modèles Google Gemini (gemini-flash-latest, 2.5-flash) avec grande fenêtre de contexte et latence ultra-faible.',
   },
   custom: {
     id: 'custom',
@@ -167,13 +168,17 @@ export function getEffectiveAiConfig(settings: AISettings, providerId?: AIProvid
         endpoint: cleanEndpointUrl(settings.mistral?.endpoint) || meta.defaultEndpoint,
         model: settings.mistral?.model || meta.defaultModel,
       };
-    case 'gemini':
+    case 'gemini': {
+      let rawModel = settings.gemini?.model || meta.defaultModel;
+      if (rawModel === 'gemini-1.5-flash') rawModel = 'gemini-flash-latest';
+      if (rawModel === 'gemini-1.5-pro') rawModel = 'gemini-pro-latest';
       return {
         provider: 'gemini',
         apiKey: settings.gemini?.apiKey || '',
         endpoint: cleanEndpointUrl(settings.gemini?.endpoint) || meta.defaultEndpoint,
-        model: settings.gemini?.model || meta.defaultModel,
+        model: rawModel,
       };
+    }
     case 'custom':
       return {
         provider: 'custom',
@@ -226,20 +231,31 @@ export async function callAiChatCompletion(
   try {
     return await executeDirectAiCall(config, messages, options, signal);
   } catch (err: any) {
-    // Si l'erreur est un timeout explicitement déclenché ou une annulation manuelle, relancer
     if (err?.name === 'AbortError') {
       throw new Error(`Délai d'attente dépassé (${Math.round(timeoutMs / 1000)}s) pour l'IA.`);
     }
 
-    // Si l'appel direct échoue (ex: TypeError: Failed to fetch suite à CORS ou problème de socket local),
-    // basculer de manière transparente sur le proxy serveur FlowLuna !
-    console.warn(`[AI Service] Appel direct (${config.provider}) échoué, tentative via proxy FlowLuna...`, err?.message || err);
-    try {
-      const proxyResult = await executeViaBackendProxy(config, messages, options, signal);
-      return proxyResult;
-    } catch (proxyErr: any) {
-      throw new Error(proxyErr?.message || err?.message || 'Échec de la communication avec le modèle d\'IA.');
+    // N'utiliser le proxy serveur FlowLuna QUE si l'appel direct a échoué en raison d'un blocage réseau/CORS
+    const isNetworkOrCorsError =
+      err instanceof TypeError ||
+      err?.message?.includes('Failed to fetch') ||
+      err?.message?.includes('NetworkError') ||
+      err?.message?.includes('ECONNREFUSED') ||
+      err?.message?.includes('fetch failed');
+
+    if (isNetworkOrCorsError) {
+      console.warn(`[AI Service] Appel direct (${config.provider}) bloqué par CORS ou réseau, tentative via proxy FlowLuna...`, err?.message || err);
+      try {
+        const proxyResult = await executeViaBackendProxy(config, messages, options, signal);
+        return proxyResult;
+      } catch (proxyErr: any) {
+        // En cas d'échec du proxy, renvoyer l'erreur d'origine plutôt qu'une erreur générique
+        throw new Error(err?.message || proxyErr?.message || 'Échec de la communication avec le modèle d\'IA.');
+      }
     }
+
+    // Si l'erreur provient directement de l'API (clé invalide, quota 429, modèle introuvable 404, etc.), la propager telle quelle
+    throw err;
   } finally {
     clearTimeout(timeoutId);
   }
@@ -302,20 +318,37 @@ async function executeDirectAiCall(
       .map((m) => `${m.role === 'system' ? '[Système]' : m.role === 'user' ? '[Utilisateur]' : '[Assistant]'}: ${m.content}`)
       .join('\n\n');
 
-    const url = `${endpoint}/models/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(apiKey)}`;
-    const resp = await fetch(url, {
+    let geminiModel = model || 'gemini-flash-latest';
+    if (geminiModel === 'gemini-1.5-flash') geminiModel = 'gemini-flash-latest';
+    if (geminiModel === 'gemini-1.5-pro') geminiModel = 'gemini-pro-latest';
+
+    const buildUrl = (m: string) => `${endpoint}/models/${encodeURIComponent(m)}:generateContent?key=${encodeURIComponent(apiKey)}`;
+    const makeBody = () => JSON.stringify({
+      contents: [{ parts: [{ text: fullPrompt }] }],
+      generationConfig: {
+        temperature: options?.temperature ?? 0.2,
+        maxOutputTokens: options?.maxTokens || 1024,
+        responseMimeType: options?.json ? 'application/json' : undefined,
+      },
+    });
+
+    let resp = await fetch(buildUrl(geminiModel), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        contents: [{ parts: [{ text: fullPrompt }] }],
-        generationConfig: {
-          temperature: options?.temperature ?? 0.2,
-          maxOutputTokens: options?.maxTokens || 1024,
-          responseMimeType: options?.json ? 'application/json' : undefined,
-        },
-      }),
+      body: makeBody(),
       signal,
     });
+
+    // Si le modèle sélectionné renvoie 404 (déprécié ou retiré par Google), tenter automatiquement gemini-flash-latest
+    if (!resp.ok && resp.status === 404 && geminiModel !== 'gemini-flash-latest') {
+      console.warn(`[Gemini] Modèle ${geminiModel} non trouvé (404), repli automatique vers gemini-flash-latest...`);
+      resp = await fetch(buildUrl('gemini-flash-latest'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: makeBody(),
+        signal,
+      });
+    }
 
     if (!resp.ok) {
       const errData = await resp.json().catch(() => null);
@@ -419,6 +452,11 @@ async function executeViaBackendProxy(
     }),
     signal,
   });
+
+  const contentType = resp.headers.get('content-type') || '';
+  if (!contentType.includes('application/json')) {
+    throw new Error(`Le proxy local FlowLuna n'a pas répondu en JSON (code ${resp.status}, type: ${contentType || 'aucun'}).`);
+  }
 
   if (!resp.ok) {
     const errData = await resp.json().catch(() => null);
