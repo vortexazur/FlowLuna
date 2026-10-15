@@ -416,7 +416,7 @@ public partial class MainWindow : Window
                                 return await window.chrome.webview.hostObjects.nativeHost.GetAppVersion();
                             }
                         } catch {}
-                        return '1.22.2';
+                        return '1.22.3';
                     },
                     toggleFullscreen: () => {
 
@@ -522,22 +522,25 @@ public partial class MainWindow : Window
     }
 
     /// <summary>
-    /// Builds fine-tuned Chromium environment options targeting lower RAM footprint
-    /// while maintaining 60 FPS hardware-accelerated fluid rendering.
+    /// Builds fine-tuned Chromium environment options targeting hardware-accelerated 60 FPS
+    /// video decoding (MediaFoundation D3D11) and zero-drift A/V synchronization.
     /// </summary>
     private static CoreWebView2EnvironmentOptions GetOptimizedEnvironmentOptions()
     {
         return new CoreWebView2EnvironmentOptions
         {
             AdditionalBrowserArguments =
-                "--renderer-process-limit=1 " +
+                "--enable-features=MediaFoundationD3D11VideoDecoder,HardwareMediaKeyHandling " +
+                "--enable-gpu-rasterization " +
+                "--enable-zero-copy " +
+                "--ignore-gpu-blocklist " +
+                "--autoplay-policy=no-user-gesture-required " +
                 "--disable-features=Translate,OptimizationHints,MediaRouter " +
                 "--disable-background-networking " +
                 "--disable-component-update " +
                 "--disable-domain-reliability " +
                 "--disable-sync " +
-                "--disable-speech-api " +
-                "--js-flags=\"--max-old-space-size=256\""
+                "--disable-speech-api"
         };
     }
 
@@ -692,8 +695,8 @@ public partial class MainWindow : Window
     }
 
     /// <summary>
-    /// Flushes physical RAM working set across the host process and all WebView2 child processes
-    /// without interrupting audio playback or UI threads.
+    /// Flushes physical RAM working set of the host WPF process
+    /// without interrupting active audio or hardware-accelerated video decoders.
     /// </summary>
     public void FlushProcessMemoryAndChildren()
     {
@@ -701,33 +704,6 @@ public partial class MainWindow : Window
         {
             var currentProc = System.Diagnostics.Process.GetCurrentProcess();
             try { EmptyWorkingSet(currentProc.Handle); } catch { }
-
-            // Purge WebView2 main browser process
-            if (WebViewControl?.CoreWebView2 != null)
-            {
-                try
-                {
-                    var browserPid = (int)WebViewControl.CoreWebView2.BrowserProcessId;
-                    if (browserPid > 0)
-                    {
-                        using var browserProc = System.Diagnostics.Process.GetProcessById(browserPid);
-                        EmptyWorkingSet(browserProc.Handle);
-                    }
-                }
-                catch { }
-            }
-
-            // Purge msedgewebview2 processes associated with this user session
-            try
-            {
-                var edgeProcs = System.Diagnostics.Process.GetProcessesByName("msedgewebview2");
-                foreach (var p in edgeProcs)
-                {
-                    try { EmptyWorkingSet(p.Handle); } catch { }
-                    finally { p.Dispose(); }
-                }
-            }
-            catch { }
         }
         catch { }
     }

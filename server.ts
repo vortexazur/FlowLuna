@@ -3842,6 +3842,7 @@ app.get('/api/library/stream', (req, res) => {
       'Accept-Ranges': 'bytes',
       'Content-Length': chunksize,
       'Content-Type': mimeMap[ext] || 'audio/mpeg',
+      'Cache-Control': 'private, max-age=3600',
     });
     file.pipe(res);
   } else {
@@ -3849,6 +3850,7 @@ app.get('/api/library/stream', (req, res) => {
       'Content-Length': stat.size,
       'Content-Type': mimeMap[ext] || 'audio/mpeg',
       'Accept-Ranges': 'bytes',
+      'Cache-Control': 'private, max-age=3600',
     });
     fs.createReadStream(resolved).pipe(res);
   }

@@ -367,7 +367,7 @@ export const PlayerBar: React.FC<PlayerBarProps> = ({
                 title={`Spectre audio temps réel (${STYLE_LABELS[currentStyle] || 'LEDs Micro'}) • Cliquer pour changer de style`}
               >
                 <AudioVisualizer
-                  isPlaying={isPlaying && !!currentTrack}
+                  isPlaying={isPlaying && !!currentTrack && !currentTrack.isVideo}
                   style={currentStyle}
                   accent={accent}
                   barCount={22}

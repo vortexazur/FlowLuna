@@ -271,7 +271,13 @@ public class HttpServer
                 [".mkv"] = "video/x-matroska",
                 [".mov"] = "video/quicktime",
                 [".avi"] = "video/x-msvideo",
-                [".m4v"] = "video/x-m4v"
+                [".m4v"] = "video/x-m4v",
+                [".wmv"] = "video/x-ms-wmv",
+                [".flv"] = "video/x-flv",
+                [".3gp"] = "video/3gpp",
+                [".ts"] = "video/mp2t",
+                [".m2ts"] = "video/mp2t",
+                [".ogv"] = "video/ogg"
             };
 
             if (!mimeMap.TryGetValue(ext, out var contentType))
@@ -279,6 +285,7 @@ public class HttpServer
                 return Results.BadRequest("Format multimédia non autorisé");
             }
 
+            ctx.Response.Headers.CacheControl = "private, max-age=3600";
             return Results.File(fullPath, contentType: contentType, enableRangeProcessing: true);
         });
 

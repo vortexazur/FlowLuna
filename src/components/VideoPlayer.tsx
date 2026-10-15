@@ -645,7 +645,6 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
           autoPlay
           playsInline
           preload="auto"
-          crossOrigin="anonymous"
           onPlay={onPlay}
           onPause={onPause}
           onError={onError}
