@@ -10,9 +10,12 @@ import {
   Check,
   Search,
   Loader2,
+  Bot,
 } from 'lucide-react';
-import { Track, AccentColor } from '../types';
+import { Track, AccentColor, PlayerSettings, DEFAULT_AI_SETTINGS } from '../types';
 import { fetchOnlineMetadata } from '../services/metadataService';
+import { callAiJsonCompletion, getEffectiveAiConfig } from '../services/aiService';
+import { getSetting } from '../services/audioDb';
 
 interface TrackTagEditorModalProps {
   isOpen: boolean;
@@ -94,6 +97,57 @@ export const TrackTagEditorModal: React.FC<TrackTagEditorModalProps> = ({
       }
       setIsFetchingOnline(false);
       setTimeout(() => setFetchStatus(null), 4000);
+    }
+  };
+
+  const [isAiProcessing, setIsAiProcessing] = useState(false);
+  const [aiStatusMessage, setAiStatusMessage] = useState<string | null>(null);
+
+  const handleAiAutoTag = async () => {
+    setIsAiProcessing(true);
+    setAiStatusMessage(null);
+    try {
+      const savedPlayerSettings = await getSetting<PlayerSettings | null>('player_settings', null);
+      const aiSettings = savedPlayerSettings?.aiSettings || DEFAULT_AI_SETTINGS;
+      const effectiveAi = getEffectiveAiConfig(aiSettings, savedPlayerSettings?.skipOpAiProvider as any);
+
+      const prompt = `You are an expert music metadata tagger.
+Analyze this track's available info and return clean, accurate metadata:
+- Title: "${title || track?.title || ''}"
+- Artist: "${artist || track?.artist || ''}"
+- Current Album: "${album || track?.album || ''}"
+- File path / filename: "${track?.filePath || ''}"
+
+Return ONLY a valid JSON object matching:
+{
+  "title": "Clean Song Title",
+  "artist": "Clean Artist Name",
+  "album": "Album Name or Single",
+  "year": "Release Year or empty string",
+  "genre": "Music Genre or empty string"
+}`;
+
+      const res = await callAiJsonCompletion<{
+        title?: string;
+        artist?: string;
+        album?: string;
+        year?: string;
+        genre?: string;
+      }>(effectiveAi, [{ role: 'user', content: prompt }], { timeoutMs: 14000 });
+
+      if (res) {
+        if (res.title) setTitle(res.title);
+        if (res.artist && (!artist.trim() || artist === 'Artiste Local')) setArtist(res.artist);
+        if (res.album) setAlbum(res.album);
+        if (res.year) setYear(res.year);
+        if (res.genre) setGenre(res.genre);
+        setAiStatusMessage("Métadonnées enrichies par l'IA !");
+      }
+    } catch (err: any) {
+      setAiStatusMessage(`Erreur IA : ${err?.message || 'Échec de l\'analyse'}`);
+    } finally {
+      setIsAiProcessing(false);
+      setTimeout(() => setAiStatusMessage(null), 5000);
     }
   };
 
@@ -270,6 +324,20 @@ export const TrackTagEditorModal: React.FC<TrackTagEditorModalProps> = ({
                   )}
                   Recherche en ligne
                 </button>
+                <button
+                  type="button"
+                  onClick={handleAiAutoTag}
+                  disabled={isAiProcessing}
+                  className="px-2.5 py-1.5 rounded-lg text-xs font-medium bg-neutral-800 hover:bg-neutral-700 text-violet-300 flex items-center gap-1.5 transition-colors cursor-pointer disabled:opacity-50"
+                  title="Compléter et nettoyer intelligemment les métadonnées (titre, artiste, album, genre, année) via le modèle d'IA configuré (Cloud ou Local)"
+                >
+                  {isAiProcessing ? (
+                    <Loader2 className="w-3.5 h-3.5 animate-spin text-violet-400" />
+                  ) : (
+                    <Bot className="w-3.5 h-3.5 text-violet-400" />
+                  )}
+                  Assistance IA
+                </button>
                 {coverUrl && (
                   <button
                     type="button"
@@ -280,6 +348,12 @@ export const TrackTagEditorModal: React.FC<TrackTagEditorModalProps> = ({
                   </button>
                 )}
               </div>
+              {aiStatusMessage && (
+                <div className={`text-[11px] flex items-center gap-1.5 ${aiStatusMessage.startsWith('Erreur') ? 'text-rose-400' : 'text-violet-300 font-medium'}`}>
+                  <Bot className="w-3.5 h-3.5 shrink-0" />
+                  {aiStatusMessage}
+                </div>
+              )}
               {fetchStatus === 'success' && (
                 <div className="text-[11px] text-emerald-400 flex items-center gap-1.5">
                   <Check className="w-3.5 h-3.5" />

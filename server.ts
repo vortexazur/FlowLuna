@@ -2442,7 +2442,266 @@ app.post('/api/downloader/save-to-app', async (req, res) => {
   }
 });
 
-// 7. Video Link Music Recognition & Identifier API (AI + Metadata + iTunes/Deezer Catalog)
+// 7. Agnostic AI Engine & Local Inference Proxy (OpenAI, Anthropic, Mistral, Gemini, Custom, Ollama, LM Studio)
+interface ServerAiConfig {
+  provider: 'openai' | 'anthropic' | 'mistral' | 'gemini' | 'custom' | 'ollama' | 'lmstudio';
+  apiKey?: string;
+  endpoint?: string;
+  model?: string;
+  temperature?: number;
+  maxTokens?: number;
+}
+
+const SERVER_DEFAULT_ENDPOINTS: Record<string, string> = {
+  openai: 'https://api.openai.com/v1',
+  anthropic: 'https://api.anthropic.com/v1',
+  mistral: 'https://api.mistral.ai/v1',
+  gemini: 'https://generativelanguage.googleapis.com/v1beta',
+  custom: 'https://api.groq.com/openai/v1',
+  ollama: 'http://localhost:11434',
+  lmstudio: 'http://localhost:1234',
+};
+
+const SERVER_DEFAULT_MODELS: Record<string, string> = {
+  openai: 'gpt-4o-mini',
+  anthropic: 'claude-3-5-haiku-20241022',
+  mistral: 'mistral-small-latest',
+  gemini: 'gemini-1.5-flash',
+  custom: 'llama-3.3-70b-versatile',
+  ollama: 'llama3.2',
+  lmstudio: 'local-model',
+};
+
+async function executeAiCallServer(
+  config: ServerAiConfig,
+  messages: Array<{ role: string; content: string }>,
+  options?: { json?: boolean; temperature?: number; maxTokens?: number }
+): Promise<string> {
+  const provider = config.provider || 'gemini';
+  const cleanEndpoint = (config.endpoint || SERVER_DEFAULT_ENDPOINTS[provider] || '').trim().replace(/\/+$/, '');
+  const model = (config.model || SERVER_DEFAULT_MODELS[provider] || '').trim();
+  const apiKey = (config.apiKey || '').trim();
+
+  // 1. Anthropic (Messages API)
+  if (provider === 'anthropic') {
+    if (!apiKey) throw new Error('Clé API Anthropic requise.');
+    const sysMsg = messages.find((m) => m.role === 'system')?.content;
+    const userAndAssistantMsgs = messages
+      .filter((m) => m.role !== 'system')
+      .map((m) => ({ role: m.role, content: m.content }));
+
+    const url = `${cleanEndpoint}/messages`;
+    const resp = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': apiKey,
+        'anthropic-version': '2023-06-01',
+      },
+      body: JSON.stringify({
+        model,
+        max_tokens: options?.maxTokens || 1024,
+        temperature: options?.temperature ?? 0.2,
+        system: sysMsg,
+        messages: userAndAssistantMsgs.length > 0 ? userAndAssistantMsgs : [{ role: 'user', content: 'Ping' }],
+      }),
+      signal: AbortSignal.timeout(30000),
+    });
+
+    if (!resp.ok) {
+      const errData = await resp.json().catch(() => null) as any;
+      throw new Error(errData?.error?.message || `Erreur API Anthropic (${resp.status})`);
+    }
+
+    const data = await resp.json() as any;
+    return data?.content?.[0]?.text || '';
+  }
+
+  // 2. Google Gemini (REST API)
+  if (provider === 'gemini') {
+    const key = apiKey || process.env.GEMINI_API_KEY || '';
+    if (!key) throw new Error('Clé API Google Gemini requise.');
+    const fullPrompt = messages
+      .map((m) => `${m.role === 'system' ? '[Système]' : m.role === 'user' ? '[Utilisateur]' : '[Assistant]'}: ${m.content}`)
+      .join('\n\n');
+
+    const url = `${cleanEndpoint}/models/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(key)}`;
+    const resp = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        contents: [{ parts: [{ text: fullPrompt }] }],
+        generationConfig: {
+          temperature: options?.temperature ?? 0.2,
+          maxOutputTokens: options?.maxTokens || 1024,
+          responseMimeType: options?.json ? 'application/json' : undefined,
+        },
+      }),
+      signal: AbortSignal.timeout(30000),
+    });
+
+    if (!resp.ok) {
+      const errData = await resp.json().catch(() => null) as any;
+      throw new Error(errData?.error?.message || `Erreur API Google Gemini (${resp.status})`);
+    }
+
+    const data = await resp.json() as any;
+    return data?.candidates?.[0]?.content?.parts?.[0]?.text || '';
+  }
+
+  // 3. OpenAI, Mistral, Custom Endpoint, Ollama, LM Studio
+  let completionsUrl = cleanEndpoint;
+  if (!completionsUrl.endsWith('/chat/completions')) {
+    if (completionsUrl.endsWith('/v1')) {
+      completionsUrl = `${completionsUrl}/chat/completions`;
+    } else {
+      completionsUrl = `${completionsUrl}/v1/chat/completions`;
+    }
+  }
+
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+  };
+  if (apiKey) {
+    headers['Authorization'] = `Bearer ${apiKey}`;
+  }
+
+  const payload: any = {
+    model,
+    messages: messages.map((m) => ({ role: m.role, content: m.content })),
+    temperature: options?.temperature ?? 0.2,
+  };
+  if (options?.maxTokens) {
+    payload.max_tokens = options.maxTokens;
+  }
+  if (options?.json) {
+    payload.response_format = { type: 'json_object' };
+  }
+
+  let resp = await fetch(completionsUrl, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify(payload),
+    signal: AbortSignal.timeout(30000),
+  });
+
+  if (!resp.ok && provider === 'ollama' && resp.status === 404) {
+    const ollamaNativeUrl = `${cleanEndpoint}/api/chat`;
+    resp = await fetch(ollamaNativeUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        model,
+        messages: messages.map((m) => ({ role: m.role, content: m.content })),
+        stream: false,
+        format: options?.json ? 'json' : undefined,
+        options: {
+          temperature: options?.temperature ?? 0.2,
+        },
+      }),
+      signal: AbortSignal.timeout(30000),
+    });
+
+    if (!resp.ok) {
+      const errData = await resp.json().catch(() => null) as any;
+      throw new Error(errData?.error || `Erreur Ollama (${resp.status})`);
+    }
+
+    const data = await resp.json() as any;
+    return data?.message?.content || '';
+  }
+
+  if (!resp.ok) {
+    const errData = await resp.json().catch(() => null) as any;
+    const errMsg = errData?.error?.message || errData?.error || `Erreur IA (${resp.status})`;
+    throw new Error(errMsg);
+  }
+
+  const data = await resp.json() as any;
+  return data?.choices?.[0]?.message?.content || '';
+}
+
+// AI Proxy & Model Management Endpoints
+app.post('/api/ai/chat', async (req, res) => {
+  try {
+    const { config, messages, options } = req.body;
+    if (!config || !messages || !Array.isArray(messages)) {
+      return res.status(400).json({ error: 'Paramètres config et messages requis.' });
+    }
+    const text = await executeAiCallServer(config, messages, options);
+    return res.json({ success: true, text });
+  } catch (err: any) {
+    return res.status(500).json({ error: err?.message || 'Erreur lors de l\'appel IA.' });
+  }
+});
+
+app.post('/api/ai/test', async (req, res) => {
+  const startTime = Date.now();
+  try {
+    const { config } = req.body;
+    if (!config) {
+      return res.status(400).json({ success: false, message: 'Configuration requise.' });
+    }
+    const text = await executeAiCallServer(
+      config,
+      [{ role: 'user', content: 'Ping test FlowLuna: reponds uniquement par le mot OK.' }],
+      { maxTokens: 10, temperature: 0.1 }
+    );
+    const latencyMs = Date.now() - startTime;
+    return res.json({
+      success: true,
+      message: `Connexion réussie en ${latencyMs}ms ! (Réponse: "${text.trim().substring(0, 30)}")`,
+      latencyMs,
+      response: text.trim(),
+    });
+  } catch (err: any) {
+    return res.status(500).json({
+      success: false,
+      message: err?.message || 'Erreur lors du test de connexion.',
+    });
+  }
+});
+
+app.get('/api/ai/models', async (req, res) => {
+  const provider = String(req.query.provider || 'ollama').toLowerCase();
+  const rawEndpoint = String(
+    req.query.endpoint || (provider === 'ollama' ? 'http://localhost:11434' : 'http://localhost:1234')
+  ).trim();
+  const cleanUrl = rawEndpoint.replace(/\/+$/, '');
+
+  try {
+    if (provider === 'ollama') {
+      const resp = await fetch(`${cleanUrl}/api/tags`, { signal: AbortSignal.timeout(5000) });
+      if (!resp.ok) {
+        return res.status(resp.status).json({ success: false, error: `Erreur Ollama (${resp.status})` });
+      }
+      const data = (await resp.json().catch(() => null)) as any;
+      const models = Array.isArray(data?.models)
+        ? data.models.map((m: any) => m.name || m.model).filter(Boolean)
+        : [];
+      return res.json({ success: true, models });
+    } else if (provider === 'lmstudio') {
+      const modelsUrl = cleanUrl.endsWith('/v1') ? `${cleanUrl}/models` : `${cleanUrl}/v1/models`;
+      const resp = await fetch(modelsUrl, { signal: AbortSignal.timeout(5000) });
+      if (!resp.ok) {
+        return res.status(resp.status).json({ success: false, error: `Erreur LM Studio (${resp.status})` });
+      }
+      const data = (await resp.json().catch(() => null)) as any;
+      const models = Array.isArray(data?.data)
+        ? data.data.map((m: any) => m.id).filter(Boolean)
+        : [];
+      return res.json({ success: true, models });
+    } else {
+      return res.status(400).json({ success: false, error: 'Provider local non supporté pour la détection.' });
+    }
+  } catch (err: any) {
+    return res.status(502).json({
+      success: false,
+      error: `Impossible de contacter le serveur local (${provider}) sur ${cleanUrl} : ${err?.message || err}`,
+    });
+  }
+});
+
 let genAIClient: GoogleGenAI | null = null;
 function getGenAI(): GoogleGenAI | null {
   if (!genAIClient && process.env.GEMINI_API_KEY) {
@@ -2506,7 +2765,7 @@ async function identifyWithGemini(prompt: string): Promise<any | null> {
 }
 
 app.post(['/api/identify-track', '/api/identify'], async (req, res) => {
-  const { url } = req.body;
+  const { url, aiConfig } = req.body;
   if (!url || typeof url !== 'string' || !url.trim()) {
     return res.status(400).json({ error: 'Une URL de vidéo valide est requise.' });
   }
@@ -2612,7 +2871,22 @@ Return ONLY a valid JSON object with the following fields:
   "notes": "Short French explanation of how it was recognized (e.g. 'Titre et artiste officiels extraits avec haute précision')"
 }`;
 
-  const parsedAi = await identifyWithGemini(prompt);
+  let parsedAi: any = null;
+  if (aiConfig && aiConfig.provider) {
+    try {
+      const aiResponse = await executeAiCallServer(aiConfig, [{ role: 'user', content: prompt }], { json: true });
+      const cleaned = aiResponse.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/i, '').trim();
+      const match = cleaned.match(/\{[\s\S]*\}/);
+      if (match) {
+        parsedAi = JSON.parse(match[0]);
+      }
+    } catch (err: any) {
+      console.warn('[AI Track ID] Agnostic AI call failed, falling back...', err?.message || err);
+    }
+  }
+  if (!parsedAi) {
+    parsedAi = await identifyWithGemini(prompt);
+  }
   if (parsedAi) {
     if (parsedAi.title) identifiedTitle = String(parsedAi.title).trim();
     if (parsedAi.artist) identifiedArtist = String(parsedAi.artist).trim();

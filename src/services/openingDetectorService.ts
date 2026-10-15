@@ -1,4 +1,5 @@
-import { SkipConfidence, SkipInterval, SkipSource, Track, VideoChapter, VideoSkipMarkers } from '../types';
+import { AIProviderId, SkipConfidence, SkipInterval, SkipSource, Track, VideoChapter, VideoSkipMarkers } from '../types';
+import { callAiJsonCompletion, testAiConnection, AI_PROVIDERS } from './aiService';
 
 export const ANIME_SKIP_CLIENT_ID = 'DLyfrLMiQc3xCgAMvXo3Bzd80OzwkGq';
 
@@ -14,8 +15,10 @@ export function getEffectiveAnimeSkipClientId(): string {
 
 export interface SkipOpAiConfig {
   mode: 'disabled' | 'cloud' | 'local';
-  provider: 'gemini' | 'openai';
+  provider: AIProviderId | 'gemini' | 'openai';
   apiKey: string;
+  endpoint?: string;
+  model?: string;
 }
 
 let skipOpAiConfig: SkipOpAiConfig = {
@@ -79,70 +82,30 @@ export async function testAnimeSkipApiKey(clientId?: string): Promise<{ success:
 }
 
 /**
- * Teste la validité d'une clé API Cloud (Google Gemini ou OpenAI)
+ * Teste la validité d'une connexion IA (Cloud ou Inférence Locale)
  */
 export async function testCloudAiApiKey(
-  provider: 'gemini' | 'openai',
-  apiKey: string
+  provider: AIProviderId | 'gemini' | 'openai',
+  apiKey: string,
+  endpoint?: string,
+  model?: string
 ): Promise<{ success: boolean; message: string }> {
-  const key = apiKey?.trim();
-  if (!key) {
-    return { success: false, message: 'Veuillez renseigner une clé API.' };
-  }
-
   try {
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 7000);
-
-    if (provider === 'gemini') {
-      const resp = await fetch(
-        `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${encodeURIComponent(key)}`,
-        {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            contents: [{ parts: [{ text: 'Ping: réponds simplement OK' }] }],
-            generationConfig: { maxOutputTokens: 10 },
-          }),
-          signal: controller.signal,
-        }
-      );
-      clearTimeout(timeout);
-
-      if (!resp.ok) {
-        const errJson = await resp.json().catch(() => null);
-        const errMsg = errJson?.error?.message || `Erreur API Gemini (${resp.status})`;
-        return { success: false, message: errMsg };
-      }
-      return { success: true, message: 'Clé Google Gemini validée avec succès !' };
-    } else {
-      const resp = await fetch('https://api.openai.com/v1/chat/completions', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${key}`,
-        },
-        body: JSON.stringify({
-          model: 'gpt-4o-mini',
-          messages: [{ role: 'user', content: 'Ping: reponds simplement OK' }],
-          max_tokens: 5,
-        }),
-        signal: controller.signal,
-      });
-      clearTimeout(timeout);
-
-      if (!resp.ok) {
-        const errJson = await resp.json().catch(() => null);
-        const errMsg = errJson?.error?.message || `Erreur API OpenAI (${resp.status})`;
-        return { success: false, message: errMsg };
-      }
-      return { success: true, message: 'Clé OpenAI validée avec succès !' };
-    }
+    const res = await testAiConnection({
+      provider: provider as AIProviderId,
+      apiKey,
+      endpoint,
+      model,
+    });
+    return {
+      success: res.success,
+      message: res.message,
+    };
   } catch (err: any) {
-    if (err?.name === 'AbortError') {
-      return { success: false, message: 'Délai d\'attente dépassé (timeout) vers l\'API IA.' };
-    }
-    return { success: false, message: err?.message || 'Erreur lors du test de l\'IA.' };
+    return {
+      success: false,
+      message: err?.message || 'Erreur lors du test de connexion IA.',
+    };
   }
 }
 
@@ -861,14 +824,17 @@ export function extractSubtitlesSnippetFromVideo(videoElement: HTMLVideoElement 
 export async function detectMarkersWithCloudAi(
   subtitlesSnippet: string,
   options: {
-    provider: 'gemini' | 'openai';
-    apiKey: string;
+    provider: AIProviderId | 'gemini' | 'openai';
+    apiKey?: string;
+    endpoint?: string;
+    model?: string;
     episodeDuration?: number;
     title?: string;
   }
 ): Promise<{ op: SkipInterval | null; ed: SkipInterval | null }> {
-  const { provider, apiKey, episodeDuration = 1440, title = 'Anime Episode' } = options;
-  if (!apiKey) return { op: null, ed: null };
+  const { provider, apiKey = '', endpoint, model, episodeDuration = 1440, title = 'Anime Episode' } = options;
+  const isLocal = provider === 'ollama' || provider === 'lmstudio';
+  if (!apiKey && !isLocal) return { op: null, ed: null };
 
   const prompt = `Tu es un expert dans l'analyse d'animes et de séries.
 Titre : ${title}
@@ -888,60 +854,26 @@ Réponds STRICTEMENT sous forme de JSON valide avec cette structure exacte (sans
 (Si l'un des deux n'est pas détecté, mets null pour sa valeur).`;
 
   try {
-    let rawResponse = '';
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 8500);
-
-    if (provider === 'gemini') {
-      const resp = await fetch(
-        `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${encodeURIComponent(apiKey)}`,
-        {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            contents: [{ parts: [{ text: prompt }] }],
-            generationConfig: {
-              temperature: 0.1,
-              responseMimeType: 'application/json',
-            },
-          }),
-          signal: controller.signal,
-        }
-      );
-      clearTimeout(timeout);
-      if (!resp.ok) return { op: null, ed: null };
-      const data = await resp.json();
-      rawResponse = data?.candidates?.[0]?.content?.parts?.[0]?.text || '';
-    } else {
-      const resp = await fetch('https://api.openai.com/v1/chat/completions', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${apiKey}`,
-        },
-        body: JSON.stringify({
-          model: 'gpt-4o-mini',
-          messages: [{ role: 'user', content: prompt }],
-          temperature: 0.1,
-          response_format: { type: 'json_object' },
-        }),
-        signal: controller.signal,
-      });
-      clearTimeout(timeout);
-      if (!resp.ok) return { op: null, ed: null };
-      const data = await resp.json();
-      rawResponse = data?.choices?.[0]?.message?.content || '';
-    }
-
-    if (!rawResponse) return { op: null, ed: null };
-
-    const jsonStr = rawResponse.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
-    const parsed = JSON.parse(jsonStr);
+    const parsed = await callAiJsonCompletion<{
+      op: { start: number; end: number } | null;
+      ed: { start: number; end: number } | null;
+    }>(
+      {
+        provider: provider as AIProviderId,
+        apiKey,
+        endpoint,
+        model,
+      },
+      [{ role: 'user', content: prompt }],
+      { temperature: 0.1, timeoutMs: 14000 }
+    );
 
     let op: SkipInterval | null = null;
     let ed: SkipInterval | null = null;
 
-    if (parsed.op && typeof parsed.op.start === 'number' && typeof parsed.op.end === 'number') {
+    const providerName = AI_PROVIDERS[provider as AIProviderId]?.name || String(provider);
+
+    if (parsed && parsed.op && typeof parsed.op.start === 'number' && typeof parsed.op.end === 'number') {
       const start = Math.max(0, Math.round(parsed.op.start * 10) / 10);
       const end = Math.min(episodeDuration, Math.round(parsed.op.end * 10) / 10);
       if (end - start >= 30) {
@@ -951,12 +883,12 @@ Réponds STRICTEMENT sous forme de JSON valide avec cette structure exacte (sans
           type: 'op',
           source: 'ai',
           confidence: 'high',
-          title: `Opening (IA ${provider === 'gemini' ? 'Gemini' : 'OpenAI'})`,
+          title: `Opening (IA ${providerName})`,
         };
       }
     }
 
-    if (parsed.ed && typeof parsed.ed.start === 'number' && typeof parsed.ed.end === 'number') {
+    if (parsed && parsed.ed && typeof parsed.ed.start === 'number' && typeof parsed.ed.end === 'number') {
       const start = Math.max(0, Math.round(parsed.ed.start * 10) / 10);
       const end = Math.min(episodeDuration, Math.round(parsed.ed.end * 10) / 10);
       if (end - start >= 30) {
@@ -966,14 +898,14 @@ Réponds STRICTEMENT sous forme de JSON valide avec cette structure exacte (sans
           type: 'ed',
           source: 'ai',
           confidence: 'high',
-          title: `Ending (IA ${provider === 'gemini' ? 'Gemini' : 'OpenAI'})`,
+          title: `Ending (IA ${providerName})`,
         };
       }
     }
 
     return { op, ed };
   } catch (err) {
-    console.warn('[Cloud AI] Erreur analyse IA:', err);
+    console.warn('[AI Markers] Erreur analyse IA:', err);
     return { op: null, ed: null };
   }
 }
@@ -1075,20 +1007,28 @@ export async function resolveVideoMarkersCascade(
     }
   }
 
-  // === Niveau 4.5 : Détection IA Cloud (si activée dans les paramètres et qu'il manque OP ou ED) ===
-  if ((!op || !ed) && skipOpAiConfig.mode === 'cloud' && skipOpAiConfig.apiKey) {
+  // === Niveau 4.5 : Détection IA Cloud ou Locale (si activée dans les paramètres et qu'il manque OP ou ED) ===
+  const hasAiConfigured =
+    skipOpAiConfig.apiKey ||
+    skipOpAiConfig.provider === 'ollama' ||
+    skipOpAiConfig.provider === 'lmstudio' ||
+    skipOpAiConfig.endpoint;
+
+  if ((!op || !ed) && skipOpAiConfig.mode !== 'disabled' && hasAiConfigured) {
     try {
       const subSnippet = extractSubtitlesSnippetFromVideo(videoElement);
       const aiResult = await detectMarkersWithCloudAi(subSnippet, {
         provider: skipOpAiConfig.provider,
         apiKey: skipOpAiConfig.apiKey,
+        endpoint: skipOpAiConfig.endpoint,
+        model: skipOpAiConfig.model,
         episodeDuration: actualDuration,
         title: track.title || track.album,
       });
       if (!op && aiResult.op) op = aiResult.op;
       if (!ed && aiResult.ed) ed = aiResult.ed;
     } catch (err) {
-      console.warn('[VideoMarkers] Erreur Niveau 4.5 (IA Cloud):', err);
+      console.warn('[VideoMarkers] Erreur Niveau 4.5 (IA Cloud/Locale):', err);
     }
   }
 

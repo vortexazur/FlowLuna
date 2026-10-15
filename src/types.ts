@@ -1,5 +1,5 @@
 declare const __APP_VERSION__: string | undefined;
-export const APP_VERSION = typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__ : '1.22.0';
+export const APP_VERSION = typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__ : '1.23.0';
 
 export type MediaFormat =
   | 'mp3'
@@ -228,6 +228,92 @@ export interface PlayerSettings {
   videoAspectRatio?: VideoAspectRatio; // Ratio d'affichage vidéo ('contain', 'cover', '16-9')
   animeSkipClientId?: string; // Clé personnalisée / Client ID Anime-Skip (optionnel, fallback sur clé publique intégrée)
   skipOpAiMode?: 'disabled' | 'cloud' | 'local'; // Mode d'assistance IA pour la détection OP/ED
-  skipOpAiProvider?: 'gemini' | 'openai'; // Fournisseur IA Cloud ('gemini' ou 'openai')
+  skipOpAiProvider?: AIProviderId | 'gemini' | 'openai'; // Fournisseur IA Cloud ou Local
   skipOpAiApiKey?: string; // Clé API pour l'IA Cloud (Google Gemini ou OpenAI)
+  skipOpAiEndpoint?: string; // Endpoint personnalisé ou local (Ollama, LM Studio, etc.)
+  skipOpAiModel?: string; // Modèle spécifique (ex: llama3.2, gpt-4o-mini, etc.)
+  aiSettings?: AISettings; // Configuration globale unifiée des modèles d'IA (Cloud et Local)
 }
+
+export type AIProviderId =
+  | 'openai'
+  | 'anthropic'
+  | 'mistral'
+  | 'gemini'
+  | 'custom'
+  | 'ollama'
+  | 'lmstudio';
+
+export type AIProviderCategory = 'cloud' | 'local';
+
+export interface AIProviderProfile {
+  id: AIProviderId;
+  name: string;
+  category: AIProviderCategory;
+  defaultEndpoint: string;
+  defaultModel: string;
+  suggestedModels: string[];
+  requiresApiKey: boolean;
+  keyUrl?: string;
+  keyPlaceholder?: string;
+  description: string;
+}
+
+export interface AIModelConfig {
+  provider: AIProviderId;
+  apiKey?: string;
+  endpoint?: string;
+  model?: string;
+  temperature?: number;
+  maxTokens?: number;
+}
+
+export interface AISettings {
+  enabled: boolean;
+  activeProvider: AIProviderId;
+  openai: { apiKey: string; model: string; endpoint: string };
+  anthropic: { apiKey: string; model: string; endpoint: string };
+  mistral: { apiKey: string; model: string; endpoint: string };
+  gemini: { apiKey: string; model: string; endpoint: string };
+  custom: { apiKey: string; model: string; endpoint: string };
+  ollama: { endpoint: string; model: string };
+  lmstudio: { endpoint: string; model: string };
+}
+
+export const DEFAULT_AI_SETTINGS: AISettings = {
+  enabled: false,
+  activeProvider: 'gemini',
+  openai: {
+    apiKey: '',
+    model: 'gpt-4o-mini',
+    endpoint: 'https://api.openai.com/v1',
+  },
+  anthropic: {
+    apiKey: '',
+    model: 'claude-3-5-haiku-20241022',
+    endpoint: 'https://api.anthropic.com/v1',
+  },
+  mistral: {
+    apiKey: '',
+    model: 'mistral-small-latest',
+    endpoint: 'https://api.mistral.ai/v1',
+  },
+  gemini: {
+    apiKey: '',
+    model: 'gemini-1.5-flash',
+    endpoint: 'https://generativelanguage.googleapis.com/v1beta',
+  },
+  custom: {
+    apiKey: '',
+    model: 'llama-3.3-70b-versatile',
+    endpoint: 'https://api.groq.com/openai/v1',
+  },
+  ollama: {
+    endpoint: 'http://localhost:11434',
+    model: 'llama3.2',
+  },
+  lmstudio: {
+    endpoint: 'http://localhost:1234',
+    model: 'local-model',
+  },
+};

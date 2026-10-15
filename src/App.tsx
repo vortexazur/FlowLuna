@@ -61,6 +61,8 @@ import { discordRpc } from './services/discordRpcService';
 import { UpdateNotificationToast } from './components/UpdateNotificationToast';
 import { showSystemNotification } from './utils/systemNotification';
 import { setCustomAnimeSkipClientId, setSkipOpAiConfig } from './services/openingDetectorService';
+import { DEFAULT_AI_SETTINGS } from './types';
+import { getEffectiveAiConfig } from './services/aiService';
 
 const DEFAULT_PLAYER_SETTINGS: PlayerSettings = {
   language: 'fr',
@@ -91,6 +93,7 @@ const DEFAULT_PLAYER_SETTINGS: PlayerSettings = {
   skipOpAiMode: 'disabled',
   skipOpAiProvider: 'gemini',
   skipOpAiApiKey: '',
+  aiSettings: DEFAULT_AI_SETTINGS,
 };
 
 const DEFAULT_EQ_SETTINGS: EqualizerSettings = {
@@ -337,10 +340,14 @@ export default function App() {
       };
       setPlayerSettings(mergedSettings);
       setCustomAnimeSkipClientId(mergedSettings.animeSkipClientId);
+      const aiSettings = mergedSettings.aiSettings || DEFAULT_AI_SETTINGS;
+      const effectiveAi = getEffectiveAiConfig(aiSettings, mergedSettings.skipOpAiProvider as any);
       setSkipOpAiConfig({
         mode: mergedSettings.skipOpAiMode,
-        provider: mergedSettings.skipOpAiProvider,
-        apiKey: mergedSettings.skipOpAiApiKey,
+        provider: (mergedSettings.skipOpAiProvider || aiSettings.activeProvider || 'gemini') as any,
+        apiKey: mergedSettings.skipOpAiApiKey || effectiveAi.apiKey || '',
+        endpoint: mergedSettings.skipOpAiEndpoint || effectiveAi.endpoint,
+        model: mergedSettings.skipOpAiModel || effectiveAi.model,
       });
       audioEngine.setVolumeNormalization(mergedSettings.volumeNormalization, mergedSettings.normalizationTarget ?? 'streaming');
 
@@ -1891,10 +1898,14 @@ export default function App() {
   const handleUpdatePlayerSettings = async (settings: PlayerSettings) => {
     setPlayerSettings(settings);
     setCustomAnimeSkipClientId(settings.animeSkipClientId);
+    const aiSettings = settings.aiSettings || DEFAULT_AI_SETTINGS;
+    const effectiveAi = getEffectiveAiConfig(aiSettings, settings.skipOpAiProvider as any);
     setSkipOpAiConfig({
       mode: settings.skipOpAiMode,
-      provider: settings.skipOpAiProvider,
-      apiKey: settings.skipOpAiApiKey,
+      provider: (settings.skipOpAiProvider || aiSettings.activeProvider || 'gemini') as any,
+      apiKey: settings.skipOpAiApiKey || effectiveAi.apiKey || '',
+      endpoint: settings.skipOpAiEndpoint || effectiveAi.endpoint,
+      model: settings.skipOpAiModel || effectiveAi.model,
     });
     audioEngine.setVolumeNormalization(settings.volumeNormalization, settings.normalizationTarget ?? 'streaming');
     discordRpc.updatePresence(currentPlayingTrack, isPlaying, currentTime, settings.discordRpcEnabled ?? true);

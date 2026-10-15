@@ -31,13 +31,28 @@ import {
   Eye,
   EyeOff,
   Bot,
+  Cloud,
+  Server,
+  RotateCcw,
+  Info,
 } from 'lucide-react';
-import { PlayerSettings, AccentColor, APP_VERSION, AppUpdateInfo, AppUpdateProgress, DEFAULT_MARATHON_CONFIG } from '../types';
+import {
+  PlayerSettings,
+  AccentColor,
+  APP_VERSION,
+  AppUpdateInfo,
+  AppUpdateProgress,
+  DEFAULT_MARATHON_CONFIG,
+  AIProviderId,
+  AISettings,
+  DEFAULT_AI_SETTINGS,
+} from '../types';
 import { SUPPORTED_LANGUAGES, getT } from '../i18n';
 import { CountryFlag } from './CountryFlag';
 import { backgroundScanner } from '../services/backgroundScanner';
 import { saveTracks } from '../services/audioDb';
 import { testAnimeSkipApiKey, testCloudAiApiKey } from '../services/openingDetectorService';
+import { AI_PROVIDERS, getEffectiveAiConfig, fetchAvailableLocalModels, testAiConnection } from '../services/aiService';
 import { compareSemVer } from '../utils/semver';
 import { ClearCacheModal } from './ClearCacheModal';
 import { formatBytes } from '../services/cacheCleanerService';
@@ -141,7 +156,7 @@ const SHORTCUT_GROUPS = [
   },
 ];
 
-type SettingsTab = 'appearance' | 'audio' | 'video' | 'general' | 'system' | 'shortcuts';
+export type SettingsTab = 'appearance' | 'audio' | 'video' | 'ai' | 'general' | 'system' | 'shortcuts';
 
 interface ToggleSwitchProps {
   id?: string;
@@ -217,7 +232,63 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
 
   const [showAiKey, setShowAiKey] = useState(false);
   const [isTestingAi, setIsTestingAi] = useState(false);
-  const [aiTestResult, setAiTestResult] = useState<{ success: boolean; message: string } | null>(null);
+  const [aiTestResult, setAiTestResult] = useState<{
+    success: boolean;
+    message: string;
+    latencyMs?: number;
+    models?: string[];
+  } | null>(null);
+
+  const effectiveAiSettings: AISettings = settings.aiSettings || DEFAULT_AI_SETTINGS;
+  const initialActiveProvider: AIProviderId =
+    effectiveAiSettings.activeProvider ||
+    (settings.skipOpAiProvider as AIProviderId) ||
+    'gemini';
+
+  const [selectedProviderId, setSelectedProviderId] = useState<AIProviderId>(initialActiveProvider);
+  const [selectedAiCategory, setSelectedAiCategory] = useState<'cloud' | 'local'>(
+    AI_PROVIDERS[initialActiveProvider]?.category || 'cloud'
+  );
+  const [detectedLocalModels, setDetectedLocalModels] = useState<string[]>([]);
+  const [isFetchingLocalModels, setIsFetchingLocalModels] = useState(false);
+
+  const updateAiSetting = <K extends keyof AISettings>(key: K, value: AISettings[K]) => {
+    const currentAi = settings.aiSettings || DEFAULT_AI_SETTINGS;
+    const updatedAi: AISettings = {
+      ...currentAi,
+      [key]: value,
+    };
+    const effective = getEffectiveAiConfig(updatedAi, updatedAi.activeProvider);
+    onChange({
+      ...settings,
+      aiSettings: updatedAi,
+      skipOpAiProvider: updatedAi.activeProvider,
+      skipOpAiApiKey: effective.apiKey || '',
+      skipOpAiEndpoint: effective.endpoint,
+      skipOpAiModel: effective.model,
+    });
+  };
+
+  const updateProviderConfig = (providerId: AIProviderId, updates: Record<string, any>) => {
+    const currentAi = settings.aiSettings || DEFAULT_AI_SETTINGS;
+    const currentProviderConf = (currentAi as any)[providerId] || {};
+    const updatedAi: AISettings = {
+      ...currentAi,
+      [providerId]: {
+        ...currentProviderConf,
+        ...updates,
+      },
+    };
+    const effective = getEffectiveAiConfig(updatedAi, updatedAi.activeProvider);
+    onChange({
+      ...settings,
+      aiSettings: updatedAi,
+      skipOpAiProvider: updatedAi.activeProvider,
+      skipOpAiApiKey: effective.apiKey || '',
+      skipOpAiEndpoint: effective.endpoint,
+      skipOpAiModel: effective.model,
+    });
+  };
 
   const handleTestAnimeSkip = async () => {
     setIsTestingAnimeSkip(true);
@@ -232,18 +303,40 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
     }
   };
 
-  const handleTestAiKey = async () => {
+  const handleTestAiKey = async (overrideConfig?: any) => {
     setIsTestingAi(true);
     setAiTestResult(null);
     try {
-      const provider = settings.skipOpAiProvider || 'gemini';
-      const key = settings.skipOpAiApiKey || '';
-      const res = await testCloudAiApiKey(provider, key);
+      const currentAi = settings.aiSettings || DEFAULT_AI_SETTINGS;
+      const targetProvider = overrideConfig?.provider || selectedProviderId || currentAi.activeProvider;
+      const config = overrideConfig || getEffectiveAiConfig(currentAi, targetProvider);
+      const res = await testAiConnection(config);
       setAiTestResult(res);
+      if (res.models && res.models.length > 0) {
+        setDetectedLocalModels(res.models);
+      }
     } catch (err: any) {
       setAiTestResult({ success: false, message: err?.message || 'Erreur lors du test' });
     } finally {
       setIsTestingAi(false);
+    }
+  };
+
+  const handleFetchLocalModels = async (provider: 'ollama' | 'lmstudio') => {
+    setIsFetchingLocalModels(true);
+    try {
+      const currentAi = settings.aiSettings || DEFAULT_AI_SETTINGS;
+      const conf = (currentAi as any)[provider];
+      const endpoint = conf?.endpoint || AI_PROVIDERS[provider].defaultEndpoint;
+      const res = await fetchAvailableLocalModels(provider, endpoint);
+      if (res.success && res.models.length > 0) {
+        setDetectedLocalModels(res.models);
+        if (!conf?.model || conf?.model === AI_PROVIDERS[provider].defaultModel) {
+          updateProviderConfig(provider, { model: res.models[0] });
+        }
+      }
+    } finally {
+      setIsFetchingLocalModels(false);
     }
   };
 
@@ -557,6 +650,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
     { id: 'appearance' as SettingsTab, label: 'Apparence', icon: Sparkles },
     { id: 'audio' as SettingsTab, label: 'Audio & Écoute', icon: Volume2 },
     { id: 'video' as SettingsTab, label: 'Vidéo', icon: Film },
+    { id: 'ai' as SettingsTab, label: "Modèles d'IA", icon: Bot },
     { id: 'general' as SettingsTab, label: 'Général & Système', icon: Globe },
     { id: 'system' as SettingsTab, label: 'Moteurs & Fichiers', icon: Cpu },
     { id: 'shortcuts' as SettingsTab, label: 'Raccourcis Clavier', icon: Keyboard },
@@ -1569,54 +1663,61 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                     {/* Configuration spécifique au Mode IA Cloud */}
                     {settings.skipOpAiMode === 'cloud' && (
                       <div className="flex flex-col gap-3 p-3.5 rounded-xl bg-neutral-950/70 border border-violet-500/30 animate-in fade-in duration-150">
-                        {/* Choix du provider */}
                         <div className="flex items-center justify-between">
-                          <span className="text-xs font-medium text-neutral-300">Fournisseur d'IA :</span>
-                          <div className="flex items-center gap-1.5 bg-neutral-900 p-1 rounded-lg border border-neutral-800">
-                            <button
-                              type="button"
-                              onClick={() => updateSetting('skipOpAiProvider', 'gemini')}
-                              className={`px-2.5 py-1 rounded text-xs font-medium transition-all cursor-pointer ${
-                                (settings.skipOpAiProvider || 'gemini') === 'gemini'
-                                  ? 'bg-violet-500/30 text-violet-200 font-bold border border-violet-500/40 shadow-xs'
-                                  : 'text-neutral-400 hover:text-neutral-200'
-                              }`}
-                            >
-                              Google Gemini (Recommandé)
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => updateSetting('skipOpAiProvider', 'openai')}
-                              className={`px-2.5 py-1 rounded text-xs font-medium transition-all cursor-pointer ${
-                                settings.skipOpAiProvider === 'openai'
-                                  ? 'bg-violet-500/30 text-violet-200 font-bold border border-violet-500/40 shadow-xs'
-                                  : 'text-neutral-400 hover:text-neutral-200'
-                              }`}
-                            >
-                              OpenAI (GPT-4o-mini)
-                            </button>
-                          </div>
+                          <span className="text-xs font-medium text-neutral-300">Fournisseur Cloud Actif :</span>
+                          <button
+                            type="button"
+                            onClick={() => setActiveTab('ai')}
+                            className="text-[11px] text-violet-400 hover:text-violet-300 hover:underline flex items-center gap-1 font-semibold cursor-pointer"
+                          >
+                            <span>Ouvrir le Gestionnaire de Modèles d'IA</span>
+                            <ExternalLink className="w-3 h-3" />
+                          </button>
+                        </div>
+
+                        {/* Choix rapide du provider cloud */}
+                        <div className="flex items-center gap-1.5 bg-neutral-900 p-1 rounded-lg border border-neutral-800 flex-wrap">
+                          {(['gemini', 'openai', 'anthropic', 'mistral', 'custom'] as AIProviderId[]).map((pId) => {
+                            const pMeta = AI_PROVIDERS[pId];
+                            const isChosen = (settings.skipOpAiProvider || effectiveAiSettings.activeProvider) === pId;
+                            return (
+                              <button
+                                key={pId}
+                                type="button"
+                                onClick={() => {
+                                  updateSetting('skipOpAiProvider', pId);
+                                  updateAiSetting('activeProvider', pId);
+                                  setSelectedProviderId(pId);
+                                }}
+                                className={`px-2.5 py-1 rounded text-xs font-medium transition-all cursor-pointer ${
+                                  isChosen
+                                    ? 'bg-violet-500/30 text-violet-200 font-bold border border-violet-500/40 shadow-xs'
+                                    : 'text-neutral-400 hover:text-neutral-200'
+                                }`}
+                              >
+                                {pMeta.name}
+                              </button>
+                            );
+                          })}
                         </div>
 
                         {/* Champ Clé API IA */}
                         <div className="flex flex-col gap-1.5">
                           <div className="flex items-center justify-between">
                             <span className="text-[11px] text-neutral-400">
-                              Clé API {(settings.skipOpAiProvider || 'gemini') === 'gemini' ? 'Google Gemini' : 'OpenAI'} :
+                              Clé API {AI_PROVIDERS[(settings.skipOpAiProvider as AIProviderId) || 'gemini']?.name || 'IA'} :
                             </span>
-                            <a
-                              href={
-                                (settings.skipOpAiProvider || 'gemini') === 'gemini'
-                                  ? 'https://aistudio.google.com/app/apikey'
-                                  : 'https://platform.openai.com/api-keys'
-                              }
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="text-[11px] text-violet-400 hover:text-violet-300 hover:underline flex items-center gap-1"
-                            >
-                              <span>Obtenir une clé</span>
-                              <ExternalLink className="w-3 h-3" />
-                            </a>
+                            {AI_PROVIDERS[(settings.skipOpAiProvider as AIProviderId) || 'gemini']?.keyUrl && (
+                              <a
+                                href={AI_PROVIDERS[(settings.skipOpAiProvider as AIProviderId) || 'gemini']?.keyUrl}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="text-[11px] text-violet-400 hover:text-violet-300 hover:underline flex items-center gap-1"
+                              >
+                                <span>Obtenir une clé</span>
+                                <ExternalLink className="w-3 h-3" />
+                              </a>
+                            )}
                           </div>
 
                           <div className="flex items-center gap-2">
@@ -1626,9 +1727,8 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                                 value={settings.skipOpAiApiKey || ''}
                                 onChange={(e) => updateSetting('skipOpAiApiKey', e.target.value)}
                                 placeholder={
-                                  (settings.skipOpAiProvider || 'gemini') === 'gemini'
-                                    ? 'AIzaSy...'
-                                    : 'sk-proj-...'
+                                  AI_PROVIDERS[(settings.skipOpAiProvider as AIProviderId) || 'gemini']?.keyPlaceholder ||
+                                  'Clé API...'
                                 }
                                 className="w-full bg-neutral-900 border border-neutral-800 focus:border-violet-500/60 rounded-lg px-3 py-1.5 text-xs text-neutral-200 placeholder-neutral-600 outline-none font-mono pr-9 transition-colors"
                               />
@@ -1644,7 +1744,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
 
                             <button
                               type="button"
-                              onClick={handleTestAiKey}
+                              onClick={() => handleTestAiKey(getEffectiveAiConfig(effectiveAiSettings, (settings.skipOpAiProvider as AIProviderId) || 'gemini'))}
                               disabled={isTestingAi || !settings.skipOpAiApiKey}
                               className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-neutral-800 hover:bg-neutral-700 disabled:opacity-50 text-neutral-200 text-xs font-medium border border-neutral-700/80 transition-all cursor-pointer shrink-0"
                             >
@@ -1677,19 +1777,97 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                       </div>
                     )}
 
-                    {/* Explication du Mode IA Locale */}
+                    {/* Configuration spécifique au Mode IA Locale (Ollama, LM Studio, Acoustique) */}
                     {settings.skipOpAiMode === 'local' && (
-                      <div className="flex items-start gap-3 p-3.5 rounded-xl bg-neutral-950/70 border border-neutral-800 animate-in fade-in duration-150">
-                        <Cpu className="w-5 h-5 text-indigo-400 shrink-0 mt-0.5" />
-                        <div className="flex flex-col gap-1">
-                          <span className="text-xs font-bold text-neutral-200">
-                            Moteur Acoustique & Heuristique Local (100% Offline)
-                          </span>
-                          <span className="text-[11px] text-neutral-400 leading-relaxed">
-                            Ce mode analyse directement les fichiers vidéo sur votre disque à l'aide de FFmpeg. Il extrait l'enveloppe sonore et compare deux épisodes consécutifs pour identifier la fenêtre de 90 secondes répétée (le générique), tout en calant les extrémités sur les silences audio. 
-                            <strong> Aucune donnée, vidéo ou clé API n'est envoyée sur Internet.</strong>
-                          </span>
+                      <div className="flex flex-col gap-3 p-3.5 rounded-xl bg-neutral-950/70 border border-emerald-500/30 animate-in fade-in duration-150">
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-2">
+                            <Server className="w-4 h-4 text-emerald-400" />
+                            <span className="text-xs font-bold text-neutral-200">
+                              Inférence Locale Privée (Ollama & LM Studio)
+                            </span>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setSelectedAiCategory('local');
+                              setActiveTab('ai');
+                            }}
+                            className="text-[11px] text-emerald-400 hover:text-emerald-300 hover:underline flex items-center gap-1 font-semibold cursor-pointer"
+                          >
+                            <span>Gérer les modèles locaux</span>
+                            <ExternalLink className="w-3 h-3" />
+                          </button>
                         </div>
+
+                        {/* Choix du moteur local */}
+                        <div className="flex items-center gap-2">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              updateSetting('skipOpAiProvider', 'ollama');
+                              updateAiSetting('activeProvider', 'ollama');
+                              setSelectedProviderId('ollama');
+                            }}
+                            className={`flex-1 p-2 rounded-lg border text-left text-xs transition-all cursor-pointer ${
+                              (settings.skipOpAiProvider || effectiveAiSettings.activeProvider) === 'ollama'
+                                ? 'bg-emerald-950/30 border-emerald-500/50 text-white font-bold'
+                                : 'bg-neutral-900 border-neutral-800 text-neutral-400 hover:text-neutral-200'
+                            }`}
+                          >
+                            <span className="block font-bold">Ollama</span>
+                            <span className="text-[10px] text-neutral-400">Port 11434 (LLM local)</span>
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={() => {
+                              updateSetting('skipOpAiProvider', 'lmstudio');
+                              updateAiSetting('activeProvider', 'lmstudio');
+                              setSelectedProviderId('lmstudio');
+                            }}
+                            className={`flex-1 p-2 rounded-lg border text-left text-xs transition-all cursor-pointer ${
+                              (settings.skipOpAiProvider || effectiveAiSettings.activeProvider) === 'lmstudio'
+                                ? 'bg-emerald-950/30 border-emerald-500/50 text-white font-bold'
+                                : 'bg-neutral-900 border-neutral-800 text-neutral-400 hover:text-neutral-200'
+                            }`}
+                          >
+                            <span className="block font-bold">LM Studio</span>
+                            <span className="text-[10px] text-neutral-400">Port 1234 (Serveur local)</span>
+                          </button>
+                        </div>
+
+                        <div className="flex items-center justify-between text-[11px] text-neutral-400 bg-neutral-900/60 p-2 rounded-lg border border-neutral-800">
+                          <span>
+                            Modèle configuré : <strong className="text-white font-mono">{((effectiveAiSettings as any)[(settings.skipOpAiProvider as any) || 'ollama']?.model) || 'Défaut'}</strong>
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => handleTestAiKey(getEffectiveAiConfig(effectiveAiSettings, (settings.skipOpAiProvider as AIProviderId) || 'ollama'))}
+                            disabled={isTestingAi}
+                            className="flex items-center gap-1 text-emerald-400 hover:text-emerald-300 font-semibold cursor-pointer"
+                          >
+                            <Zap className="w-3 h-3" />
+                            <span>Tester la connexion</span>
+                          </button>
+                        </div>
+
+                        {aiTestResult && (
+                          <div
+                            className={`flex items-center gap-2 p-2 rounded-lg text-[11px] border ${
+                              aiTestResult.success
+                                ? 'bg-emerald-950/40 border-emerald-500/30 text-emerald-300'
+                                : 'bg-rose-950/40 border-rose-500/30 text-rose-300'
+                            }`}
+                          >
+                            {aiTestResult.success ? (
+                              <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+                            ) : (
+                              <AlertCircle className="w-3.5 h-3.5 text-rose-400 shrink-0" />
+                            )}
+                            <span>{aiTestResult.message}</span>
+                          </div>
+                        )}
                       </div>
                     )}
                   </div>
@@ -1821,6 +1999,391 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                   </div>
                 )}
               </div>
+            </div>
+          )}
+
+          {/* TAB: MODÈLES D'INTELLIGENCE ARTIFICIELLE (AGNOSTIQUE CLOUD & INFÉRENCE LOCALE) */}
+          {activeTab === 'ai' && (
+            <div className="flex flex-col gap-5 animate-in fade-in duration-150">
+              {/* En-tête */}
+              <div className="flex flex-col gap-2 p-4.5 rounded-xl bg-gradient-to-r from-violet-950/40 via-purple-950/20 to-neutral-900/60 border border-violet-500/30">
+                <div className="flex items-center justify-between flex-wrap gap-2">
+                  <div className="flex items-center gap-3">
+                    <div className="p-2.5 rounded-xl bg-violet-500/20 text-violet-300 border border-violet-500/30 shadow-xs">
+                      <Bot className="w-5 h-5" />
+                    </div>
+                    <div>
+                      <h3 className="text-sm font-bold text-white flex items-center gap-2">
+                        Gestionnaire des Modèles d'Intelligence Artificielle
+                      </h3>
+                      <p className="text-xs text-neutral-400">
+                        Système agnostique prenant en charge les fournisseurs Cloud (OpenAI, Anthropic, Mistral, Gemini, Custom) et l'inférence locale privée (Ollama, LM Studio).
+                      </p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-neutral-900/80 border border-neutral-700/60 text-xs">
+                    <span className="text-neutral-400">Fournisseur actif :</span>
+                    <span className="font-bold text-violet-300 flex items-center gap-1.5">
+                      <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+                      {AI_PROVIDERS[effectiveAiSettings.activeProvider]?.name || effectiveAiSettings.activeProvider}
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Sélecteur d'Axe : Fournisseurs Cloud vs Inférence Locale */}
+              <div className="flex flex-col gap-2.5">
+                <label className="text-xs font-bold uppercase tracking-wider text-neutral-300">
+                  Environnement d'Inférence
+                </label>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSelectedAiCategory('cloud');
+                      if (AI_PROVIDERS[selectedProviderId]?.category !== 'cloud') {
+                        const fallbackCloud = (['gemini', 'openai', 'anthropic', 'mistral', 'custom'] as AIProviderId[]).includes(effectiveAiSettings.activeProvider)
+                          ? effectiveAiSettings.activeProvider
+                          : 'gemini';
+                        setSelectedProviderId(fallbackCloud);
+                        updateAiSetting('activeProvider', fallbackCloud);
+                      }
+                    }}
+                    className={`p-3.5 rounded-xl border flex items-center justify-between transition-all cursor-pointer ${
+                      selectedAiCategory === 'cloud'
+                        ? 'border-violet-500/60 bg-violet-950/30 text-white font-bold shadow-md ring-1 ring-violet-500/40'
+                        : 'border-neutral-800 bg-neutral-900/60 text-neutral-400 hover:text-white hover:border-neutral-700'
+                    }`}
+                  >
+                    <div className="flex items-center gap-3">
+                      <div className="p-2 rounded-lg bg-sky-500/10 text-sky-400 border border-sky-500/20">
+                        <Cloud className="w-4 h-4" />
+                      </div>
+                      <div className="text-left">
+                        <span className="text-xs font-semibold block text-white">Fournisseurs Cloud (Clé API)</span>
+                        <span className="text-[10px] text-neutral-400">OpenAI, Anthropic Claude, Mistral AI, Google Gemini, Custom Endpoint</span>
+                      </div>
+                    </div>
+                    {selectedAiCategory === 'cloud' && <Check className="w-4 h-4 text-violet-400" />}
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSelectedAiCategory('local');
+                      if (AI_PROVIDERS[selectedProviderId]?.category !== 'local') {
+                        const fallbackLocal = (['ollama', 'lmstudio'] as AIProviderId[]).includes(effectiveAiSettings.activeProvider)
+                          ? effectiveAiSettings.activeProvider
+                          : 'ollama';
+                        setSelectedProviderId(fallbackLocal);
+                        updateAiSetting('activeProvider', fallbackLocal);
+                      }
+                    }}
+                    className={`p-3.5 rounded-xl border flex items-center justify-between transition-all cursor-pointer ${
+                      selectedAiCategory === 'local'
+                        ? 'border-emerald-500/60 bg-emerald-950/30 text-white font-bold shadow-md ring-1 ring-emerald-500/40'
+                        : 'border-neutral-800 bg-neutral-900/60 text-neutral-400 hover:text-white hover:border-neutral-700'
+                    }`}
+                  >
+                    <div className="flex items-center gap-3">
+                      <div className="p-2 rounded-lg bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+                        <Server className="w-4 h-4" />
+                      </div>
+                      <div className="text-left">
+                        <span className="text-xs font-semibold block text-white">Inférence Locale (100% Hors-ligne & Privé)</span>
+                        <span className="text-[10px] text-neutral-400">Ollama, LM Studio (aucun envoi de données, sans Internet)</span>
+                      </div>
+                    </div>
+                    {selectedAiCategory === 'local' && <Check className="w-4 h-4 text-emerald-400" />}
+                  </button>
+                </div>
+              </div>
+
+              {/* Grille des Fournisseurs disponibles selon la catégorie */}
+              <div className="flex flex-col gap-2.5">
+                <label className="text-xs font-bold uppercase tracking-wider text-neutral-300">
+                  {selectedAiCategory === 'cloud' ? 'Sélectionner un Fournisseur Cloud' : 'Sélectionner un Moteur Local'}
+                </label>
+                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2.5">
+                  {(selectedAiCategory === 'cloud'
+                    ? (['gemini', 'openai', 'anthropic', 'mistral', 'custom'] as AIProviderId[])
+                    : (['ollama', 'lmstudio'] as AIProviderId[])
+                  ).map((pId) => {
+                    const pMeta = AI_PROVIDERS[pId];
+                    const isCurrentActive = effectiveAiSettings.activeProvider === pId;
+                    const isSelected = selectedProviderId === pId;
+
+                    return (
+                      <button
+                        key={pId}
+                        type="button"
+                        onClick={() => {
+                          setSelectedProviderId(pId);
+                          updateAiSetting('activeProvider', pId);
+                        }}
+                        className={`p-3.5 rounded-xl border flex flex-col justify-between text-left transition-all cursor-pointer gap-2 ${
+                          isSelected
+                            ? 'bg-neutral-800/90 border-violet-500 text-white ring-1 ring-violet-500/40 shadow-xs'
+                            : 'bg-neutral-900/60 border-neutral-800 text-neutral-400 hover:text-neutral-200 hover:border-neutral-700'
+                        }`}
+                      >
+                        <div className="flex items-center justify-between w-full">
+                          <span className="text-xs font-bold text-neutral-200">{pMeta.name}</span>
+                          {isCurrentActive ? (
+                            <span className="text-[9px] font-mono font-bold px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
+                              Actif
+                            </span>
+                          ) : (
+                            <span className="text-[9px] font-mono text-neutral-500 uppercase">
+                              {pMeta.category}
+                            </span>
+                          )}
+                        </div>
+                        <p className="text-[11px] text-neutral-400 line-clamp-2 leading-relaxed">
+                          {pMeta.description}
+                        </p>
+                        <div className="flex items-center justify-between text-[10px] text-neutral-500 pt-1.5 border-t border-neutral-800/80">
+                          <span className="font-mono text-neutral-400 truncate max-w-[150px]">
+                            {((effectiveAiSettings as any)[pId]?.model) || pMeta.defaultModel}
+                          </span>
+                          <span className="text-violet-400 font-medium">Configurer</span>
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Formulaire de configuration du fournisseur sélectionné */}
+              {(() => {
+                const currentMeta = AI_PROVIDERS[selectedProviderId];
+                const currentConfig = (effectiveAiSettings as any)[selectedProviderId] || {};
+                const isLocal = currentMeta.category === 'local';
+
+                return (
+                  <div className="flex flex-col gap-4 p-4.5 rounded-xl bg-neutral-900/70 border border-neutral-800 animate-in fade-in duration-150">
+                    <div className="flex items-center justify-between border-b border-neutral-800 pb-3 flex-wrap gap-2">
+                      <div className="flex items-center gap-2.5">
+                        <div className={`p-2 rounded-lg border ${
+                          isLocal
+                            ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20'
+                            : 'bg-violet-500/10 text-violet-400 border-violet-500/20'
+                        }`}>
+                          {isLocal ? <Server className="w-4 h-4" /> : <Cloud className="w-4 h-4" />}
+                        </div>
+                        <div>
+                          <h4 className="text-xs font-bold text-neutral-200 flex items-center gap-2">
+                            Paramètres : {currentMeta.name}
+                            {effectiveAiSettings.activeProvider === selectedProviderId && (
+                              <span className="text-[9px] font-mono px-1.5 py-0.2 rounded bg-emerald-500/20 text-emerald-300 font-bold border border-emerald-500/30">
+                                Fournisseur Actif
+                              </span>
+                            )}
+                          </h4>
+                          <span className="text-[11px] text-neutral-400">
+                            {currentMeta.description}
+                          </span>
+                        </div>
+                      </div>
+
+                      {effectiveAiSettings.activeProvider !== selectedProviderId && (
+                        <button
+                          type="button"
+                          onClick={() => updateAiSetting('activeProvider', selectedProviderId)}
+                          className="px-3 py-1.5 rounded-lg bg-violet-600 hover:bg-violet-500 text-white text-xs font-bold transition-all cursor-pointer shadow-xs"
+                        >
+                          Définir comme actif
+                        </button>
+                      )}
+                    </div>
+
+                    {/* Champ 1 : Endpoint / URL de base */}
+                    <div className="flex flex-col gap-1.5">
+                      <div className="flex items-center justify-between">
+                        <label className="text-[11px] font-medium text-neutral-300 flex items-center gap-1.5">
+                          <span>URL de l'Endpoint / API Base :</span>
+                          {isLocal && (
+                            <span className="text-[10px] text-emerald-400 font-mono">(Port local machine)</span>
+                          )}
+                        </label>
+                        {currentConfig.endpoint && currentConfig.endpoint !== currentMeta.defaultEndpoint && (
+                          <button
+                            type="button"
+                            onClick={() => updateProviderConfig(selectedProviderId, { endpoint: currentMeta.defaultEndpoint })}
+                            className="text-[10px] text-neutral-400 hover:text-white flex items-center gap-1 transition-colors cursor-pointer"
+                          >
+                            <RotateCcw className="w-3 h-3" />
+                            <span>Rétablir défaut ({currentMeta.defaultEndpoint})</span>
+                          </button>
+                        )}
+                      </div>
+                      <input
+                        type="text"
+                        value={currentConfig.endpoint ?? currentMeta.defaultEndpoint}
+                        onChange={(e) => updateProviderConfig(selectedProviderId, { endpoint: e.target.value })}
+                        placeholder={currentMeta.defaultEndpoint}
+                        className="w-full bg-neutral-950 border border-neutral-800 focus:border-violet-500/60 rounded-lg px-3 py-2 text-xs text-neutral-200 placeholder-neutral-600 outline-none font-mono transition-colors"
+                      />
+                    </div>
+
+                    {/* Champ 2 : Clé API (si fournisseur Cloud ou Custom) */}
+                    {(currentMeta.requiresApiKey || selectedProviderId === 'custom') && (
+                      <div className="flex flex-col gap-1.5">
+                        <div className="flex items-center justify-between">
+                          <label className="text-[11px] font-medium text-neutral-300">
+                            Clé API d'authentification {currentMeta.requiresApiKey ? '*' : '(optionnelle)'} :
+                          </label>
+                          {currentMeta.keyUrl && (
+                            <a
+                              href={currentMeta.keyUrl}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="text-[11px] text-violet-400 hover:text-violet-300 hover:underline flex items-center gap-1"
+                            >
+                              <span>Obtenir une clé API {currentMeta.name}</span>
+                              <ExternalLink className="w-3 h-3" />
+                            </a>
+                          )}
+                        </div>
+
+                        <div className="relative">
+                          <input
+                            type={showAiKey ? 'text' : 'password'}
+                            value={currentConfig.apiKey || ''}
+                            onChange={(e) => updateProviderConfig(selectedProviderId, { apiKey: e.target.value })}
+                            placeholder={currentMeta.keyPlaceholder || 'Clé API...'}
+                            className="w-full bg-neutral-950 border border-neutral-800 focus:border-violet-500/60 rounded-lg px-3 py-2 text-xs text-neutral-200 placeholder-neutral-600 outline-none font-mono pr-9 transition-colors"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => setShowAiKey(!showAiKey)}
+                            className="absolute right-2.5 top-1/2 -translate-y-1/2 text-neutral-400 hover:text-neutral-200 transition-colors cursor-pointer"
+                            title={showAiKey ? 'Masquer la clé' : 'Afficher la clé'}
+                          >
+                            {showAiKey ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                          </button>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Champ 3 : Sélection du modèle (détection dynamique pour Ollama/LM Studio & suggestions pour Cloud) */}
+                    <div className="flex flex-col gap-2">
+                      <div className="flex items-center justify-between">
+                        <label className="text-[11px] font-medium text-neutral-300">
+                          Nom du Modèle :
+                        </label>
+                        {isLocal && (
+                          <button
+                            type="button"
+                            onClick={() => handleFetchLocalModels(selectedProviderId as 'ollama' | 'lmstudio')}
+                            disabled={isFetchingLocalModels}
+                            className="text-[11px] text-emerald-400 hover:text-emerald-300 flex items-center gap-1 font-medium cursor-pointer disabled:opacity-50"
+                          >
+                            <RefreshCw className={`w-3 h-3 ${isFetchingLocalModels ? 'animate-spin' : ''}`} />
+                            <span>Détecter les modèles locaux</span>
+                          </button>
+                        )}
+                      </div>
+
+                      {/* Dropdown si des modèles locaux ont été détectés */}
+                      {isLocal && detectedLocalModels.length > 0 && (
+                        <div className="flex items-center gap-2">
+                          <span className="text-[11px] text-neutral-400 whitespace-nowrap">Modèles détectés :</span>
+                          <select
+                            value={currentConfig.model || currentMeta.defaultModel}
+                            onChange={(e) => updateProviderConfig(selectedProviderId, { model: e.target.value })}
+                            className="flex-1 bg-neutral-950 border border-neutral-800 rounded-lg px-3 py-1.5 text-xs text-neutral-200 outline-none font-mono"
+                          >
+                            {detectedLocalModels.map((m) => (
+                              <option key={m} value={m}>
+                                {m}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+                      )}
+
+                      {/* Suggestions rapides sous forme de chips pour les Cloud */}
+                      {!isLocal && currentMeta.suggestedModels.length > 0 && (
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          <span className="text-[10px] text-neutral-500">Suggestions :</span>
+                          {currentMeta.suggestedModels.map((sm) => {
+                            const isChosen = (currentConfig.model || currentMeta.defaultModel) === sm;
+                            return (
+                              <button
+                                key={sm}
+                                type="button"
+                                onClick={() => updateProviderConfig(selectedProviderId, { model: sm })}
+                                className={`px-2 py-0.5 rounded text-[10px] font-mono transition-all cursor-pointer ${
+                                  isChosen
+                                    ? 'bg-violet-500/30 text-violet-200 border border-violet-500/40 font-bold'
+                                    : 'bg-neutral-800/80 text-neutral-400 hover:text-white border border-neutral-700/60'
+                                }`}
+                              >
+                                {sm}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      )}
+
+                      <input
+                        type="text"
+                        value={currentConfig.model ?? currentMeta.defaultModel}
+                        onChange={(e) => updateProviderConfig(selectedProviderId, { model: e.target.value })}
+                        placeholder={currentMeta.defaultModel}
+                        className="w-full bg-neutral-950 border border-neutral-800 focus:border-violet-500/60 rounded-lg px-3 py-2 text-xs text-neutral-200 placeholder-neutral-600 outline-none font-mono transition-colors"
+                      />
+                    </div>
+
+                    {/* Zone de test & Diagnostic */}
+                    <div className="pt-2 border-t border-neutral-800/80 flex flex-col gap-2.5">
+                      <div className="flex items-center justify-between">
+                        <span className="text-[11px] text-neutral-400">
+                          Vérifiez la disponibilité de l'endpoint et les temps de réponse :
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => handleTestAiKey(getEffectiveAiConfig(effectiveAiSettings, selectedProviderId))}
+                          disabled={isTestingAi || (currentMeta.requiresApiKey && !currentConfig.apiKey)}
+                          className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg bg-neutral-800 hover:bg-neutral-700 disabled:opacity-50 text-neutral-200 text-xs font-semibold border border-neutral-700 transition-all cursor-pointer"
+                        >
+                          {isTestingAi ? (
+                            <RefreshCw className="w-3.5 h-3.5 animate-spin text-violet-400" />
+                          ) : (
+                            <Zap className="w-3.5 h-3.5 text-amber-400" />
+                          )}
+                          <span>Tester la connexion & latence</span>
+                        </button>
+                      </div>
+
+                      {aiTestResult && (
+                        <div
+                          className={`flex items-start gap-2.5 p-3 rounded-lg text-xs border animate-in fade-in ${
+                            aiTestResult.success
+                              ? 'bg-emerald-950/40 border-emerald-500/30 text-emerald-300'
+                              : 'bg-rose-950/40 border-rose-500/30 text-rose-300'
+                          }`}
+                        >
+                          {aiTestResult.success ? (
+                            <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0 mt-0.5" />
+                          ) : (
+                            <AlertCircle className="w-4 h-4 text-rose-400 shrink-0 mt-0.5" />
+                          )}
+                          <div className="flex flex-col gap-1">
+                            <span className="font-semibold">{aiTestResult.message}</span>
+                            {aiTestResult.latencyMs !== undefined && (
+                              <span className="text-[10px] text-emerald-400/90 font-mono">
+                                Latence mesurée : {aiTestResult.latencyMs} ms
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                );
+              })()}
             </div>
           )}
 
