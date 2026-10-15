@@ -1,6 +1,6 @@
-# FlowLuna v1.23.0 — Gestionnaire Agnostique des Modèles d'IA (Cloud Universel & Inférence Locale Ollama / LM Studio)
+# FlowLuna v1.22.1 — Gestionnaire Agnostique des Modèles d'IA (Cloud Universel & Inférence Locale Ollama / LM Studio)
 
-🎉 **FlowLuna v1.23.0** franchit une étape majeure dans l'intégration de l'intelligence artificielle en devenant **100% agnostique vis-à-vis des modèles d'IA**. L'application prend désormais en charge l'ensemble des fournisseurs Cloud du marché (OpenAI, Anthropic Claude, Mistral AI, Google Gemini, endpoints compatibles OpenAI) ainsi que **l'inférence locale 100% privée et hors-ligne** propulsée par **Ollama** et **LM Studio**.
+🎉 **FlowLuna v1.22.1** franchit une étape majeure dans l'intégration de l'intelligence artificielle en devenant **100% agnostique vis-à-vis des modèles d'IA**. L'application prend désormais en charge l'ensemble des fournisseurs Cloud du marché (OpenAI, Anthropic Claude, Mistral AI, Google Gemini, endpoints compatibles OpenAI) ainsi que **l'inférence locale 100% privée et hors-ligne** propulsée par **Ollama** et **LM Studio**.
 
 ---
 
@@ -53,13 +53,13 @@
 
 | Fichier | Type | Description |
 |---|---|---|
-| `FlowLuna-Setup-1.23.0.exe` | **Installateur Standard Windows** (~111 Mo) | Installeur natif C# .NET 9 + WebView2 avec associations de fichiers, raccourcis Bureau et Menu Démarrer |
+| `FlowLuna-Setup-1.22.1.exe` | **Installateur Standard Windows** (~111 Mo) | Installeur natif C# .NET 9 + WebView2 avec associations de fichiers, raccourcis Bureau et Menu Démarrer |
 
 ```powershell
 # Vérification d'intégrité SHA256 (PowerShell)
-Get-FileHash -Algorithm SHA256 "FlowLuna-Setup-1.23.0.exe"
+Get-FileHash -Algorithm SHA256 "FlowLuna-Setup-1.22.1.exe"
 ```
 
 | Fichier | Empreinte Numérique SHA256 |
 |---|---|
-| `FlowLuna-Setup-1.23.0.exe` | `D1F75F4425CC91BD9C040BAC2DA7460E75ECAB2EC45532F4E4A8FEF4D6A0900A` |
+| `FlowLuna-Setup-1.22.1.exe` | `29B3B212676793BBFCB69A08D4487546D07D623884D2EEDF59B9565A3F821C7B` |

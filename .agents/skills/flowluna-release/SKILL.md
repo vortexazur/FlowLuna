@@ -13,20 +13,28 @@ Ce skill définit la procédure standard et exhaustive pour mettre à jour FlowL
 
 ---
 
-## 1. Incrémentation de Version SemVer
+## 1. Incrémentation de Version & Règle du Cycle Décimal (0 à 9)
 
+### 📌 Règle d'Incrémentation Obligatoire (Cycle de 0 à 9)
+La numérotation des versions de FlowLuna suit un schéma strict **`v1.MINOR.PATCH`** avec un cycle décimal pour le patch :
+- Le patch commence à **`.0`** et s'incrémente d'une unité à chaque mise à jour : **`.0`** ➔ **`.1`** ➔ **`.2`** ➔ ... ➔ **`.9`**.
+- **Tant que le patch n'a pas atteint `.9`, on n'incrémente JAMAIS le mineur.** (ex: après `v1.22.0`, la version suivante est obligatoirement `v1.22.1`).
+- Dès que la version courante est à **`.9`** (ex: `v1.22.9`), la mise à jour suivante incrémente le mineur et réinitialise le patch à **`.0`** (ex: `v1.22.9` ➔ `v1.23.0`).
+- Le cycle recommence alors de `.0` jusqu'à `.9` (`v1.23.0` ➔ `v1.23.1` ➔ ... ➔ `v1.23.9` ➔ `v1.24.0`).
+
+### 📁 Synchronisation dans les Fichiers du Projet
 Synchroniser la nouvelle version (`vX.Y.Z`) dans l'ensemble des fichiers de configuration et métadonnées du projet :
 
 | Fichier | Emplacement / Variable | Format attendu |
 |---|---|---|
-| `package.json` | `"version": "X.Y.Z"` | SemVer (ex. `1.21.8`) |
-| `package-lock.json` | `"version": "X.Y.Z"` (root + package "") | SemVer (ex. `1.21.8`) |
+| `package.json` | `"version": "X.Y.Z"` | SemVer (ex. `1.22.1`) |
+| `package-lock.json` | `"version": "X.Y.Z"` (root + package "") | SemVer (ex. `1.22.1`) |
 | `src/types.ts` | `APP_VERSION = ... ? ... : 'X.Y.Z'` | Chaîne SemVer |
 | `installer.nsi` | `!define PRODUCT_VERSION "X.Y.Z"` | Version NSIS |
 | `FlowLuna.Windows/FlowLuna.Windows.csproj` | `<Version>`, `<AssemblyVersion>`, `<FileVersion>` | `X.Y.Z` et `X.Y.Z.0` |
-| `FlowLuna.Windows/MainWindow.xaml.cs` | Fallback dans `GetAppVersion()` | `return 'X.Y.Z';` |
+| `FlowLuna.Windows/MainWindow.xaml.cs` | Fallback dans `GetAppVersion()` | `return "X.Y.Z";` |
 | `FlowLuna.Windows/Services/BinaryManager.cs` | Fallback dans `CurrentAppVersion` | `?? "X.Y.Z";` |
-| `README.md` | Badge de version | `version-X.Y.Z-emerald.svg` |
+| `README.md` | Badge de version et lien installateur | `version-X.Y.Z-emerald.svg` & `FlowLuna-Setup-X.Y.Z.exe` |
 
 ---
 
