@@ -59,6 +59,7 @@ import { TitleBar } from './components/TitleBar';
 import { discordRpc } from './services/discordRpcService';
 import { UpdateNotificationToast } from './components/UpdateNotificationToast';
 import { showSystemNotification } from './utils/systemNotification';
+import { setCustomAnimeSkipClientId, setSkipOpAiConfig } from './services/openingDetectorService';
 
 const DEFAULT_PLAYER_SETTINGS: PlayerSettings = {
   language: 'fr',
@@ -67,7 +68,7 @@ const DEFAULT_PLAYER_SETTINGS: PlayerSettings = {
   backdropEffect: 'glass',
   glassIntensity: 70,
   acrylicIntensity: 30,
-  visualizerStyle: 'bars',
+  visualizerStyle: 'minimal',
   crossfadeDuration: 0,
   gaplessPlayback: true,
   autoCacheFavorites: true,
@@ -85,6 +86,10 @@ const DEFAULT_PLAYER_SETTINGS: PlayerSettings = {
   marathonConfig: DEFAULT_MARATHON_CONFIG,
   videoSkipForwardInterval: 10,
   videoAspectRatio: 'contain',
+  animeSkipClientId: '',
+  skipOpAiMode: 'disabled',
+  skipOpAiProvider: 'gemini',
+  skipOpAiApiKey: '',
 };
 
 const DEFAULT_EQ_SETTINGS: EqualizerSettings = {
@@ -327,6 +332,12 @@ export default function App() {
         acrylicIntensity: savedSettings?.acrylicIntensity ?? DEFAULT_PLAYER_SETTINGS.acrylicIntensity ?? 30,
       };
       setPlayerSettings(mergedSettings);
+      setCustomAnimeSkipClientId(mergedSettings.animeSkipClientId);
+      setSkipOpAiConfig({
+        mode: mergedSettings.skipOpAiMode,
+        provider: mergedSettings.skipOpAiProvider,
+        apiKey: mergedSettings.skipOpAiApiKey,
+      });
       audioEngine.setVolumeNormalization(mergedSettings.volumeNormalization, mergedSettings.normalizationTarget ?? 'streaming');
 
       const savedEq = await getSetting<EqualizerSettings>('equalizer_settings', DEFAULT_EQ_SETTINGS);
@@ -1773,6 +1784,12 @@ export default function App() {
   // Save updated settings
   const handleUpdatePlayerSettings = async (settings: PlayerSettings) => {
     setPlayerSettings(settings);
+    setCustomAnimeSkipClientId(settings.animeSkipClientId);
+    setSkipOpAiConfig({
+      mode: settings.skipOpAiMode,
+      provider: settings.skipOpAiProvider,
+      apiKey: settings.skipOpAiApiKey,
+    });
     audioEngine.setVolumeNormalization(settings.volumeNormalization, settings.normalizationTarget ?? 'streaming');
     discordRpc.updatePresence(currentPlayingTrack, isPlaying, currentTime, settings.discordRpcEnabled ?? true);
     await saveSetting('player_settings', settings);

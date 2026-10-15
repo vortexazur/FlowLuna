@@ -1,5 +1,5 @@
 declare const __APP_VERSION__: string | undefined;
-export const APP_VERSION = typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__ : '1.21.8';
+export const APP_VERSION = typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__ : '1.21.9';
 
 export type MediaFormat =
   | 'mp3'
@@ -54,7 +54,7 @@ export interface VideoChapter {
   endTime: number;
 }
 
-export type SkipSource = 'chapter' | 'api' | 'acoustic' | 'subtitle' | 'heuristic';
+export type SkipSource = 'chapter' | 'api' | 'acoustic' | 'subtitle' | 'heuristic' | 'ai';
 export type SkipConfidence = 'high' | 'moderate' | 'low';
 
 export interface SkipInterval {
@@ -226,4 +226,8 @@ export interface PlayerSettings {
   marathonConfig?: MarathonConfig; // Mode Marathon (Auto-chain & transitions intelligentes)
   videoSkipForwardInterval?: number; // Intervalle de saut temporel (Skip & Molette) en secondes (5s à 90s, step 5s, défaut 10s)
   videoAspectRatio?: VideoAspectRatio; // Ratio d'affichage vidéo ('contain', 'cover', '16-9')
+  animeSkipClientId?: string; // Clé personnalisée / Client ID Anime-Skip (optionnel, fallback sur clé publique intégrée)
+  skipOpAiMode?: 'disabled' | 'cloud' | 'local'; // Mode d'assistance IA pour la détection OP/ED
+  skipOpAiProvider?: 'gemini' | 'openai'; // Fournisseur IA Cloud ('gemini' ou 'openai')
+  skipOpAiApiKey?: string; // Clé API pour l'IA Cloud (Google Gemini ou OpenAI)
 }

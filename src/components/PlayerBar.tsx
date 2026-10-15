@@ -135,11 +135,17 @@ export const PlayerBar: React.FC<PlayerBarProps> = ({
   const [scrubTime, setScrubTime] = useState<number>(0);
   const displayedTime = isScrubbing ? scrubTime : currentTime;
 
+  // Real-time audio visualizer active state in the PlayerBar (visible by default)
+  const [isVisualizerVisible, setIsVisualizerVisible] = useState(true);
+
   const formatTime = (secs: number) => {
     const m = Math.floor(secs / 60);
     const s = Math.floor(secs % 60);
     return `${m}:${s.toString().padStart(2, '0')}`;
   };
+
+  const currentStyle: 'minimal' | 'bars' | 'wave' | 'pillars' | 'circle' =
+    settings?.visualizerStyle || 'minimal';
 
   const handleVisualizerStyleChange = (newStyle: 'bars' | 'wave' | 'circle' | 'minimal' | 'pillars') => {
     if (onUpdateSettings) {
@@ -150,12 +156,25 @@ export const PlayerBar: React.FC<PlayerBarProps> = ({
     }
   };
 
+  const handleCycleVisualizerStyle = () => {
+    const styles: Array<'minimal' | 'bars' | 'wave' | 'pillars' | 'circle'> = [
+      'minimal',
+      'bars',
+      'wave',
+      'pillars',
+      'circle',
+    ];
+    const currentIndex = styles.indexOf(currentStyle);
+    const nextStyle = styles[(currentIndex + 1) % styles.length];
+    handleVisualizerStyleChange(nextStyle);
+  };
+
   const STYLE_LABELS: Record<string, string> = {
-    bars: 'Spectre',
-    wave: 'Onde',
-    pillars: 'Piliers',
-    circle: 'Radar',
-    minimal: 'LEDs',
+    minimal: 'LEDs Micro',
+    bars: 'Barres Spectre',
+    wave: 'Oscilloscope',
+    pillars: 'Piliers Stéréo',
+    circle: 'Radar Circulaire',
   };
 
   return (
@@ -262,97 +281,109 @@ export const PlayerBar: React.FC<PlayerBarProps> = ({
 
       {/* Center: Playback Controls, Spectrum Soundwave & Timeline */}
       <div className="flex flex-col items-center gap-1.5 flex-1 max-w-2xl px-2">
-        {/* Buttons Row */}
-        <div className="flex items-center gap-4">
-          <button
-            type="button"
-            id="player-shuffle-btn"
-            onClick={onToggleShuffle}
-            className={`p-1.5 rounded-full transition-colors ${
-              shuffle ? ACCENT_TEXT[accent] : 'text-neutral-400 hover:text-white'
-            }`}
-            title={`${t.shuffle} (S)`}
-          >
-            <Shuffle className="w-4 h-4" />
-          </button>
+        {/* Buttons Row & Audio Visualizer Container */}
+        <div className="relative w-full flex items-center justify-center min-h-[38px]">
+          {/* Centered Controls */}
+          <div className="flex items-center gap-3 sm:gap-4">
+            <button
+              type="button"
+              id="player-shuffle-btn"
+              onClick={onToggleShuffle}
+              className={`p-1.5 rounded-full transition-colors ${
+                shuffle ? ACCENT_TEXT[accent] : 'text-neutral-400 hover:text-white'
+              }`}
+              title={`${t.shuffle} (S)`}
+            >
+              <Shuffle className="w-4 h-4" />
+            </button>
 
-          <button
-            type="button"
-            id="player-prev-btn"
-            onClick={onPrev}
-            className="p-1.5 text-neutral-300 hover:text-white transition-colors"
-            title={`${t.previous} (P / ←)`}
-          >
-            <SkipBack className="w-5 h-5" />
-          </button>
+            <button
+              type="button"
+              id="player-prev-btn"
+              onClick={onPrev}
+              className="p-1.5 text-neutral-300 hover:text-white transition-colors"
+              title={`${t.previous} (P / ←)`}
+            >
+              <SkipBack className="w-5 h-5" />
+            </button>
 
-          <button
-            type="button"
-            id="player-play-pause-btn"
-            onClick={onTogglePlay}
-            className={`p-2.5 rounded-full shadow-lg transition-transform hover:scale-105 active:scale-95 ${ACCENT_BG[accent]}`}
-            title={isPlaying ? `${t.pause} (Espace)` : `${t.play} (Espace)`}
-          >
-            {isPlaying ? (
-              <Pause className="w-5 h-5 fill-current" />
-            ) : (
-              <Play className="w-5 h-5 fill-current ml-0.5" />
-            )}
-          </button>
+            <button
+              type="button"
+              id="player-play-pause-btn"
+              onClick={onTogglePlay}
+              className={`p-2.5 rounded-full shadow-lg transition-transform hover:scale-105 active:scale-95 ${ACCENT_BG[accent]}`}
+              title={isPlaying ? `${t.pause} (Espace)` : `${t.play} (Espace)`}
+            >
+              {isPlaying ? (
+                <Pause className="w-5 h-5 fill-current" />
+              ) : (
+                <Play className="w-5 h-5 fill-current ml-0.5" />
+              )}
+            </button>
 
-          <button
-            type="button"
-            id="player-stop-btn"
-            onClick={onStop}
-            disabled={!currentTrack && currentTime === 0}
-            className={`p-2 rounded-full transition-all active:scale-95 ${
-              currentTrack
-                ? 'text-neutral-300 hover:text-red-400 hover:bg-neutral-800'
-                : 'text-neutral-600 cursor-not-allowed opacity-40'
-            }`}
-            title={`${t.stop} (X)`}
-          >
-            <Square className="w-4.5 h-4.5 fill-current" />
-          </button>
+            <button
+              type="button"
+              id="player-stop-btn"
+              onClick={onStop}
+              disabled={!currentTrack && currentTime === 0}
+              className={`p-2 rounded-full transition-all active:scale-95 ${
+                currentTrack
+                  ? 'text-neutral-300 hover:text-red-400 hover:bg-neutral-800'
+                  : 'text-neutral-600 cursor-not-allowed opacity-40'
+              }`}
+              title={`${t.stop} (X)`}
+            >
+              <Square className="w-4.5 h-4.5 fill-current" />
+            </button>
 
-          <button
-            type="button"
-            id="player-next-btn"
-            onClick={onNext}
-            className="p-1.5 text-neutral-300 hover:text-white transition-colors"
-            title="Titre suivant (N ou →)"
-          >
-            <SkipForward className="w-5 h-5" />
-          </button>
+            <button
+              type="button"
+              id="player-next-btn"
+              onClick={onNext}
+              className="p-1.5 text-neutral-300 hover:text-white transition-colors"
+              title="Titre suivant (N ou →)"
+            >
+              <SkipForward className="w-5 h-5" />
+            </button>
 
-          <button
-            type="button"
-            id="player-repeat-btn"
-            onClick={onCycleRepeat}
-            className={`p-1.5 rounded-full transition-colors ${
-              repeatMode !== 'off' ? ACCENT_TEXT[accent] : 'text-neutral-400 hover:text-white'
-            }`}
-            title={`Répétition : ${repeatMode} (R)`}
-          >
-            {repeatMode === 'one' ? <Repeat1 className="w-4 h-4" /> : <Repeat className="w-4 h-4" />}
-          </button>
-        </div>
+            <button
+              type="button"
+              id="player-repeat-btn"
+              onClick={onCycleRepeat}
+              className={`p-1.5 rounded-full transition-colors ${
+                repeatMode !== 'off' ? ACCENT_TEXT[accent] : 'text-neutral-400 hover:text-white'
+              }`}
+              title={`Répétition : ${repeatMode} (R)`}
+            >
+              {repeatMode === 'one' ? <Repeat1 className="w-4 h-4" /> : <Repeat className="w-4 h-4" />}
+            </button>
+          </div>
 
-        {/* Seek Bar with background Frequency Spectrum waveform & Timestamps */}
-        <div className="flex items-center gap-3 w-full text-[11px] font-mono text-neutral-400 relative">
-          <span className="w-10 text-right">{formatTime(displayedTime)}</span>
-          <div className="relative flex-1 flex items-center h-4">
-            {/* Real-time spectrum reactive backdrop when playing */}
-            <div className="absolute inset-0 opacity-25 pointer-events-none overflow-hidden rounded">
+          {/* Integrated Real-Time Audio Visualizer Bubble (Right side of buttons row, above right seekbar) */}
+          {isVisualizerVisible && (
+            <div
+              id="player-bar-visualizer"
+              onClick={handleCycleVisualizerStyle}
+              className="hidden sm:flex items-center absolute right-0 top-1/2 -translate-y-1/2 h-8 w-36 md:w-44 px-2.5 py-1 rounded-xl bg-neutral-950/85 dark:bg-black/60 border border-neutral-800/80 hover:border-neutral-700 transition-all cursor-pointer overflow-hidden shadow-inner backdrop-blur-md group"
+              title={`Spectre audio temps réel (${STYLE_LABELS[currentStyle] || 'LEDs Micro'}) • Cliquer pour changer de style`}
+            >
               <AudioVisualizer
-                isPlaying={isPlaying}
-                style="bars"
+                isPlaying={isPlaying && !!currentTrack}
+                style={currentStyle}
                 accent={accent}
-                barCount={48}
-                showPeaks={false}
+                barCount={22}
+                showPeaks={true}
+                interactive={false}
                 className="w-full h-full"
               />
             </div>
+          )}
+        </div>
+
+        {/* Seek Bar with Timestamps */}
+        <div className="flex items-center gap-3 w-full text-[11px] font-mono text-neutral-400 relative">
+          <span className="w-10 text-right">{formatTime(displayedTime)}</span>
+          <div className="relative flex-1 flex items-center h-4">
             <input
               type="range"
               min={0}
@@ -430,32 +461,25 @@ export const PlayerBar: React.FC<PlayerBarProps> = ({
           </button>
         )}
 
-        {/* Volume Controls & Normalization */}
+        {/* Visualizer Toggle & Volume Controls */}
         <div className="flex items-center gap-1.5 ml-1">
-          {settings && onUpdateSettings && (
-            <button
-              type="button"
-              id="player-volume-norm-btn"
-              onClick={() =>
-                onUpdateSettings({
-                  ...settings,
-                  volumeNormalization: !settings.volumeNormalization,
-                })
-              }
-              className={`p-1.5 rounded-lg transition-colors text-xs ${
-                settings.volumeNormalization
-                  ? (ACCENT_SUBTLE_BTN[accent] || ACCENT_SUBTLE_BTN.emerald)
-                  : 'text-neutral-500 hover:text-neutral-300 hover:bg-neutral-800'
-              }`}
-              title={
-                settings.volumeNormalization
-                  ? 'Harmonisation du volume active : tous les morceaux jouent au même niveau sonore (cliquer pour désactiver)'
-                  : 'Harmonisation du volume désactivée (cliquer pour harmoniser le son de toutes les musiques)'
-              }
-            >
-              <Activity className="w-3.5 h-3.5" />
-            </button>
-          )}
+          <button
+            type="button"
+            id="player-visualizer-toggle-btn"
+            onClick={() => setIsVisualizerVisible(!isVisualizerVisible)}
+            className={`p-1.5 rounded-lg transition-colors text-xs ${
+              isVisualizerVisible
+                ? (ACCENT_SUBTLE_BTN[accent] || ACCENT_SUBTLE_BTN.emerald)
+                : 'text-neutral-500 hover:text-neutral-300 hover:bg-neutral-800'
+            }`}
+            title={
+              isVisualizerVisible
+                ? `Visualiseur audio actif (${STYLE_LABELS[currentStyle] || 'LEDs Micro'}) • Cliquer pour masquer`
+                : 'Afficher le visualiseur audio dans la barre de lecture'
+            }
+          >
+            <Activity className="w-3.5 h-3.5" />
+          </button>
 
           <button
             type="button"

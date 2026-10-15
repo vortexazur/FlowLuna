@@ -2,6 +2,150 @@ import { SkipConfidence, SkipInterval, SkipSource, Track, VideoChapter, VideoSki
 
 export const ANIME_SKIP_CLIENT_ID = 'DLyfrLMiQc3xCgAMvXo3Bzd80OzwkGq';
 
+let customAnimeSkipClientId: string = '';
+
+export function setCustomAnimeSkipClientId(clientId?: string | null) {
+  customAnimeSkipClientId = (clientId || '').trim();
+}
+
+export function getEffectiveAnimeSkipClientId(): string {
+  return customAnimeSkipClientId || ANIME_SKIP_CLIENT_ID;
+}
+
+export interface SkipOpAiConfig {
+  mode: 'disabled' | 'cloud' | 'local';
+  provider: 'gemini' | 'openai';
+  apiKey: string;
+}
+
+let skipOpAiConfig: SkipOpAiConfig = {
+  mode: 'disabled',
+  provider: 'gemini',
+  apiKey: '',
+};
+
+export function setSkipOpAiConfig(config: Partial<SkipOpAiConfig>) {
+  skipOpAiConfig = {
+    ...skipOpAiConfig,
+    ...config,
+  };
+}
+
+export function getSkipOpAiConfig(): SkipOpAiConfig {
+  return skipOpAiConfig;
+}
+
+/**
+ * Teste la validité d'un Client ID Anime-Skip auprès de l'API GraphQL officielle
+ */
+export async function testAnimeSkipApiKey(clientId?: string): Promise<{ success: boolean; message: string }> {
+  const keyToTest = (clientId && clientId.trim()) ? clientId.trim() : ANIME_SKIP_CLIENT_ID;
+  try {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 4500);
+
+    const resp = await fetch('https://api.anime-skip.com/graphql', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Client-ID': keyToTest,
+      },
+      body: JSON.stringify({
+        query: `query { searchShows(search: "Naruto", limit: 1) { id name } }`,
+      }),
+      signal: controller.signal,
+    });
+    clearTimeout(timeout);
+
+    if (!resp.ok) {
+      if (resp.status === 401 || resp.status === 403) {
+        return { success: false, message: 'Client ID Anime-Skip non valide ou non autorisé.' };
+      }
+      return { success: false, message: `Erreur Anime-Skip (Code HTTP ${resp.status})` };
+    }
+
+    const data = await resp.json();
+    if (data.errors && data.errors.length > 0) {
+      return { success: false, message: data.errors[0]?.message || 'Erreur API Anime-Skip' };
+    }
+
+    return { success: true, message: 'Connexion réussie à l\'API Anime-Skip !' };
+  } catch (err: any) {
+    if (err?.name === 'AbortError') {
+      return { success: false, message: 'Délai d\'attente dépassé (timeout) vers Anime-Skip.' };
+    }
+    return { success: false, message: err?.message || 'Impossible de joindre le serveur Anime-Skip.' };
+  }
+}
+
+/**
+ * Teste la validité d'une clé API Cloud (Google Gemini ou OpenAI)
+ */
+export async function testCloudAiApiKey(
+  provider: 'gemini' | 'openai',
+  apiKey: string
+): Promise<{ success: boolean; message: string }> {
+  const key = apiKey?.trim();
+  if (!key) {
+    return { success: false, message: 'Veuillez renseigner une clé API.' };
+  }
+
+  try {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 7000);
+
+    if (provider === 'gemini') {
+      const resp = await fetch(
+        `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${encodeURIComponent(key)}`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            contents: [{ parts: [{ text: 'Ping: réponds simplement OK' }] }],
+            generationConfig: { maxOutputTokens: 10 },
+          }),
+          signal: controller.signal,
+        }
+      );
+      clearTimeout(timeout);
+
+      if (!resp.ok) {
+        const errJson = await resp.json().catch(() => null);
+        const errMsg = errJson?.error?.message || `Erreur API Gemini (${resp.status})`;
+        return { success: false, message: errMsg };
+      }
+      return { success: true, message: 'Clé Google Gemini validée avec succès !' };
+    } else {
+      const resp = await fetch('https://api.openai.com/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${key}`,
+        },
+        body: JSON.stringify({
+          model: 'gpt-4o-mini',
+          messages: [{ role: 'user', content: 'Ping: reponds simplement OK' }],
+          max_tokens: 5,
+        }),
+        signal: controller.signal,
+      });
+      clearTimeout(timeout);
+
+      if (!resp.ok) {
+        const errJson = await resp.json().catch(() => null);
+        const errMsg = errJson?.error?.message || `Erreur API OpenAI (${resp.status})`;
+        return { success: false, message: errMsg };
+      }
+      return { success: true, message: 'Clé OpenAI validée avec succès !' };
+    }
+  } catch (err: any) {
+    if (err?.name === 'AbortError') {
+      return { success: false, message: 'Délai d\'attente dépassé (timeout) vers l\'API IA.' };
+    }
+    return { success: false, message: err?.message || 'Erreur lors du test de l\'IA.' };
+  }
+}
+
 export interface AnimeParseResult {
   cleanTitle: string;
   episodeNumber: number;
@@ -420,7 +564,7 @@ export async function resolveAnimeSkipMarkers(
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'X-Client-ID': ANIME_SKIP_CLIENT_ID,
+        'X-Client-ID': getEffectiveAnimeSkipClientId(),
       },
       body: JSON.stringify({ query: searchQuery, variables: { search: cleanTitle } }),
       signal: searchController.signal,
@@ -458,7 +602,7 @@ export async function resolveAnimeSkipMarkers(
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'X-Client-ID': ANIME_SKIP_CLIENT_ID,
+        'X-Client-ID': getEffectiveAnimeSkipClientId(),
       },
       body: JSON.stringify({ query: epQuery, variables: { showId: show.id, number: episodeNumber } }),
       signal: epController.signal,
@@ -688,6 +832,153 @@ export async function resolveSubtitleMarkers(filePath: string): Promise<{
 }
 
 /**
+ * Extrait un extrait représentatif de sous-titres depuis les pistes du lecteur vidéo
+ */
+export function extractSubtitlesSnippetFromVideo(videoElement: HTMLVideoElement | null): string {
+  if (!videoElement || !videoElement.textTracks) return '';
+  const lines: string[] = [];
+  try {
+    for (let i = 0; i < videoElement.textTracks.length; i++) {
+      const track = videoElement.textTracks[i];
+      if (track.cues && track.cues.length > 0) {
+        for (let j = 0; j < Math.min(track.cues.length, 250); j++) {
+          const cue = track.cues[j] as VTTCue;
+          if (cue && typeof cue.startTime === 'number') {
+            lines.push(`[${cue.startTime.toFixed(1)}s - ${cue.endTime.toFixed(1)}s] ${(cue.text || '').replace(/\r?\n/g, ' ')}`);
+          }
+        }
+        if (lines.length > 0) break;
+      }
+    }
+  } catch {}
+  return lines.join('\n');
+}
+
+/**
+ * Analyse sémantique intelligente via IA Cloud (Gemini ou OpenAI) des sous-titres / métadonnées
+ * pour repérer les séquences d'Opening et d'Ending
+ */
+export async function detectMarkersWithCloudAi(
+  subtitlesSnippet: string,
+  options: {
+    provider: 'gemini' | 'openai';
+    apiKey: string;
+    episodeDuration?: number;
+    title?: string;
+  }
+): Promise<{ op: SkipInterval | null; ed: SkipInterval | null }> {
+  const { provider, apiKey, episodeDuration = 1440, title = 'Anime Episode' } = options;
+  if (!apiKey) return { op: null, ed: null };
+
+  const prompt = `Tu es un expert dans l'analyse d'animes et de séries.
+Titre : ${title}
+Durée totale : environ ${Math.round(episodeDuration)} secondes.
+
+${subtitlesSnippet ? `Extraits horodatés de sous-titres :\n${subtitlesSnippet.substring(0, 7000)}` : `Pas de sous-titres textuels bruts disponibles.`}
+
+Tâche : Détecte les intervalles probables de l'Opening (OP) et de l'Ending (ED).
+Durée typique d'un OP ou ED d'anime : environ 85 à 92 secondes (généralement 90s).
+L'OP est généralement situé entre 0s et 300s. L'ED est généralement situé dans les 3 à 4 dernières minutes.
+
+Réponds STRICTEMENT sous forme de JSON valide avec cette structure exacte (sans balises markdown) :
+{
+  "op": { "start": 90.0, "end": 180.0 },
+  "ed": { "start": 1260.0, "end": 1350.0 }
+}
+(Si l'un des deux n'est pas détecté, mets null pour sa valeur).`;
+
+  try {
+    let rawResponse = '';
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 8500);
+
+    if (provider === 'gemini') {
+      const resp = await fetch(
+        `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${encodeURIComponent(apiKey)}`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            contents: [{ parts: [{ text: prompt }] }],
+            generationConfig: {
+              temperature: 0.1,
+              responseMimeType: 'application/json',
+            },
+          }),
+          signal: controller.signal,
+        }
+      );
+      clearTimeout(timeout);
+      if (!resp.ok) return { op: null, ed: null };
+      const data = await resp.json();
+      rawResponse = data?.candidates?.[0]?.content?.parts?.[0]?.text || '';
+    } else {
+      const resp = await fetch('https://api.openai.com/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${apiKey}`,
+        },
+        body: JSON.stringify({
+          model: 'gpt-4o-mini',
+          messages: [{ role: 'user', content: prompt }],
+          temperature: 0.1,
+          response_format: { type: 'json_object' },
+        }),
+        signal: controller.signal,
+      });
+      clearTimeout(timeout);
+      if (!resp.ok) return { op: null, ed: null };
+      const data = await resp.json();
+      rawResponse = data?.choices?.[0]?.message?.content || '';
+    }
+
+    if (!rawResponse) return { op: null, ed: null };
+
+    const jsonStr = rawResponse.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
+    const parsed = JSON.parse(jsonStr);
+
+    let op: SkipInterval | null = null;
+    let ed: SkipInterval | null = null;
+
+    if (parsed.op && typeof parsed.op.start === 'number' && typeof parsed.op.end === 'number') {
+      const start = Math.max(0, Math.round(parsed.op.start * 10) / 10);
+      const end = Math.min(episodeDuration, Math.round(parsed.op.end * 10) / 10);
+      if (end - start >= 30) {
+        op = {
+          start,
+          end,
+          type: 'op',
+          source: 'ai',
+          confidence: 'high',
+          title: `Opening (IA ${provider === 'gemini' ? 'Gemini' : 'OpenAI'})`,
+        };
+      }
+    }
+
+    if (parsed.ed && typeof parsed.ed.start === 'number' && typeof parsed.ed.end === 'number') {
+      const start = Math.max(0, Math.round(parsed.ed.start * 10) / 10);
+      const end = Math.min(episodeDuration, Math.round(parsed.ed.end * 10) / 10);
+      if (end - start >= 30) {
+        ed = {
+          start,
+          end,
+          type: 'ed',
+          source: 'ai',
+          confidence: 'high',
+          title: `Ending (IA ${provider === 'gemini' ? 'Gemini' : 'OpenAI'})`,
+        };
+      }
+    }
+
+    return { op, ed };
+  } catch (err) {
+    console.warn('[Cloud AI] Erreur analyse IA:', err);
+    return { op: null, ed: null };
+  }
+}
+
+/**
  * Fonction maîtresse : Résolution complète des marqueurs vidéo en cascade enrichie
  * Détecte à la fois Opening, Ending, Recap, Preview, Scène post-crédits, contrôle de dérive et Snapping
  */
@@ -781,6 +1072,23 @@ export async function resolveVideoMarkersCascade(
       }
     } catch (err) {
       console.warn('[VideoMarkers] Erreur Niveau 4 (Sous-Titres):', err);
+    }
+  }
+
+  // === Niveau 4.5 : Détection IA Cloud (si activée dans les paramètres et qu'il manque OP ou ED) ===
+  if ((!op || !ed) && skipOpAiConfig.mode === 'cloud' && skipOpAiConfig.apiKey) {
+    try {
+      const subSnippet = extractSubtitlesSnippetFromVideo(videoElement);
+      const aiResult = await detectMarkersWithCloudAi(subSnippet, {
+        provider: skipOpAiConfig.provider,
+        apiKey: skipOpAiConfig.apiKey,
+        episodeDuration: actualDuration,
+        title: track.title || track.album,
+      });
+      if (!op && aiResult.op) op = aiResult.op;
+      if (!ed && aiResult.ed) ed = aiResult.ed;
+    } catch (err) {
+      console.warn('[VideoMarkers] Erreur Niveau 4.5 (IA Cloud):', err);
     }
   }
 

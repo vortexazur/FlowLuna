@@ -27,12 +27,17 @@ import {
   Zap,
   Disc,
   Trash2,
+  Key,
+  Eye,
+  EyeOff,
+  Bot,
 } from 'lucide-react';
 import { PlayerSettings, AccentColor, APP_VERSION, AppUpdateInfo, AppUpdateProgress, DEFAULT_MARATHON_CONFIG } from '../types';
 import { SUPPORTED_LANGUAGES, getT } from '../i18n';
 import { CountryFlag } from './CountryFlag';
 import { backgroundScanner } from '../services/backgroundScanner';
 import { saveTracks } from '../services/audioDb';
+import { testAnimeSkipApiKey, testCloudAiApiKey } from '../services/openingDetectorService';
 import { compareSemVer } from '../utils/semver';
 import { ClearCacheModal } from './ClearCacheModal';
 import { formatBytes } from '../services/cacheCleanerService';
@@ -204,6 +209,43 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   // Clear Cache Modal State & Toast Notification
   const [isClearCacheModalOpen, setIsClearCacheModalOpen] = useState(false);
   const [cacheToastMessage, setCacheToastMessage] = useState<{ text: string; type: 'success' | 'error' } | null>(null);
+
+  // Anime-Skip & AI Skip States
+  const [showAnimeSkipKey, setShowAnimeSkipKey] = useState(false);
+  const [isTestingAnimeSkip, setIsTestingAnimeSkip] = useState(false);
+  const [animeSkipTestResult, setAnimeSkipTestResult] = useState<{ success: boolean; message: string } | null>(null);
+
+  const [showAiKey, setShowAiKey] = useState(false);
+  const [isTestingAi, setIsTestingAi] = useState(false);
+  const [aiTestResult, setAiTestResult] = useState<{ success: boolean; message: string } | null>(null);
+
+  const handleTestAnimeSkip = async () => {
+    setIsTestingAnimeSkip(true);
+    setAnimeSkipTestResult(null);
+    try {
+      const res = await testAnimeSkipApiKey(settings.animeSkipClientId);
+      setAnimeSkipTestResult(res);
+    } catch (err: any) {
+      setAnimeSkipTestResult({ success: false, message: err?.message || 'Erreur lors du test' });
+    } finally {
+      setIsTestingAnimeSkip(false);
+    }
+  };
+
+  const handleTestAiKey = async () => {
+    setIsTestingAi(true);
+    setAiTestResult(null);
+    try {
+      const provider = settings.skipOpAiProvider || 'gemini';
+      const key = settings.skipOpAiApiKey || '';
+      const res = await testCloudAiApiKey(provider, key);
+      setAiTestResult(res);
+    } catch (err: any) {
+      setAiTestResult({ success: false, message: err?.message || 'Erreur lors du test' });
+    } finally {
+      setIsTestingAi(false);
+    }
+  };
 
   useEffect(() => {
     if (initialAppUpdateInfo) {
@@ -1365,6 +1407,291 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                       onChange={(val) => updateSetting('enableSilenceSnapping', val)}
                       accent={accent}
                     />
+                  </div>
+                )}
+
+                {/* Sous-option : Clé API / Client ID Anime-Skip */}
+                {(settings.enableSkipOpening ?? true) && (
+                  <div className="flex flex-col gap-3 pt-3.5 border-t border-neutral-800/80 animate-in fade-in duration-150">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <Key className="w-4 h-4 text-emerald-400" />
+                        <div>
+                          <span className="font-medium text-neutral-200 block text-xs">
+                            Clé API / Client ID Anime-Skip (Optionnel)
+                          </span>
+                          <span className="text-neutral-400 text-[11px] leading-relaxed">
+                            Permet d'utiliser votre propre compte Anime-Skip pour éviter tout rate-limiting. Laissez vide pour utiliser la clé partagée intégrée.
+                          </span>
+                        </div>
+                      </div>
+                      <a
+                        href="https://anime-skip.com/"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-neutral-800/80 hover:bg-neutral-800 text-sky-400 hover:text-sky-300 border border-sky-500/20 hover:border-sky-500/40 text-[11px] font-medium transition-colors shrink-0"
+                        title="Ouvrir anime-skip.com dans le navigateur"
+                      >
+                        <ExternalLink className="w-3 h-3" />
+                        <span>anime-skip.com</span>
+                      </a>
+                    </div>
+
+                    <div className="flex items-center gap-2">
+                      <div className="relative flex-1">
+                        <input
+                          type={showAnimeSkipKey ? 'text' : 'password'}
+                          value={settings.animeSkipClientId || ''}
+                          onChange={(e) => updateSetting('animeSkipClientId', e.target.value)}
+                          placeholder="Client ID Anime-Skip (ex: DLyfrLMiQc3xCgAM...)"
+                          className="w-full bg-neutral-950/80 border border-neutral-800 focus:border-emerald-500/60 rounded-lg px-3 py-1.5 text-xs text-neutral-200 placeholder-neutral-600 outline-none font-mono pr-9 transition-colors"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => setShowAnimeSkipKey(!showAnimeSkipKey)}
+                          className="absolute right-2.5 top-1/2 -translate-y-1/2 text-neutral-400 hover:text-neutral-200 transition-colors cursor-pointer"
+                          title={showAnimeSkipKey ? 'Masquer la clé' : 'Afficher la clé'}
+                        >
+                          {showAnimeSkipKey ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                        </button>
+                      </div>
+
+                      <button
+                        type="button"
+                        onClick={handleTestAnimeSkip}
+                        disabled={isTestingAnimeSkip}
+                        className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-neutral-800 hover:bg-neutral-700 disabled:opacity-50 text-neutral-200 text-xs font-medium border border-neutral-700/80 transition-all cursor-pointer shrink-0"
+                      >
+                        {isTestingAnimeSkip ? (
+                          <RefreshCw className="w-3.5 h-3.5 animate-spin text-emerald-400" />
+                        ) : (
+                          <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
+                        )}
+                        <span>Tester</span>
+                      </button>
+                    </div>
+
+                    {animeSkipTestResult && (
+                      <div
+                        className={`flex items-center gap-2 p-2 rounded-lg text-[11px] border ${
+                          animeSkipTestResult.success
+                            ? 'bg-emerald-950/40 border-emerald-500/30 text-emerald-300'
+                            : 'bg-rose-950/40 border-rose-500/30 text-rose-300'
+                        }`}
+                      >
+                        {animeSkipTestResult.success ? (
+                          <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+                        ) : (
+                          <AlertCircle className="w-3.5 h-3.5 text-rose-400 shrink-0" />
+                        )}
+                        <span>{animeSkipTestResult.message}</span>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* Sous-option : Moteur d'Assistance IA pour la détection OP / ED */}
+                {(settings.enableSkipOpening ?? true) && (
+                  <div className="flex flex-col gap-3.5 pt-3.5 border-t border-neutral-800/80 animate-in fade-in duration-150">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <Sparkles className="w-4 h-4 text-violet-400" />
+                        <div>
+                          <span className="font-semibold text-neutral-200 block text-xs">
+                            Assistance IA pour la Détection OP / ED (Mode en 2 temps)
+                          </span>
+                          <span className="text-neutral-400 text-[11px] leading-relaxed">
+                            Améliore la détection lorsque les bases communautaires ne contiennent aucun marqueur (animes récents, versions Blu-Ray décalées ou OAVs).
+                          </span>
+                        </div>
+                      </div>
+                      <span className="text-[10px] font-mono uppercase px-2 py-0.5 rounded font-bold bg-violet-500/20 text-violet-400 border border-violet-500/30">
+                        {settings.skipOpAiMode === 'cloud'
+                          ? 'IA Cloud'
+                          : settings.skipOpAiMode === 'local'
+                          ? 'IA Locale'
+                          : 'Désactivé'}
+                      </span>
+                    </div>
+
+                    {/* Sélecteur des 3 modes */}
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                      {[
+                        {
+                          id: 'disabled' as const,
+                          label: 'Standard (Sans IA)',
+                          badge: 'APIs seules',
+                          desc: 'S\'en remet uniquement aux bases Aniskip & Anime-Skip.',
+                        },
+                        {
+                          id: 'cloud' as const,
+                          label: 'IA Cloud (Clé API)',
+                          badge: 'Gemini / OpenAI',
+                          desc: 'Analyse sémantique fine des sous-titres, paroles et karaokés.',
+                        },
+                        {
+                          id: 'local' as const,
+                          label: 'IA Locale (100% Hors-ligne)',
+                          badge: 'Privé & Local',
+                          desc: 'Empreinte acoustique inter-épisodes et transitions sonores (FFmpeg).',
+                        },
+                      ].map((modeOption) => {
+                        const isSelected = (settings.skipOpAiMode ?? 'disabled') === modeOption.id;
+                        return (
+                          <button
+                            key={modeOption.id}
+                            type="button"
+                            onClick={() => updateSetting('skipOpAiMode', modeOption.id)}
+                            className={`p-3 rounded-xl border flex flex-col justify-between text-left transition-all cursor-pointer gap-1.5 ${
+                              isSelected
+                                ? 'bg-violet-950/30 border-violet-500/60 text-white ring-1 ring-violet-500/40 shadow-xs'
+                                : 'bg-neutral-950/60 border-neutral-800 text-neutral-400 hover:text-white hover:border-neutral-700'
+                            }`}
+                          >
+                            <div className="flex items-center justify-between">
+                              <span className="text-xs font-bold text-neutral-200">{modeOption.label}</span>
+                              <span
+                                className={`text-[9px] font-mono px-1.5 py-0.2 rounded ${
+                                  isSelected ? 'bg-violet-500/20 text-violet-300 font-bold' : 'text-neutral-500'
+                                }`}
+                              >
+                                {modeOption.badge}
+                              </span>
+                            </div>
+                            <span className="text-[10px] text-neutral-400 leading-tight">
+                              {modeOption.desc}
+                            </span>
+                          </button>
+                        );
+                      })}
+                    </div>
+
+                    {/* Configuration spécifique au Mode IA Cloud */}
+                    {settings.skipOpAiMode === 'cloud' && (
+                      <div className="flex flex-col gap-3 p-3.5 rounded-xl bg-neutral-950/70 border border-violet-500/30 animate-in fade-in duration-150">
+                        {/* Choix du provider */}
+                        <div className="flex items-center justify-between">
+                          <span className="text-xs font-medium text-neutral-300">Fournisseur d'IA :</span>
+                          <div className="flex items-center gap-1.5 bg-neutral-900 p-1 rounded-lg border border-neutral-800">
+                            <button
+                              type="button"
+                              onClick={() => updateSetting('skipOpAiProvider', 'gemini')}
+                              className={`px-2.5 py-1 rounded text-xs font-medium transition-all cursor-pointer ${
+                                (settings.skipOpAiProvider || 'gemini') === 'gemini'
+                                  ? 'bg-violet-500/30 text-violet-200 font-bold border border-violet-500/40 shadow-xs'
+                                  : 'text-neutral-400 hover:text-neutral-200'
+                              }`}
+                            >
+                              Google Gemini (Recommandé)
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => updateSetting('skipOpAiProvider', 'openai')}
+                              className={`px-2.5 py-1 rounded text-xs font-medium transition-all cursor-pointer ${
+                                settings.skipOpAiProvider === 'openai'
+                                  ? 'bg-violet-500/30 text-violet-200 font-bold border border-violet-500/40 shadow-xs'
+                                  : 'text-neutral-400 hover:text-neutral-200'
+                              }`}
+                            >
+                              OpenAI (GPT-4o-mini)
+                            </button>
+                          </div>
+                        </div>
+
+                        {/* Champ Clé API IA */}
+                        <div className="flex flex-col gap-1.5">
+                          <div className="flex items-center justify-between">
+                            <span className="text-[11px] text-neutral-400">
+                              Clé API {(settings.skipOpAiProvider || 'gemini') === 'gemini' ? 'Google Gemini' : 'OpenAI'} :
+                            </span>
+                            <a
+                              href={
+                                (settings.skipOpAiProvider || 'gemini') === 'gemini'
+                                  ? 'https://aistudio.google.com/app/apikey'
+                                  : 'https://platform.openai.com/api-keys'
+                              }
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="text-[11px] text-violet-400 hover:text-violet-300 hover:underline flex items-center gap-1"
+                            >
+                              <span>Obtenir une clé</span>
+                              <ExternalLink className="w-3 h-3" />
+                            </a>
+                          </div>
+
+                          <div className="flex items-center gap-2">
+                            <div className="relative flex-1">
+                              <input
+                                type={showAiKey ? 'text' : 'password'}
+                                value={settings.skipOpAiApiKey || ''}
+                                onChange={(e) => updateSetting('skipOpAiApiKey', e.target.value)}
+                                placeholder={
+                                  (settings.skipOpAiProvider || 'gemini') === 'gemini'
+                                    ? 'AIzaSy...'
+                                    : 'sk-proj-...'
+                                }
+                                className="w-full bg-neutral-900 border border-neutral-800 focus:border-violet-500/60 rounded-lg px-3 py-1.5 text-xs text-neutral-200 placeholder-neutral-600 outline-none font-mono pr-9 transition-colors"
+                              />
+                              <button
+                                type="button"
+                                onClick={() => setShowAiKey(!showAiKey)}
+                                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-neutral-400 hover:text-neutral-200 transition-colors cursor-pointer"
+                                title={showAiKey ? 'Masquer la clé' : 'Afficher la clé'}
+                              >
+                                {showAiKey ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                              </button>
+                            </div>
+
+                            <button
+                              type="button"
+                              onClick={handleTestAiKey}
+                              disabled={isTestingAi || !settings.skipOpAiApiKey}
+                              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-neutral-800 hover:bg-neutral-700 disabled:opacity-50 text-neutral-200 text-xs font-medium border border-neutral-700/80 transition-all cursor-pointer shrink-0"
+                            >
+                              {isTestingAi ? (
+                                <RefreshCw className="w-3.5 h-3.5 animate-spin text-violet-400" />
+                              ) : (
+                                <Bot className="w-3.5 h-3.5 text-violet-400" />
+                              )}
+                              <span>Tester</span>
+                            </button>
+                          </div>
+
+                          {aiTestResult && (
+                            <div
+                              className={`flex items-center gap-2 p-2 rounded-lg text-[11px] border ${
+                                aiTestResult.success
+                                  ? 'bg-emerald-950/40 border-emerald-500/30 text-emerald-300'
+                                  : 'bg-rose-950/40 border-rose-500/30 text-rose-300'
+                              }`}
+                            >
+                              {aiTestResult.success ? (
+                                <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+                              ) : (
+                                <AlertCircle className="w-3.5 h-3.5 text-rose-400 shrink-0" />
+                              )}
+                              <span>{aiTestResult.message}</span>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Explication du Mode IA Locale */}
+                    {settings.skipOpAiMode === 'local' && (
+                      <div className="flex items-start gap-3 p-3.5 rounded-xl bg-neutral-950/70 border border-neutral-800 animate-in fade-in duration-150">
+                        <Cpu className="w-5 h-5 text-indigo-400 shrink-0 mt-0.5" />
+                        <div className="flex flex-col gap-1">
+                          <span className="text-xs font-bold text-neutral-200">
+                            Moteur Acoustique & Heuristique Local (100% Offline)
+                          </span>
+                          <span className="text-[11px] text-neutral-400 leading-relaxed">
+                            Ce mode analyse directement les fichiers vidéo sur votre disque à l'aide de FFmpeg. Il extrait l'enveloppe sonore et compare deux épisodes consécutifs pour identifier la fenêtre de 90 secondes répétée (le générique), tout en calant les extrémités sur les silences audio. 
+                            <strong> Aucune donnée, vidéo ou clé API n'est envoyée sur Internet.</strong>
+                          </span>
+                        </div>
+                      </div>
+                    )}
                   </div>
                 )}
               </div>
