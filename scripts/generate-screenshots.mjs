@@ -198,7 +198,7 @@ const DEMO_TRACKS = [
   },
   {
     id: 'track-demo-6',
-    title: 'Interstella 5555 — One More Time (4K UHD Remaster)',
+    title: 'Interstella 5555 — Épisode 01 : One More Time (4K UHD Remaster)',
     artist: 'Daft Punk',
     album: 'Discovery [Video 4K]',
     duration: 320,
@@ -213,6 +213,31 @@ const DEMO_TRACKS = [
     isCachedOffline: true,
     playCount: 14,
     addedAt: Date.now() - 3600000 * 24 * 5,
+    lyrics: SHARED_LYRICS,
+    chapters: [
+      { title: 'Prologue', startTime: 0, endTime: 30 },
+      { title: 'Opening — One More Time', startTime: 30, endTime: 120 },
+      { title: 'Épisode', startTime: 120, endTime: 270 },
+      { title: 'Ending — Aerodynamic', startTime: 270, endTime: 320 },
+    ],
+  },
+  {
+    id: 'track-demo-6-ep2',
+    title: 'Interstella 5555 — Épisode 02 : Aerodynamic (4K UHD)',
+    artist: 'Daft Punk',
+    album: 'Discovery [Video 4K]',
+    duration: 215,
+    format: 'mp4',
+    isVideo: true,
+    videoWidth: 3840,
+    videoHeight: 2160,
+    url: SILENT_AUDIO,
+    coverUrl: coverDaftPunk,
+    source: 'local',
+    isFavorite: true,
+    isCachedOffline: true,
+    playCount: 9,
+    addedAt: Date.now() - 3600000 * 24 * 4,
     lyrics: SHARED_LYRICS,
   },
   {
@@ -436,6 +461,16 @@ async function setupPageData(page) {
               visualizerStyle: 'bars',
               language: 'fr',
               audioEngine: 'web_audio',
+              marathonConfig: {
+                enabled: true,
+                countdownDuration: 5,
+                autoSkipPostCredits: true,
+                jumpToNextImmediately: false,
+              },
+              enableSkipOpening: true,
+              autoSkipOpening: false,
+              enableSilenceSnapping: true,
+              videoSkipForwardInterval: 10,
             },
           });
 
@@ -580,14 +615,44 @@ async function main() {
 
   // Open Cinema / Theater mode
   await page.evaluate((posterUrl) => {
-    const video = document.querySelector('video');
-    if (video) {
-      video.poster = posterUrl;
-      video.currentTime = 85;
-    }
+    document.querySelectorAll('video, audio').forEach((media) => {
+      try {
+        if (media.tagName === 'VIDEO') media.poster = posterUrl;
+        Object.defineProperty(media, 'duration', { get: () => 320, configurable: true });
+        Object.defineProperty(media, 'currentTime', { get: () => 65, configurable: true });
+        media.dispatchEvent(new Event('loadedmetadata'));
+        media.dispatchEvent(new Event('durationchange'));
+        media.dispatchEvent(new Event('timeupdate'));
+      } catch {}
+    });
     const cinemaBtn = Array.from(document.querySelectorAll('button')).find(b => b.innerText && b.innerText.includes('Cinéma'));
     if (cinemaBtn) cinemaBtn.click();
   }, coverVideo);
+  await new Promise((r) => setTimeout(r, 1000));
+
+  await page.evaluate(() => {
+    document.querySelectorAll('video, audio').forEach((media) => {
+      try {
+        Object.defineProperty(media, 'duration', { get: () => 320, configurable: true });
+        Object.defineProperty(media, 'currentTime', { get: () => 65, configurable: true });
+        media.dispatchEvent(new Event('loadedmetadata'));
+        media.dispatchEvent(new Event('durationchange'));
+        media.dispatchEvent(new Event('timeupdate'));
+      } catch {}
+    });
+
+    const rangeInput = document.querySelector('input[type="range"][max="320"], .group\\/scrubber input[type="range"]');
+    if (rangeInput) {
+      const nativeSetter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value')?.set;
+      if (nativeSetter) {
+        nativeSetter.call(rangeInput, '65');
+      } else {
+        rangeInput.value = '65';
+      }
+      rangeInput.dispatchEvent(new Event('input', { bubbles: true }));
+      rangeInput.dispatchEvent(new Event('change', { bubbles: true }));
+    }
+  });
   await new Promise((r) => setTimeout(r, 1200));
 
   const screenshot3Path = path.join(outputDir, '03-lecteur-video.png');

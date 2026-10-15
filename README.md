@@ -1,4 +1,4 @@
-# 🎵 FlowLuna — Lecteur Audio Hi-Fi & Downloader Natif Windows
+# 🎵 FlowLuna — Lecteur Multimédia Hi-Fi, Vidéo 4K & Downloader Natif Windows
 
 <div align="center">
   <img src="public/logo.jpg" alt="FlowLuna Logo" width="160" style="border-radius: 20px; margin-bottom: 12px;" />
@@ -15,7 +15,7 @@
   </p>
 
   <p>
-    <strong>Lecteur multimédia audiophile haute fidélité pour Windows avec interface Pure Glass XAML, moteur audio LibVLCSharp, égaliseur 10 bandes, visualiseur réactif, architecture native C# .NET 9 + WebView2 et extraction avancée yt-dlp & FFmpeg.</strong>
+    <strong>Lecteur multimédia tout-en-un audiophile et cinéma pour Windows avec interface Pure Glass XAML, accélération matérielle Direct3D 11, synchronisation labiale A/V parfaite (0 ms), détection intelligente Skip Opening/Ending, mode Marathon, intégration IA agnostique (Cloud & Local Ollama / LM Studio), égaliseur 10 bandes, visualiseur réactif et téléchargeur universel haute performance yt-dlp & FFmpeg.</strong>
   </p>
 
   <p>
@@ -39,7 +39,7 @@
 > **Projet conçu & développé par Intelligence Artificielle (IA) :**  
 > FlowLuna est une application développée de bout en bout avec l'assistance de l'Intelligence Artificielle (IA). L'architecture logicielle, le code source (C# .NET 9, React 19, TypeScript), les intégrations multimédias et le design de l'interface utilisateur ont été entièrement programmés et itérés en pair-programming assisté par IA.
 
-**FlowLuna** est une application de bureau conçue pour offrir une expérience d'écoute sans compromis sous Windows. Propulsée par **C# .NET 9**, **Microsoft Edge WebView2**, **LibVLCSharp (VideoLAN)**, **React 19**, **Vite** et un serveur in-process ultra-rapide **ASP.NET Core Kestrel**, elle réunit le meilleur du traitement audio numérique, de la lecture locale ultra-fluide et de l'extraction multimédia haute performance avec une empreinte mémoire et disque réduite à seulement ~70 Mo.
+**FlowLuna** est une application de bureau conçue pour offrir une expérience multimédia sans compromis sous Windows. Propulsée par **C# .NET 9**, **Microsoft Edge WebView2**, **LibVLCSharp (VideoLAN)**, **React 19**, **Vite** et un serveur in-process ultra-rapide **ASP.NET Core Kestrel**, elle réunit le meilleur du traitement audio numérique haute fidélité, de la lecture vidéo cinéma 4K accélérée par le matériel avec zéro latence audio/vidéo, d'un système intelligent d'intro-skipping, de modèles d'IA agnostiques (Cloud et locaux hors-ligne) et d'un outil d'extraction multimédia haute performance avec une empreinte système optimisée.
 
 ---
 
@@ -47,7 +47,7 @@
 
 ### 🎬 Moteur Multimédia LibVLCSharp (VideoLAN) & Interface Pure Glass
 FlowLuna réunit la puissance du moteur multimédia **LibVLCSharp** ([VideoLAN](https://github.com/videolan/libvlcsharp)) et une interface fluide **Pure Glass & Acrylic** accélérée par DWM :
-- **Décodage universel matériel :** Prise en charge native de tous les codecs audio et conteneurs vidéo (*FLAC, ALAC, MP3, WAV, AAC, Opus, Ogg Vorbis, MKV, MP4, WebM*).
+- **Décodage universel matériel :** Prise en charge native de tous les codecs audio et conteneurs vidéo (*FLAC, ALAC, MP3, WAV, AAC, Opus, Ogg Vorbis, MKV, MP4, WebM, MOV, AVI*).
 - **Égaliseur graphique LibVLC 10 bandes :** Calibré selon les fréquences ISO standard VLC (31 Hz à 16 kHz) avec pré-amplification et presets audiophiles officiels.
 - **Translucidité Pure Glass personnalisable :** Effet de profondeur dépoli moderne avec gestion dynamique de l'opacité et accentuation des couleurs.
 
@@ -57,21 +57,56 @@ FlowLuna réunit la puissance du moteur multimédia **LibVLCSharp** ([VideoLAN](
 
 ### 🎤 Mode Plein Écran & Paroles Synchronisées (Karaoké)
 - **Synchronisation dynamique en direct :** Défilement automatique fluide avec surlignage lumineux de la phrase en cours d'écoute.
-- **Visualiseur audio 100% réactif :** Analyse spectrale en temps réel au bas de l'écran avec sélecteur de styles visuels (*Barres*, *Onde*, *Piliers*, *Radar*, *LEDs Micro*).
 - **Gestion des intros instrumentales & calage manuel :** Détection automatique des pauses instrumentales et micro-ajustement fin (`-0.5s` / `+0.5s`) sauvegardé par morceau.
+- **Ambiance visuelle immersive :** Arrière-plan dynamique calculé selon les teintes de la pochette de l'album.
 
 <p align="center">
   <img src="docs/screenshots/02-paroles-plein-ecran.png" alt="Mode Plein Écran & Paroles Synchronisées" width="100%">
 </p>
 
-### 📺 Lecteur Vidéo Haute Définition & Mode Cinéma (4K / 1080p)
-- **Lecture vidéo fluide accélérée :** Prise en charge native des fichiers MP4, WebM, MKV et MOV avec décodage matériel GPU sans saccades.
-- **Mode Cinéma immersif :** Affichage grand écran avec commandes escamotables automatiques, sélecteur de ratio (*Contain / Cover / 16:9*), vitesse réglable (0.5x à 2x) et badge de résolution dynamique.
-- **Mode Picture-in-Picture (PiP) :** Basculez en un clic vers la fenêtre flottante au-dessus de vos autres applications.
+### 📺 Lecteur Vidéo Haute Définition, Mode Cinéma (4K / 1080p) & Skip Opening Intelligent
+- **Synchronisation Labiale A/V Parfaite (0 ms de Dérive) :** Architecture de rendu multi-processus levant les goulots d'étranglement CPU, avec pipeline de décodage matériel Direct3D 11 (`MediaFoundationD3D11VideoDecoder`) pour une synchronisation absolue entre la voix et les mouvements des lèvres sous Windows 10 & 11.
+- **Détection & Saut Intelligent des Ouvertures (Skip Opening / Ending) :**
+  - Moteur hybride en cascade multi-niveaux : intégration de l'API **Anime-Skip** (avec support de clé personnalisée), chapitres intégrés (*MKV / MP4*), sous-titres, corrélation acoustique, détection des silences et analyse IA.
+  - Bouton d'action flottant instantané **« Passer l'opening [S] »** avec badge de source et de fiabilité (*Chapitre, Anime-Skip, Acoustique, IA*).
+  - Repères visuels dynamiques sur la barre de progression (opening en bleu ciel, ending en violet).
+  - Commutateur **Auto-Skip** pour passer automatiquement les génériques sans la moindre manipulation.
+- **Mode Marathon (Binge-Watching Séries & Animes) :**
+  - Enchaînement automatique des épisodes avec préchargement dynamique en tâche de fond.
+  - Overlay de compte à rebours interactif à la fin de chaque épisode avec bouton d'accès immédiat à l'épisode suivant.
+  - Bouton d'activation rapide du Mode Marathon (`Zap`) directement accessible dans la barre supérieure du lecteur.
+- **File d'Attente Vidéo (Screenbox & Playlists Dédiées) :**
+  - Tiroir flottant de file d'attente vidéo accessible en un clic (`ListVideo`).
+  - Ajout direct de fichiers par lot, réorganisation et sauvegarde immédiate en playlist.
+- **Contrôles de Précision & Ratios :**
+  - Chevrons latéraux de saut temporel (+10s / -10s) et badge d'amplitude flottant.
+  - Ratios d'affichage dynamiques (*Contain, Cover, 16:9, 4:3, 21:9*).
+  - Vitesse de lecture fine réglable (0.5x, 0.75x, 1x, 1.25x, 1.5x, 2x) et badge de résolution dynamique (ex: *MP4 2160p*).
+- **Double Mode Picture-in-Picture (PiP) :** Mini-lecteur vidéo docké dans l'interface et mode Picture-in-Picture natif OS Always-on-Top pour continuer à regarder vos vidéos par-dessus vos autres applications.
 
 <p align="center">
   <img src="docs/screenshots/03-lecteur-video.png" alt="Lecteur Vidéo & Mode Cinéma" width="100%">
 </p>
+
+### 🧠 Gestionnaire Agnostique des Modèles d'IA (Cloud & Inférence Locale Ollama / LM Studio)
+FlowLuna est **100% agnostique vis-à-vis des modèles d'intelligence artificielle** :
+- **Fournisseurs Cloud Universels :** Prise en charge native sans dépendance lourde d'OpenAI (GPT-4o, o3-mini), Anthropic Claude (Claude 3.5 Sonnet / Opus), Mistral AI (Mistral Large), Google Gemini (Gemini 2.0 Flash / Pro) et de tout proxy ou serveur compatible OpenAI.
+- **Inférence Locale 100% Privée & Hors-Ligne :** Exécutez vos propres modèles open-source (Llama 3, Mistral, Qwen, DeepSeek) sur votre propre matériel via **Ollama** (`http://localhost:11434`) ou **LM Studio** (`http://localhost:1234`), sans abonnement et sans connexion Internet.
+- **Découverte Automatique & Test de Latence :** Détection automatique des modèles locaux installés et banc d'essai interactif avec mesure du ping en direct.
+- **Assistance IA Transversale :**
+  - Enrichissement automatique des métadonnées (titre, artiste principal, featuring, album, année, genre) dans l'éditeur de tags audio (`TrackTagEditorModal`).
+  - Détection contextuelle de haut niveau des ouvertures et génériques vidéo.
+
+### 🔀 Lecture Aléatoire Impartiale (Algorithme de Fisher-Yates)
+- **Permutation Équitable (Knuth Shuffle) :** Chaque piste de votre bibliothèque ou playlist est lue **exactement une seule fois** avant toute répétition.
+- **Exclusion du Titre en Cours :** Le morceau actuellement joué est sanctuarisé en tête de file sans risque d'être rejoué dans le même cycle.
+- **Navigation Historique Cohérente :** Les boutons Suivant et Précédent respectent fidèlement la file mélangée.
+- **Protection Anti-Doublon :** En mode « Répéter tout », le premier titre du cycle suivant ne peut jamais être identique au dernier titre du cycle achevé.
+
+### 📊 Visualiseur Audio Temps Réel Intégré à la Barre de Lecture
+- **Intégration Pure Glass dans la Barre Inférieure :** Visualiseur FFT dynamique incrusté directement dans la barre de contrôle, sans empiéter sur l'espace d'écoute.
+- **5 Styles Graphiques au Clic :** *LEDs Micro* (par défaut), *Barres Spectre*, *Oscilloscope*, *Piliers Stéréo* et *Radar Circulaire*.
+- **Gestion Éco-Énergie Intelligente :** Mise en veille instantanée du rendu canvas en pause et suspension automatique lors de la lecture vidéo pour dédier 100% des ressources graphiques au flux vidéo.
 
 ### ⚡ Downloader Universel Haute Performance (yt-dlp & FFmpeg)
 - **Binaires natifs Windows 64-bit :** `yt-dlp.exe` et `ffmpeg.exe` intégrés hors ASAR pour un accès direct et des vitesses d'exécution optimales.
@@ -96,11 +131,6 @@ FlowLuna réunit la puissance du moteur multimédia **LibVLCSharp** ([VideoLAN](
 - Presets audiophiles prédéfinis : *Flat, Bass Boost, Treble Boost, Électronique, Rock, Acoustique, Vocal, etc.*
 - Traitements sonores intégrés : Amplification des basses (*Bass Boost*), clarté des aigus (*Treble Boost*), pré-amplification (*Preamp Gain*) et **normalisation sonore intelligente EBU R128 / ReplayGain** (-14 LUFS Streaming, -18 LUFS ReplayGain, -23 LUFS Broadcast / Cinéma) sur une ligne pleine largeur dédiée avec limiteur True Peak à -1.0 dBTP.
 
-### 📊 Visualiseur Audio Temps Réel
-- Analyseur de fréquences FFT interactif connecté directement au moteur Web Audio.
-- Plusieurs modes de visualisation : Barres spectrales dynamiques, onde oscilloscopique et particules translucides.
-- Animation fluide à 60 FPS avec arrêt intelligent en pause pour préserver le processeur et la mémoire vive (RAM).
-
 ### 🪟 Intégration Native Windows XAML, SMTC & Discord RPC
 - **Hôte XAML WPF / Windows App SDK :** Fenêtre native optimisée pour le Microsoft Store avec effet de fond DWM Mica / Acrylic et consommation de RAM allégée via Workstation GC.
 - **Windows SMTC (System Media Transport Controls) :** Vignette multimédia officielle Windows 11/10 avec pochette d'album haute résolution, titre, artiste et commandes lors du réglage de volume ou sur l'écran de verrouillage.
@@ -109,9 +139,9 @@ FlowLuna réunit la puissance du moteur multimédia **LibVLCSharp** ([VideoLAN](
 - **Barre de titre Frameless Glass :** Design translucide avec zones de glissement fluide et commandes de fenêtre intégrées (*Réduire, Agrandir/Restaurer, Fermer*).
 
 ### 💾 Bibliothèque Locale & Outils de Production
-- Analyse et importation ultra-rapides de dossiers musicaux locaux.
+- Analyse et importation ultra-rapides de dossiers musicaux locaux avec scanner en tâche de fond.
 - Outil de découpe de morceaux (*Audio Trimmer*) et de fusion de pistes (*Audio Merger*).
-- Éditeur de métadonnées et tags de pistes (*Track Tag Editor*).
+- Éditeur de métadonnées et tags de pistes avec assistance IA (*Track Tag Editor*).
 - Détecteur de doublons et recherche instantanée avec palette de commandes (`Ctrl + K`).
 
 ---
@@ -147,11 +177,11 @@ FlowLuna réunit la puissance du moteur multimédia **LibVLCSharp** ([VideoLAN](
 | <kbd>↑</kbd> / <kbd>↓</kbd> | Augmenter / Diminuer le volume |
 | <kbd>M</kbd> | Activer / Désactiver le mode Muet |
 | <kbd>L</kbd> | Ajouter ou retirer le titre des Favoris |
-| <kbd>S</kbd> | Basculer la lecture aléatoire (*Shuffle*) |
+| <kbd>S</kbd> | Basculer la lecture aléatoire (*Shuffle* en musique) / **Passer l'opening** (en vidéo) |
 | <kbd>R</kbd> | Basculer le mode répétition (*Off / Tout / Piste*) |
 | <kbd>E</kbd> | Ouvrir l'Égaliseur 10 bandes |
-| <kbd>F</kbd> | Mode Plein Écran & Affichage des Paroles |
-| <kbd>W</kbd> | Mode Mini-Lecteur d'appoint compact |
+| <kbd>F</kbd> ou <kbd>Double-clic</kbd> | Mode Plein Écran (Paroles synchronisées / Cinéma vidéo) |
+| <kbd>W</kbd> | Mode Mini-Lecteur d'appoint compact Always-on-Top |
 | <kbd>Ctrl</kbd> + <kbd>K</kbd> | Ouvrir la Palette de commandes rapide |
 
 ---
