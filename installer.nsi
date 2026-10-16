@@ -3,7 +3,7 @@
 
 Unicode true
 !define PRODUCT_NAME "FlowLuna"
-!define PRODUCT_VERSION "1.22.4"
+!define PRODUCT_VERSION "1.22.5"
 !define PRODUCT_PUBLISHER "vortexazur"
 !define PRODUCT_WEB_SITE "https://github.com/vortexazur/FlowLuna"
 !define PRODUCT_DIR_REGKEY "Software\Microsoft\Windows\CurrentVersion\App Paths\FlowLuna.exe"
@@ -60,6 +60,11 @@ Section "MainSection" SEC01
 
   ; Copy all files from release-dotnet
   File /r "release-dotnet\*.*"
+
+  ; Ensure wwwroot from dist is always completely packaged even if dotnet publish skipped anything
+  SetOutPath "$INSTDIR\wwwroot"
+  File /r "dist\*.*"
+  SetOutPath "$INSTDIR"
 
   ; Create shortcuts
   CreateDirectory "$SMPROGRAMS\FlowLuna"

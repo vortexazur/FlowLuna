@@ -354,6 +354,14 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
           // pour éviter tout démarrage asynchrone source de décalage labial
           if (video.readyState >= 2) {
             await video.play();
+          } else {
+            const onReady = () => {
+              if (isSubscribed && isPlaying && video.paused) {
+                video.play().catch(console.warn);
+              }
+            };
+            video.addEventListener('loadeddata', onReady, { once: true });
+            video.addEventListener('canplay', onReady, { once: true });
           }
         } else if (!isPlaying && !video.paused) {
           video.pause();

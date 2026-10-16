@@ -922,14 +922,23 @@ public class HttpServer
                 RequestPath = ""
             });
 
-            // SPA fallback: any non-API route returns index.html. Never return index.html for /api routes!
+            // SPA fallback: any non-API route returns index.html. Never return index.html for /api routes or missing static files!
             app.MapFallback(async (HttpContext ctx) =>
             {
-                if (ctx.Request.Path.StartsWithSegments("/api"))
+                var path = ctx.Request.Path.Value ?? "";
+                if (path.StartsWith("/api", StringComparison.OrdinalIgnoreCase) ||
+                    path.StartsWith("/assets", StringComparison.OrdinalIgnoreCase) ||
+                    path.StartsWith("/audio", StringComparison.OrdinalIgnoreCase) ||
+                    path.StartsWith("/videos", StringComparison.OrdinalIgnoreCase) ||
+                    path.StartsWith("/covers", StringComparison.OrdinalIgnoreCase) ||
+                    Path.HasExtension(path))
                 {
                     ctx.Response.StatusCode = 404;
-                    ctx.Response.ContentType = "application/json";
-                    await ctx.Response.WriteAsync("{\"error\":\"Endpoint API introuvable.\"}");
+                    if (path.StartsWith("/api", StringComparison.OrdinalIgnoreCase))
+                    {
+                        ctx.Response.ContentType = "application/json";
+                        await ctx.Response.WriteAsync("{\"error\":\"Endpoint API introuvable.\"}");
+                    }
                     return;
                 }
 
