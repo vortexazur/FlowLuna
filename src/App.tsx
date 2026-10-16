@@ -518,6 +518,15 @@ export default function App() {
             audioRef.current.load();
           } catch {}
         }
+        // Clean reset of video element to prevent clock/timestamp drift from previous video
+        if (videoRef.current) {
+          try {
+            videoRef.current.pause();
+            if (isFinite(videoRef.current.currentTime) && videoRef.current.currentTime > 0) {
+              videoRef.current.currentTime = 0;
+            }
+          } catch {}
+        }
       } else {
         if (videoRef.current) {
           try {
@@ -567,6 +576,11 @@ export default function App() {
 
         // Direct src assignment begins media load without aborting and re-creating decoder
         activeMedia.src = playableUrl;
+        if (isVideoTrack) {
+          try {
+            activeMedia.currentTime = 0;
+          } catch {}
+        }
 
         // Check again after src assignment
         if (playRequestIdRef.current !== requestId) return;
@@ -596,6 +610,39 @@ export default function App() {
           crossfadeAnimRef.current = requestAnimationFrame(rampUp);
         } else {
           activeMedia.volume = targetVolume;
+        }
+
+        if (isVideoTrack) {
+          // Attendre que le décodeur matériel ait initialisé les timestamps audio et vidéo (PTS)
+          // pour éviter tout décalage voix/lèvres lors de la transition vers une 2e vidéo
+          if (activeMedia.readyState < 2) {
+            await new Promise<void>((resolve) => {
+              let isDone = false;
+              const onReady = () => {
+                if (isDone) return;
+                isDone = true;
+                cleanup();
+                resolve();
+              };
+              const fallbackTimer = setTimeout(onReady, 250);
+              const cleanup = () => {
+                clearTimeout(fallbackTimer);
+                activeMedia.removeEventListener('loadeddata', onReady);
+                activeMedia.removeEventListener('canplay', onReady);
+              };
+              activeMedia.addEventListener('loadeddata', onReady, { once: true });
+              activeMedia.addEventListener('canplay', onReady, { once: true });
+            });
+          }
+
+          if (playRequestIdRef.current !== requestId) return;
+
+          // Verrouillage de la synchronisation labiale frame-accurate à 0s
+          if (activeMedia.currentTime !== 0 && activeMedia.readyState >= 1) {
+            try {
+              activeMedia.currentTime = 0;
+            } catch {}
+          }
         }
 
         const playPromise = activeMedia.play();

@@ -103,52 +103,62 @@ export function useMarathonController({
     }, durationMs);
   }, []);
 
-  // Preload next episode in background (HTTP cache / Media buffer)
+  // Nettoyage complet de tout média de préchargement pour libérer les ressources GPU / Direct3D
+  const cleanupPreloadedElement = useCallback(() => {
+    if (preloadedMediaElementRef.current) {
+      try {
+        preloadedMediaElementRef.current.pause();
+        preloadedMediaElementRef.current.removeAttribute('src');
+        preloadedMediaElementRef.current.load();
+        preloadedMediaElementRef.current.remove();
+      } catch {}
+      preloadedMediaElementRef.current = null;
+    }
+  }, []);
+
+  // Preload next episode in background (préchauffe le cache réseau / disque sans instancier de décodeur GPU concurrent)
   const preloadNextTrack = useCallback(async (target: Track) => {
     if (!target) return;
     try {
       const url = await getTrackPlayableUrl(target);
       if (!url) return;
 
-      if (!preloadedMediaElementRef.current) {
-        const el = document.createElement('video');
-        el.preload = 'auto';
-        el.muted = true;
-        el.playsInline = true;
-        el.style.display = 'none';
-        el.style.position = 'fixed';
-        el.style.width = '0px';
-        el.style.height = '0px';
-        el.style.pointerEvents = 'none';
-        document.body.appendChild(el);
-        preloadedMediaElementRef.current = el;
-      }
+      // Nettoyer tout décodeur résiduel antérieur
+      cleanupPreloadedElement();
 
-      preloadedMediaElementRef.current.src = url;
-      preloadedMediaElementRef.current.load();
-      console.info(`[Marathon] Préchargement initié pour l'épisode suivant : "${target.title}"`);
+      // Précharger via une requête Range HTTP légère (2 Mo) pour amorcer le flux
+      // sans ouvrir de second pipeline de décodage matériel Direct3D 11 concurrent
+      try {
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), 4000);
+        await fetch(url, {
+          headers: { Range: 'bytes=0-2097151' },
+          signal: controller.signal,
+        });
+        clearTimeout(timeout);
+        console.info(`[Marathon] Préchargement réseau initié pour l'épisode suivant : "${target.title}"`);
+      } catch {
+        // En cas d'interruption ou timeout, aucun impact sur la vidéo active
+      }
     } catch (err) {
       console.warn('[Marathon] Avertissement préchargement :', err);
     }
-  }, []);
+  }, [cleanupPreloadedElement]);
 
   // Cleanup preloaded media element on unmount
   useEffect(() => {
     return () => {
-      if (preloadedMediaElementRef.current) {
-        try {
-          preloadedMediaElementRef.current.src = '';
-          preloadedMediaElementRef.current.remove();
-        } catch {}
-        preloadedMediaElementRef.current = null;
-      }
+      cleanupPreloadedElement();
       if (countdownIntervalRef.current) clearInterval(countdownIntervalRef.current);
       if (toastTimeoutRef.current) clearTimeout(toastTimeoutRef.current);
     };
-  }, []);
+  }, [cleanupPreloadedElement]);
 
   // 1. Resolve markers and episode info when a new track is loaded
   useEffect(() => {
+    // Nettoyage systématique de tout préchargement antérieur pour libérer les décodeurs matériels
+    cleanupPreloadedElement();
+
     if (!track || !track.isVideo) {
       setMarkers(null);
       setIsDetecting(false);
@@ -255,15 +265,31 @@ export function useMarathonController({
   // Manual Action: Skip Opening
   const skipOpening = useCallback(() => {
     if (!enableSkipOpening || !markers?.op || isSeekingRef.current) return;
+    const video = videoRef.current;
+    if (video && video.seeking) return;
+
     isSeekingRef.current = true;
     hasSkippedOpRef.current = true;
     onSeek(markers.op.end);
     setIsOpButtonVisible(false);
     showToast('Opening passé');
-    setTimeout(() => {
-      isSeekingRef.current = false;
-    }, 500);
-  }, [enableSkipOpening, markers?.op, onSeek, showToast]);
+
+    if (video) {
+      const onSeeked = () => {
+        video.removeEventListener('seeked', onSeeked);
+        isSeekingRef.current = false;
+      };
+      video.addEventListener('seeked', onSeeked, { once: true });
+      setTimeout(() => {
+        video.removeEventListener('seeked', onSeeked);
+        isSeekingRef.current = false;
+      }, 1200);
+    } else {
+      setTimeout(() => {
+        isSeekingRef.current = false;
+      }, 500);
+    }
+  }, [enableSkipOpening, markers?.op, onSeek, showToast, videoRef]);
 
   // Toggle Marathon Mode enabled
   const toggleMarathon = useCallback(() => {
@@ -351,14 +377,34 @@ export function useMarathonController({
 
         if (canAutoSkipOp) {
           if (!isSeekingRef.current && !hasSkippedOpRef.current) {
+            const video = videoRef.current;
+            // Ne pas déclencher le saut tant que le décodeur n'est pas prêt (readyState < 3)
+            // ou si un seek est en cours, afin de préserver la synchronisation labiale exacte
+            if (video && (video.readyState < 3 || video.seeking)) {
+              return;
+            }
+
             isSeekingRef.current = true;
             hasSkippedOpRef.current = true;
             onSeek(opEnd);
             setIsOpButtonVisible(false);
             showToast('Opening passé automatiquement');
-            setTimeout(() => {
-              isSeekingRef.current = false;
-            }, 500);
+
+            if (video) {
+              const onSeeked = () => {
+                video.removeEventListener('seeked', onSeeked);
+                isSeekingRef.current = false;
+              };
+              video.addEventListener('seeked', onSeeked, { once: true });
+              setTimeout(() => {
+                video.removeEventListener('seeked', onSeeked);
+                isSeekingRef.current = false;
+              }, 1200);
+            } else {
+              setTimeout(() => {
+                isSeekingRef.current = false;
+              }, 500);
+            }
           }
         } else {
           // Dans tous les cas d'incertitude (heuristique, drift) ou premier épisode manuel :
@@ -389,13 +435,31 @@ export function useMarathonController({
           if (config.playPostCreditsScene) {
             // Sauter l'ED pour aller directement au teaser
             if (config.skipEnding && isInsideEd && !hasSkippedEdRef.current && !isSeekingRef.current) {
+              const video = videoRef.current;
+              if (video && (video.readyState < 3 || video.seeking)) {
+                return;
+              }
+
               isSeekingRef.current = true;
               hasSkippedEdRef.current = true;
               onSeek(edEnd);
               showToast('Ending passé (Lecture du teaser / scène post-crédits)');
-              setTimeout(() => {
-                isSeekingRef.current = false;
-              }, 500);
+
+              if (video) {
+                const onSeeked = () => {
+                  video.removeEventListener('seeked', onSeeked);
+                  isSeekingRef.current = false;
+                };
+                video.addEventListener('seeked', onSeeked, { once: true });
+                setTimeout(() => {
+                  video.removeEventListener('seeked', onSeeked);
+                  isSeekingRef.current = false;
+                }, 1200);
+              } else {
+                setTimeout(() => {
+                  isSeekingRef.current = false;
+                }, 500);
+              }
             }
             // Transition dès la fin du teaser / fin de la vidéo
             const isNearPostCreditsEnd =

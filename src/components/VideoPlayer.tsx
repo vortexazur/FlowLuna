@@ -331,7 +331,16 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
     }
   }, [videoMode, onSetVideoMode, isFullscreen]);
 
-  // Autoplay immédiat et synchronisation de lecture sécurisée
+  // Handler onCanPlay pour garantir le démarrage fluide dès que le buffer est prêt
+  const handleCanPlay = useCallback(() => {
+    const video = videoRef.current;
+    if (!video || !currentTrack?.isVideo || isHidden) return;
+    if (isPlaying && video.paused) {
+      video.play().catch(console.warn);
+    }
+  }, [isPlaying, isHidden, currentTrack?.isVideo, videoRef]);
+
+  // Synchronisation de lecture sécurisée avec vérification des buffers
   useEffect(() => {
     const video = videoRef.current;
     if (!video || !currentTrack?.isVideo || isHidden) return;
@@ -341,12 +350,16 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
     const syncPlayback = async () => {
       try {
         if (isPlaying && video.paused) {
-          await video.play();
+          // Attendre que les buffers audio et vidéo soient prêts (readyState >= 2)
+          // pour éviter tout démarrage asynchrone source de décalage labial
+          if (video.readyState >= 2) {
+            await video.play();
+          }
         } else if (!isPlaying && !video.paused) {
           video.pause();
         }
       } catch (err) {
-        console.warn('Autoplay bloqué ou en attente d’interaction :', err);
+        console.warn('Lecture vidéo en attente d’interaction ou différée :', err);
       }
     };
 
@@ -642,11 +655,11 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
         {/* The single persistent video element attached to audio pipeline */}
         <video
           ref={videoRef as any}
-          autoPlay
           playsInline
           preload="auto"
           onPlay={onPlay}
           onPause={onPause}
+          onCanPlay={handleCanPlay}
           onError={onError}
           className={`w-full h-full max-h-screen ${videoObjectFitClass}`}
         />

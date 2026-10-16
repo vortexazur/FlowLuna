@@ -125,6 +125,11 @@ export function useOpeningDetector({
     if (isInsideOpening) {
       const canAutoSkip = autoSkipEnabled && currentInterval.source !== 'heuristic';
       if (canAutoSkip) {
+        const video = videoRef.current;
+        if (video && (video.readyState < 3 || video.seeking)) {
+          return;
+        }
+
         // Éviter les boucles de saut si déjà sauté pour cette vidéo
         const trackKey = `${track?.id || track?.title}_${start}`;
         if (lastAutoSkippedForTrackRef.current !== trackKey) {
@@ -135,10 +140,22 @@ export function useOpeningDetector({
 
           if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
           setAutoSkippedToast("Opening passé automatiquement");
-          toastTimerRef.current = setTimeout(() => {
-            setAutoSkippedToast(null);
-            isSkippingRef.current = false;
-          }, 2500);
+          if (video) {
+            const onSeeked = () => {
+              video.removeEventListener('seeked', onSeeked);
+              isSkippingRef.current = false;
+            };
+            video.addEventListener('seeked', onSeeked, { once: true });
+            setTimeout(() => {
+              video.removeEventListener('seeked', onSeeked);
+              isSkippingRef.current = false;
+            }, 1200);
+          } else {
+            toastTimerRef.current = setTimeout(() => {
+              setAutoSkippedToast(null);
+              isSkippingRef.current = false;
+            }, 2500);
+          }
         }
       } else {
         // Mode manuel ou Heuristique incertaine : afficher le bouton flottant
