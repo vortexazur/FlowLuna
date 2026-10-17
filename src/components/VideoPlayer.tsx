@@ -164,6 +164,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
   const leftIndicatorTimerRef = useRef<NodeJS.Timeout | null>(null);
   const rightIndicatorTimerRef = useRef<NodeJS.Timeout | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const lastTrackIdRef = useRef<string | undefined>(currentTrack?.id);
 
   // Click, Touch & Wheel debouncing
   const clickTimeoutRef = useRef<NodeJS.Timeout | null>(null);
@@ -331,32 +332,33 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
     }
   }, [videoMode, onSetVideoMode, isFullscreen]);
 
-  // Handler onCanPlay pour garantir le démarrage fluide dès que le buffer est prêt
+  // Handler onCanPlay : le démarrage initial synchronisé frame-accurate est piloté exclusivement par App.tsx
   const handleCanPlay = useCallback(() => {
-    const video = videoRef.current;
-    if (!video || !currentTrack?.isVideo || isHidden) return;
-    if (isPlaying && video.paused) {
-      video.play().catch(console.warn);
-    }
-  }, [isPlaying, isHidden, currentTrack?.isVideo, videoRef]);
+    // Aucune action concurrente de play() afin de préserver l'alignement lip-sync parfait d'App.tsx
+  }, []);
 
   // Synchronisation de lecture sécurisée avec vérification des buffers
   useEffect(() => {
     const video = videoRef.current;
     if (!video || !currentTrack?.isVideo || isHidden) return;
 
+    if (lastTrackIdRef.current !== currentTrack?.id) {
+      lastTrackIdRef.current = currentTrack?.id;
+      return;
+    }
+
     let isSubscribed = true;
 
     const syncPlayback = async () => {
       try {
-        if (isPlaying && video.paused) {
+        if (isPlaying && video.paused && !video.ended) {
           // Attendre que les buffers audio et vidéo soient prêts (readyState >= 2)
           // pour éviter tout démarrage asynchrone source de décalage labial
           if (video.readyState >= 2) {
             await video.play();
           } else {
             const onReady = () => {
-              if (isSubscribed && isPlaying && video.paused) {
+              if (isSubscribed && isPlaying && video.paused && !video.ended) {
                 video.play().catch(console.warn);
               }
             };

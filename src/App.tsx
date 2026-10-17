@@ -522,9 +522,6 @@ export default function App() {
         if (videoRef.current) {
           try {
             videoRef.current.pause();
-            if (isFinite(videoRef.current.currentTime) && videoRef.current.currentTime > 0) {
-              videoRef.current.currentTime = 0;
-            }
           } catch {}
         }
       } else {
@@ -576,11 +573,6 @@ export default function App() {
 
         // Direct src assignment begins media load without aborting and re-creating decoder
         activeMedia.src = playableUrl;
-        if (isVideoTrack) {
-          try {
-            activeMedia.currentTime = 0;
-          } catch {}
-        }
 
         // Check again after src assignment
         if (playRequestIdRef.current !== requestId) return;
@@ -638,7 +630,7 @@ export default function App() {
           if (playRequestIdRef.current !== requestId) return;
 
           // Verrouillage de la synchronisation labiale frame-accurate à 0s
-          if (activeMedia.currentTime !== 0 && activeMedia.readyState >= 1) {
+          if (activeMedia.currentTime > 0.01 && activeMedia.readyState >= 1) {
             try {
               activeMedia.currentTime = 0;
             } catch {}
