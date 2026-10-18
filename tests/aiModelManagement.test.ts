@@ -395,11 +395,14 @@ async function testOpeningDetectionWithAgnosticAi() {
   assert.strictEqual(markers.op.start, 90);
   assert.strictEqual(markers.op.end, 180);
   assert.strictEqual(markers.op.source, 'ai');
+  // Tâche 2 : la confiance de l'IA est rétrogradée à 'moderate' pour bloquer l'auto-skip
+  assert.strictEqual(markers.op.confidence, 'moderate', "confidence doit être 'moderate' pour source 'ai'");
   assert.ok(markers.op.title?.includes('Ollama'));
 
   assert.ok(markers.ed, 'Ending doit être identifié par Ollama');
   assert.strictEqual(markers.ed.start, 1260);
   assert.strictEqual(markers.ed.end, 1350);
+  assert.strictEqual(markers.ed.confidence, 'moderate', "confidence de l'ED IA doit aussi être 'moderate'");
 
   // Test de diagnostic de connexion
   const testRes = await testCloudAiApiKey('ollama', '', 'http://localhost:11434', 'llama3.2');
