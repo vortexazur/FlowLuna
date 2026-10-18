@@ -1,5 +1,5 @@
 declare const __APP_VERSION__: string | undefined;
-export const APP_VERSION = typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__ : '1.23.1';
+export const APP_VERSION = typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__ : '1.23.2';
 
 export type MediaFormat =
   | 'mp3'
@@ -45,6 +45,30 @@ export interface Track {
   videoHeight?: number;
   filePath?: string;
   chapters?: VideoChapter[];
+  subtitles?: SubtitleTrack[];
+  audioTracks?: AudioStreamTrack[];
+}
+
+export interface SubtitleTrack {
+  id: string;
+  label: string;
+  language?: string;
+  format?: string;
+  type: 'embedded' | 'sidecar' | 'custom';
+  streamIndex?: number;
+  filePath?: string;
+  url?: string;
+  isDefault?: boolean;
+}
+
+export interface AudioStreamTrack {
+  id: string;
+  index: number;
+  label: string;
+  language?: string;
+  codec?: string;
+  channels?: number;
+  isDefault?: boolean;
 }
 
 export interface VideoChapter {

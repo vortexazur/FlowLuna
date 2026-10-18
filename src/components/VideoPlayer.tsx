@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import {
   Play,
   Pause,
@@ -25,12 +25,18 @@ import {
   PlusSquare,
   ListFilter,
   Zap,
+  Subtitles,
+  Languages,
+  Sliders,
+  Upload,
+  Check,
 } from 'lucide-react';
-import { Track, AccentColor, MarathonConfig, VideoAspectRatio, PlayerSettings } from '../types';
+import { Track, AccentColor, MarathonConfig, VideoAspectRatio, PlayerSettings, SubtitleTrack, AudioStreamTrack } from '../types';
 import { SkipOpeningButton } from './SkipOpeningButton';
 import { MarathonCountdownOverlay } from './MarathonCountdownOverlay';
 import { useMarathonController } from '../hooks/useMarathonController';
 import { getT } from '../i18n';
+import { fetchVideoTracks, getSubtitleWebVttUrl, loadSubtitleFromFile } from '../services/videoTracksService';
 
 export type VideoDisplayMode = 'theater' | 'pip' | 'hidden';
 export type { VideoAspectRatio };
@@ -126,6 +132,18 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
   const [leftIndicatorActive, setLeftIndicatorActive] = useState(false);
   const [rightIndicatorActive, setRightIndicatorActive] = useState(false);
 
+  // Subtitles & Audio Tracks State
+  const [subtitles, setSubtitles] = useState<SubtitleTrack[]>([]);
+  const [selectedSubtitleId, setSelectedSubtitleId] = useState<string | null>(null);
+  const [subtitleOffset, setSubtitleOffset] = useState<number>(0);
+  const [subtitleSize, setSubtitleSize] = useState<'sm' | 'base' | 'lg'>('base');
+  const [audioTracks, setAudioTracks] = useState<AudioStreamTrack[]>([]);
+  const [selectedAudioTrackIndex, setSelectedAudioTrackIndex] = useState<number | null>(null);
+  const [isTracksMenuOpen, setIsTracksMenuOpen] = useState(false);
+  const [tracksTab, setTracksTab] = useState<'subtitles' | 'audio'>('subtitles');
+  const [subtitleToast, setSubtitleToast] = useState<string | null>(null);
+  const subtitleFileInputRef = useRef<HTMLInputElement>(null);
+
   // Étape 2 & 3: Système Hybride de Détection, Skip Opening et Mode Marathon
   const {
     markers,
@@ -165,6 +183,109 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
   const rightIndicatorTimerRef = useRef<NodeJS.Timeout | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const lastTrackIdRef = useRef<string | undefined>(currentTrack?.id);
+
+  // Load subtitles and audio tracks whenever the playing track changes
+  useEffect(() => {
+    let isCancelled = false;
+    const loadTracks = async () => {
+      if (!currentTrack?.isVideo || !currentTrack.filePath) {
+        setSubtitles([]);
+        setSelectedSubtitleId(null);
+        setAudioTracks([]);
+        setSelectedAudioTrackIndex(null);
+        return;
+      }
+
+      const { subtitles: fetchedSubs, audioTracks: fetchedAudio } = await fetchVideoTracks(currentTrack.filePath);
+      if (isCancelled) return;
+
+      setSubtitles(fetchedSubs);
+      setAudioTracks(fetchedAudio);
+
+      // Select default subtitle if available
+      const defaultSub = fetchedSubs.find((s) => s.isDefault) || null;
+      if (defaultSub) {
+        setSelectedSubtitleId(defaultSub.id);
+      } else {
+        setSelectedSubtitleId(null);
+      }
+
+      // Select default audio track
+      const defaultAudio = fetchedAudio.find((a) => a.isDefault) || (fetchedAudio.length > 0 ? fetchedAudio[0] : null);
+      if (defaultAudio) {
+        setSelectedAudioTrackIndex(defaultAudio.index);
+      }
+    };
+
+    loadTracks();
+    return () => {
+      isCancelled = true;
+    };
+  }, [currentTrack?.filePath, currentTrack?.id]);
+
+  const handleSubtitleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files || files.length === 0) return;
+    try {
+      const file = files[0];
+      const customTrack = await loadSubtitleFromFile(file, subtitleOffset);
+      setSubtitles((prev) => [customTrack, ...prev]);
+      setSelectedSubtitleId(customTrack.id);
+      setSubtitleToast(t.subtitleLoadedToast);
+      setTimeout(() => setSubtitleToast(null), 3000);
+    } catch (err) {
+      console.warn('Erreur chargement sous-titre:', err);
+    } finally {
+      if (subtitleFileInputRef.current) {
+        subtitleFileInputRef.current.value = '';
+      }
+    }
+  };
+
+  const selectedSubtitleTrack = useMemo(() => {
+    if (!selectedSubtitleId) return null;
+    return subtitles.find((s) => s.id === selectedSubtitleId) || null;
+  }, [selectedSubtitleId, subtitles]);
+
+  const activeSubtitleUrl = useMemo(() => {
+    if (!selectedSubtitleTrack || !currentTrack) return null;
+    if (selectedSubtitleTrack.type === 'custom' && selectedSubtitleTrack.url) {
+      return selectedSubtitleTrack.url;
+    }
+    if (currentTrack.filePath) {
+      return getSubtitleWebVttUrl(currentTrack.filePath, selectedSubtitleTrack, subtitleOffset);
+    }
+    return null;
+  }, [selectedSubtitleTrack, currentTrack?.filePath, subtitleOffset]);
+
+  // Activate / ensure text tracks are showing in video element
+  useEffect(() => {
+    const video = videoRef.current;
+    if (!video) return;
+
+    const syncTracks = () => {
+      if (video.textTracks && video.textTracks.length > 0) {
+        for (let i = 0; i < video.textTracks.length; i++) {
+          const track = video.textTracks[i];
+          track.mode = selectedSubtitleId ? 'showing' : 'disabled';
+        }
+      }
+    };
+
+    syncTracks();
+    const timer = setTimeout(syncTracks, 150);
+    return () => clearTimeout(timer);
+  }, [selectedSubtitleId, activeSubtitleUrl, videoRef]);
+
+  const handleAudioTrackSelect = (idx: number) => {
+    setSelectedAudioTrackIndex(idx);
+    const video = videoRef.current as any;
+    if (video && video.audioTracks && video.audioTracks.length > 0) {
+      for (let i = 0; i < video.audioTracks.length; i++) {
+        video.audioTracks[i].enabled = (video.audioTracks[i].id === String(idx) || i === idx);
+      }
+    }
+  };
 
   // Click, Touch & Wheel debouncing
   const clickTimeoutRef = useRef<NodeJS.Timeout | null>(null);
@@ -657,7 +778,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
     >
       {/* Video Media Screen Container */}
       <div
-        className="relative w-full h-full flex items-center justify-center bg-black overflow-hidden cursor-pointer"
+        className={`relative w-full h-full flex items-center justify-center bg-black overflow-hidden cursor-pointer subtitles-${subtitleSize}`}
         onClick={handleStreamClick}
         onDoubleClick={handleStreamDoubleClick}
         onTouchEnd={handleStreamTouchEnd}
@@ -672,7 +793,26 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
           onCanPlay={handleCanPlay}
           onError={onError}
           className={`w-full h-full max-h-screen ${videoObjectFitClass}`}
-        />
+        >
+          {activeSubtitleUrl && (
+            <track
+              key={`${selectedSubtitleId}-${subtitleOffset}`}
+              kind="subtitles"
+              src={activeSubtitleUrl}
+              srcLang={selectedSubtitleTrack?.language || 'fr'}
+              label={selectedSubtitleTrack?.label || 'Sous-titres'}
+              default
+            />
+          )}
+        </video>
+
+        {/* Subtitle Loaded Notification Toast */}
+        {subtitleToast && (
+          <div className="absolute top-20 left-1/2 -translate-x-1/2 z-40 px-4 py-2 rounded-xl bg-neutral-900/90 text-white border border-sky-400/40 text-xs font-semibold shadow-2xl backdrop-blur-md flex items-center gap-2 animate-in fade-in slide-in-from-top-2 duration-200">
+            <Check className="w-4 h-4 text-sky-400" />
+            <span>{subtitleToast}</span>
+          </div>
+        )}
 
         {/* Central Click Feedback Animation */}
         {!isHidden && clickAnim && (
@@ -1194,6 +1334,237 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
 
                 {/* Right: Speed, Fullscreen */}
                 <div className="flex items-center gap-2">
+                  {/* Subtitles & Audio Tracks Menu */}
+                  <div className="relative">
+                    <button
+                      type="button"
+                      onClick={() => setIsTracksMenuOpen((prev) => !prev)}
+                      className={`px-2.5 py-1.5 rounded-lg text-xs font-semibold border transition-all cursor-pointer flex items-center gap-1.5 ${
+                        isTracksMenuOpen || selectedSubtitleId !== null
+                          ? 'bg-sky-500/20 border-sky-400/40 text-sky-300 shadow-sm shadow-sky-500/20'
+                          : 'bg-neutral-900/80 hover:bg-neutral-800 border-neutral-700/60 text-neutral-300 hover:text-white'
+                      }`}
+                      title={t.subtitlesBtn}
+                    >
+                      <Subtitles className="w-3.5 h-3.5 text-sky-400" />
+                      <span>{selectedSubtitleTrack?.language ? selectedSubtitleTrack.language.toUpperCase() : t.subtitlesTab}</span>
+                      {selectedSubtitleTrack && (
+                        <span className="w-1.5 h-1.5 rounded-full bg-sky-400" />
+                      )}
+                    </button>
+
+                    {/* Popover Menu */}
+                    {isTracksMenuOpen && (
+                      <div
+                        className="absolute bottom-full mb-3 right-0 bg-neutral-900/95 border border-white/10 rounded-2xl shadow-2xl p-3 z-50 w-80 md:w-96 backdrop-blur-xl flex flex-col gap-3 text-white animate-in fade-in zoom-in-95 duration-150"
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        {/* Tabs */}
+                        <div className="flex items-center gap-1 p-1 bg-black/40 rounded-xl border border-white/5">
+                          <button
+                            type="button"
+                            onClick={() => setTracksTab('subtitles')}
+                            className={`flex-1 py-1.5 px-3 rounded-lg text-xs font-semibold flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
+                              tracksTab === 'subtitles'
+                                ? 'bg-sky-500/20 text-sky-400 border border-sky-400/30 shadow'
+                                : 'text-neutral-400 hover:text-white'
+                            }`}
+                          >
+                            <Subtitles className="w-3.5 h-3.5" />
+                            <span>{t.subtitlesTab}</span>
+                            {subtitles.length > 0 && (
+                              <span className="text-[10px] px-1.5 py-0.2 rounded-full bg-neutral-800 text-neutral-300">
+                                {subtitles.length}
+                              </span>
+                            )}
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={() => setTracksTab('audio')}
+                            className={`flex-1 py-1.5 px-3 rounded-lg text-xs font-semibold flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
+                              tracksTab === 'audio'
+                                ? 'bg-sky-500/20 text-sky-400 border border-sky-400/30 shadow'
+                                : 'text-neutral-400 hover:text-white'
+                            }`}
+                          >
+                            <Volume2 className="w-3.5 h-3.5" />
+                            <span>{t.audioTracksTab}</span>
+                            {audioTracks.length > 0 && (
+                              <span className="text-[10px] px-1.5 py-0.2 rounded-full bg-neutral-800 text-neutral-300">
+                                {audioTracks.length}
+                              </span>
+                            )}
+                          </button>
+                        </div>
+
+                        {/* Tab Content */}
+                        {tracksTab === 'subtitles' ? (
+                          <div className="flex flex-col gap-2.5">
+                            {/* Subtitles list */}
+                            <div className="max-h-48 overflow-y-auto space-y-1 pr-1">
+                              {/* Option: Off */}
+                              <button
+                                type="button"
+                                onClick={() => setSelectedSubtitleId(null)}
+                                className={`w-full px-3 py-2 rounded-xl text-left text-xs font-medium flex items-center justify-between transition-colors cursor-pointer ${
+                                  selectedSubtitleId === null
+                                    ? 'bg-sky-500/20 text-sky-300 border border-sky-500/30 font-semibold'
+                                    : 'text-neutral-300 hover:bg-white/5 hover:text-white'
+                                }`}
+                              >
+                                <span>{t.subtitlesOff}</span>
+                                {selectedSubtitleId === null && <Check className="w-3.5 h-3.5 text-sky-400" />}
+                              </button>
+
+                              {subtitles.map((sub) => {
+                                const isSelected = selectedSubtitleId === sub.id;
+                                return (
+                                  <button
+                                    key={sub.id}
+                                    type="button"
+                                    onClick={() => setSelectedSubtitleId(sub.id)}
+                                    className={`w-full px-3 py-2 rounded-xl text-left text-xs font-medium flex items-center justify-between transition-colors cursor-pointer ${
+                                      isSelected
+                                        ? 'bg-sky-500/20 text-sky-300 border border-sky-500/30 font-semibold'
+                                        : 'text-neutral-300 hover:bg-white/5 hover:text-white'
+                                    }`}
+                                  >
+                                    <div className="flex items-center gap-2 truncate">
+                                      <span className="text-[10px] uppercase font-bold px-1.5 py-0.5 rounded bg-neutral-800 text-neutral-300 border border-white/5 flex-shrink-0">
+                                        {sub.language || sub.format || 'SUB'}
+                                      </span>
+                                      <span className="truncate">{sub.label}</span>
+                                    </div>
+                                    {isSelected && <Check className="w-3.5 h-3.5 text-sky-400 flex-shrink-0 ml-2" />}
+                                  </button>
+                                );
+                              })}
+
+                              {subtitles.length === 0 && (
+                                <p className="text-[11px] text-neutral-500 italic py-1 px-2">
+                                  {t.noSubtitlesFound}
+                                </p>
+                              )}
+                            </div>
+
+                            {/* Load file button */}
+                            <button
+                              type="button"
+                              onClick={() => subtitleFileInputRef.current?.click()}
+                              className="w-full py-2 px-3 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-xs font-medium text-neutral-200 hover:text-white flex items-center justify-center gap-2 transition-colors cursor-pointer"
+                            >
+                              <Upload className="w-3.5 h-3.5 text-sky-400" />
+                              <span>{t.loadSubtitleFile}</span>
+                            </button>
+                            <input
+                              ref={subtitleFileInputRef}
+                              type="file"
+                              accept=".srt,.vtt,.ass,.ssa,.sub"
+                              className="hidden"
+                              onChange={handleSubtitleFileSelect}
+                            />
+
+                            {/* Sync delay & size controls when a subtitle is active */}
+                            {selectedSubtitleId !== null && (
+                              <div className="pt-2 border-t border-white/10 flex flex-col gap-2">
+                                {/* Sync delay */}
+                                <div className="flex items-center justify-between text-xs text-neutral-400">
+                                  <span>{t.subtitleDelay}</span>
+                                  <div className="flex items-center gap-1">
+                                    <button
+                                      type="button"
+                                      onClick={() => setSubtitleOffset((prev) => parseFloat((prev - 0.25).toFixed(2)))}
+                                      className="px-2 py-1 rounded bg-white/5 hover:bg-white/15 text-neutral-200 text-[10px] font-mono cursor-pointer"
+                                      title="-250ms"
+                                    >
+                                      -0.25s
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() => setSubtitleOffset(0)}
+                                      className={`px-2 py-1 rounded text-[10px] font-mono cursor-pointer ${
+                                        subtitleOffset === 0 ? 'text-neutral-400' : 'bg-sky-500/30 text-sky-300 font-bold'
+                                      }`}
+                                      title="Reset delay"
+                                    >
+                                      {subtitleOffset > 0 ? `+${subtitleOffset}s` : `${subtitleOffset}s`}
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() => setSubtitleOffset((prev) => parseFloat((prev + 0.25).toFixed(2)))}
+                                      className="px-2 py-1 rounded bg-white/5 hover:bg-white/15 text-neutral-200 text-[10px] font-mono cursor-pointer"
+                                      title="+250ms"
+                                    >
+                                      +0.25s
+                                    </button>
+                                  </div>
+                                </div>
+
+                                {/* Text size */}
+                                <div className="flex items-center justify-between text-xs text-neutral-400">
+                                  <span>{t.subtitleSize}</span>
+                                  <div className="flex items-center gap-1 bg-black/40 p-0.5 rounded-lg border border-white/5">
+                                    {(['sm', 'base', 'lg'] as const).map((sz) => (
+                                      <button
+                                        key={sz}
+                                        type="button"
+                                        onClick={() => setSubtitleSize(sz)}
+                                        className={`px-2 py-0.5 rounded text-[10px] font-medium transition-colors cursor-pointer ${
+                                          subtitleSize === sz
+                                            ? 'bg-sky-500/30 text-sky-300 font-bold'
+                                            : 'text-neutral-400 hover:text-white'
+                                        }`}
+                                      >
+                                        {sz === 'sm' ? t.subtitleSizeSmall : sz === 'base' ? t.subtitleSizeNormal : t.subtitleSizeLarge}
+                                      </button>
+                                    ))}
+                                  </div>
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        ) : (
+                          /* Audio tab */
+                          <div className="flex flex-col gap-2">
+                            <div className="max-h-48 overflow-y-auto space-y-1 pr-1">
+                              {audioTracks.length > 0 ? (
+                                audioTracks.map((trk) => {
+                                  const isSelected = selectedAudioTrackIndex === trk.index;
+                                  return (
+                                    <button
+                                      key={trk.id}
+                                      type="button"
+                                      onClick={() => handleAudioTrackSelect(trk.index)}
+                                      className={`w-full px-3 py-2 rounded-xl text-left text-xs font-medium flex items-center justify-between transition-colors cursor-pointer ${
+                                        isSelected
+                                          ? 'bg-sky-500/20 text-sky-300 border border-sky-500/30 font-semibold'
+                                          : 'text-neutral-300 hover:bg-white/5 hover:text-white'
+                                      }`}
+                                    >
+                                      <div className="flex items-center gap-2 truncate">
+                                        <span className="text-[10px] uppercase font-bold px-1.5 py-0.5 rounded bg-neutral-800 text-neutral-300 border border-white/5 flex-shrink-0">
+                                          {trk.language || 'AUD'}
+                                        </span>
+                                        <span className="truncate">{trk.label}</span>
+                                      </div>
+                                      {isSelected && <Check className="w-3.5 h-3.5 text-sky-400 flex-shrink-0 ml-2" />}
+                                    </button>
+                                  );
+                                })
+                              ) : (
+                                <div className="px-3 py-2 rounded-xl bg-white/5 text-xs text-neutral-400 flex items-center gap-2">
+                                  <Check className="w-3.5 h-3.5 text-sky-400" />
+                                  <span>{t.noAudioTracksFound}</span>
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+
                   {/* Playback Speed Dropdown */}
                   <div className="relative">
                     <button

@@ -298,6 +298,7 @@ export const VIDEO_EXTENSIONS = new Set([
   '.mp4', '.mkv', '.webm', '.mov', '.avi', '.m4v', '.wmv', '.flv', '.3gp', '.ts', '.m2ts', '.ogv'
 ]);
 export const ALL_MEDIA_EXTENSIONS = new Set([...AUDIO_EXTENSIONS, ...VIDEO_EXTENSIONS]);
+export const SUBTITLE_EXTENSIONS = new Set(['.srt', '.vtt', '.ass', '.ssa', '.sub']);
 
 export function getCustomScannedDirs(): string[] {
   try {
@@ -351,7 +352,11 @@ export function getAllowedMediaDirs(): string[] {
   return dirs.map((d) => path.resolve(d));
 }
 
-export function resolveAllowedPath(rawPath: string, requireMediaExtension = true): string | null {
+export function resolveAllowedPath(
+  rawPath: string,
+  requireMediaExtension = true,
+  allowSubtitles = false
+): string | null {
   if (!rawPath || typeof rawPath !== 'string') return null;
   let realPath: string;
   try {
@@ -373,7 +378,8 @@ export function resolveAllowedPath(rawPath: string, requireMediaExtension = true
 
   if (requireMediaExtension) {
     const ext = path.extname(realPath).toLowerCase();
-    if (!ALL_MEDIA_EXTENSIONS.has(ext)) {
+    const isAllowed = ALL_MEDIA_EXTENSIONS.has(ext) || (allowSubtitles && SUBTITLE_EXTENSIONS.has(ext));
+    if (!isAllowed) {
       return null;
     }
   }
@@ -4212,6 +4218,263 @@ app.get('/api/video/chapters', requireInternalToken, (req, res) => {
     );
   } catch (err: any) {
     return res.json({ success: false, error: err?.message, chapters: [] });
+  }
+});
+
+export const LANGUAGE_NAMES: Record<string, string> = {
+  fr: 'Français',
+  fra: 'Français',
+  fre: 'Français',
+  en: 'English',
+  eng: 'English',
+  ja: '日本語 (Japonais)',
+  jpn: '日本語 (Japonais)',
+  es: 'Español',
+  spa: 'Español',
+  de: 'Deutsch',
+  deu: 'Deutsch',
+  ger: 'Deutsch',
+  it: 'Italiano',
+  ita: 'Italiano',
+  pt: 'Português',
+  por: 'Português',
+  ru: 'Русский',
+  rus: 'Русский',
+  zh: '中文 (Chinois)',
+  chi: '中文 (Chinois)',
+  zho: '中文 (Chinois)',
+  ko: '한국어 (Coréen)',
+  kor: '한국어 (Coréen)',
+  ar: 'العربية (Arabe)',
+  ara: 'العربية (Arabe)',
+  nl: 'Nederlands',
+  nld: 'Nederlands',
+  dut: 'Nederlands',
+  pl: 'Polski',
+  pol: 'Polski',
+  sv: 'Svenska',
+  swe: 'Svenska',
+  und: 'Indéterminé',
+};
+
+export function srtToWebVtt(content: string): string {
+  if (!content) return 'WEBVTT\n\n';
+  if (content.trim().startsWith('WEBVTT')) return content;
+
+  // Convert SRT timestamps (00:01:23,456 --> 00:01:25,789) to WebVTT format (dots instead of commas)
+  let vtt = 'WEBVTT\n\n' + content.trim();
+  vtt = vtt.replace(/(\d{2}:\d{2}:\d{2}),(\d{3})/g, '$1.$2');
+  // Clean ASS/SSA overrides like {\an8}, {\b1}, {\c&Hffffff&}
+  vtt = vtt.replace(/\{[^\}]*\}/g, '');
+  return vtt;
+}
+
+// Endpoint : Inspection des flux sous-titres (intégrés + sidecars) et pistes audio
+app.get('/api/video/tracks', requireInternalToken, (req, res) => {
+  try {
+    const rawPath = (req.query.filePath as string) || '';
+    const filePath = resolveAllowedPath(rawPath, true);
+    if (!filePath) {
+      return res.status(403).json({ success: false, message: 'Chemin non autorisé ou introuvable', subtitles: [], audioTracks: [] });
+    }
+
+    const subtitles: any[] = [];
+    const audioTracks: any[] = [];
+
+    // 1. Détection des fichiers sous-titres sidecars dans le même répertoire
+    try {
+      const dir = path.dirname(filePath);
+      const baseName = path.parse(filePath).name.toLowerCase();
+      if (fs.existsSync(dir)) {
+        const files = fs.readdirSync(dir);
+        let sidecarIdx = 0;
+        for (const file of files) {
+          const ext = path.extname(file).toLowerCase();
+          if (SUBTITLE_EXTENSIONS.has(ext)) {
+            const fileNameLower = path.parse(file).name.toLowerCase();
+            if (
+              fileNameLower === baseName ||
+              fileNameLower.startsWith(baseName + '.') ||
+              fileNameLower.startsWith(baseName + '_') ||
+              fileNameLower.startsWith(baseName + '-')
+            ) {
+              const fullSidecarPath = path.join(dir, file);
+              let langSuffix = '';
+              const parts = fileNameLower.slice(baseName.length).split(/[._-]/).filter(Boolean);
+              if (parts.length > 0) {
+                langSuffix = parts[parts.length - 1];
+              }
+              const langCode = langSuffix.toLowerCase();
+              const langLabel = LANGUAGE_NAMES[langCode] || (langCode ? langCode.toUpperCase() : 'Fichier externe');
+              subtitles.push({
+                id: `sidecar-${sidecarIdx++}`,
+                label: `${langLabel} (${file})`,
+                language: langCode || undefined,
+                format: ext.replace('.', ''),
+                type: 'sidecar',
+                filePath: fullSidecarPath,
+                isDefault: sidecarIdx === 1,
+              });
+            }
+          }
+        }
+      }
+    } catch {}
+
+    // 2. Inspection des flux intégrés via ffprobe
+    const ffprobePath = getFfprobePath();
+    if (!fs.existsSync(ffprobePath)) {
+      return res.json({ success: true, subtitles, audioTracks });
+    }
+
+    execFile(
+      ffprobePath,
+      ['-v', 'quiet', '-print_format', 'json', '-show_streams', filePath],
+      { timeout: 8000 },
+      (err, stdout) => {
+        if (err || !stdout) {
+          return res.json({ success: true, subtitles, audioTracks });
+        }
+        try {
+          const parsed = JSON.parse(stdout);
+          const streams = Array.isArray(parsed.streams) ? parsed.streams : [];
+          let audioCount = 0;
+          let subCount = 0;
+
+          for (const s of streams) {
+            const codecType = s.codec_type;
+            const idx = s.index;
+            const lang = (s.tags?.language || s.tags?.LANGUAGE || '').toLowerCase();
+            const title = s.tags?.title || s.tags?.TITLE || '';
+            const isDefault = s.disposition?.default === 1;
+
+            if (codecType === 'subtitle') {
+              subCount++;
+              const langLabel = LANGUAGE_NAMES[lang] || (lang ? lang.toUpperCase() : `Piste ${subCount}`);
+              const label = title ? `${langLabel} - ${title}` : `${langLabel} (Intégré)`;
+              subtitles.push({
+                id: `embedded-${idx}`,
+                label,
+                language: lang || undefined,
+                format: s.codec_name || 'subrip',
+                type: 'embedded',
+                streamIndex: idx,
+                filePath,
+                isDefault: isDefault || (subtitles.length === 0 && subCount === 1),
+              });
+            } else if (codecType === 'audio') {
+              audioCount++;
+              const langLabel = LANGUAGE_NAMES[lang] || (lang ? lang.toUpperCase() : `Audio ${audioCount}`);
+              const channels = s.channels ? `${s.channels}.0` : '';
+              const codec = (s.codec_name || '').toUpperCase();
+              const label = title ? `${langLabel} - ${title} [${codec}]` : `${langLabel} [${codec} ${channels}]`.trim();
+              audioTracks.push({
+                id: `audio-${idx}`,
+                index: idx,
+                label,
+                language: lang || undefined,
+                codec: s.codec_name,
+                channels: s.channels,
+                isDefault: isDefault || audioCount === 1,
+              });
+            }
+          }
+          return res.json({ success: true, subtitles, audioTracks });
+        } catch {
+          return res.json({ success: true, subtitles, audioTracks });
+        }
+      }
+    );
+  } catch (err: any) {
+    return res.json({ success: false, error: err?.message, subtitles: [], audioTracks: [] });
+  }
+});
+
+// Endpoint : Extraction ou conversion des sous-titres en flux WebVTT standard
+app.get('/api/video/subtitles/webvtt', requireInternalToken, (req, res) => {
+  try {
+    const rawPath = (req.query.filePath as string) || '';
+    const filePath = resolveAllowedPath(rawPath, true);
+    if (!filePath) {
+      return res.status(403).send('Chemin non autorisé ou introuvable');
+    }
+
+    const sidecarPathRaw = (req.query.sidecarPath as string) || '';
+    const streamIndexRaw = req.query.streamIndex as string;
+    const offsetRaw = (req.query.offset as string) || '0';
+    const offset = parseFloat(offsetRaw) || 0;
+
+    res.setHeader('Content-Type', 'text/vtt; charset=utf-8');
+    res.setHeader('Cache-Control', 'no-cache');
+
+    const ffmpegPath = getFfmpegPath();
+
+    // Cas 1 : Fichier sous-titres sidecar externe
+    if (sidecarPathRaw) {
+      const sidecarPath = resolveAllowedPath(sidecarPathRaw, true, true);
+      if (!sidecarPath || !fs.existsSync(sidecarPath)) {
+        return res.status(404).send('WEBVTT\n\nNOTE Fichier sous-titres introuvable');
+      }
+
+      const ext = path.extname(sidecarPath).toLowerCase();
+      if (ext === '.vtt' && offset === 0) {
+        const stream = fs.createReadStream(sidecarPath);
+        return stream.pipe(res);
+      }
+
+      if (fs.existsSync(ffmpegPath)) {
+        const args = ['-v', 'quiet'];
+        if (offset !== 0) {
+          args.push('-itsoffset', offset.toString());
+        }
+        args.push('-i', sidecarPath, '-f', 'webvtt', 'pipe:1');
+
+        const proc = spawn(ffmpegPath, args);
+        proc.stdout.pipe(res);
+        proc.on('error', () => {
+          try {
+            const raw = fs.readFileSync(sidecarPath, 'utf-8');
+            res.end(srtToWebVtt(raw));
+          } catch {
+            res.status(500).end();
+          }
+        });
+        return;
+      }
+
+      const raw = fs.readFileSync(sidecarPath, 'utf-8');
+      return res.send(srtToWebVtt(raw));
+    }
+
+    // Cas 2 : Piste de sous-titres intégrée au conteneur vidéo (streamIndex)
+    if (streamIndexRaw !== undefined && streamIndexRaw !== '') {
+      const streamIdx = parseInt(streamIndexRaw, 10);
+      if (isNaN(streamIdx) || streamIdx < 0) {
+        return res.status(400).send('WEBVTT\n\nNOTE StreamIndex invalide');
+      }
+
+      if (!fs.existsSync(ffmpegPath)) {
+        return res.status(500).send('WEBVTT\n\nNOTE ffmpeg requis pour extraire les sous-titres intégrés');
+      }
+
+      const args = ['-v', 'quiet'];
+      if (offset !== 0) {
+        args.push('-itsoffset', offset.toString());
+      }
+      args.push('-i', filePath, '-map', `0:${streamIdx}`, '-f', 'webvtt', 'pipe:1');
+
+      const proc = spawn(ffmpegPath, args);
+
+      proc.stdout.pipe(res);
+      proc.on('error', () => {
+        res.status(500).send('WEBVTT\n\nNOTE Erreur extraction ffmpeg');
+      });
+      return;
+    }
+
+    return res.status(400).send('WEBVTT\n\nNOTE Paramètres streamIndex ou sidecarPath requis');
+  } catch (err: any) {
+    return res.status(500).send('WEBVTT\n\nNOTE Erreur interne: ' + (err?.message || 'inconnue'));
   }
 });
 

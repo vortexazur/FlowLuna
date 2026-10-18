@@ -1950,4 +1950,31 @@ html.light #flowluna-titlebar button:not(:last-child):hover {
   contain-intrinsic-size: 0 240px;
 }
 
+/* =========================================================================
+   CINEMA & ANIME SUBTITLES (WebVTT ::cue)
+   Pure Glass High-Contrast Styling with dynamic size scaling
+   ========================================================================= */
+video::cue {
+  background-color: rgba(10, 10, 15, 0.82) !important;
+  color: #ffffff !important;
+  font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif !important;
+  font-weight: 600 !important;
+  line-height: 1.4 !important;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.9), 0 0 2px #000 !important;
+  border-radius: 6px !important;
+  padding: 3px 10px !important;
+}
+
+.subtitles-sm video::cue {
+  font-size: 1.05rem !important;
+}
+
+.subtitles-base video::cue {
+  font-size: 1.35rem !important;
+}
+
+.subtitles-lg video::cue {
+  font-size: 1.75rem !important;
+}
+
 

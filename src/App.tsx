@@ -43,7 +43,7 @@ import { LyricsAndFullscreen } from './components/LyricsAndFullscreen';
 import { QueueDrawer } from './components/QueueDrawer';
 import { MiniPlayer } from './components/MiniPlayer';
 import { DetachedMiniPlayerPortal } from './components/DetachedMiniPlayer';
-import { openAlwaysOnTopWindow } from './services/pictureInPictureService';
+import { useModalManager } from './hooks/useModalManager';
 import { CreatePlaylistModal } from './components/CreatePlaylistModal';
 import { ManageSidebarPlaylistsModal } from './components/ManageSidebarPlaylistsModal';
 import { AllPlaylistsView } from './components/AllPlaylistsView';
@@ -110,30 +110,59 @@ export default function App() {
   const isTransitioningRef = useRef<boolean>(false);
   const lastTrackStartTimeRef = useRef<number>(0);
 
-  // Modals & Panels
-  const [isEqualizerOpen, setIsEqualizerOpen] = useState<boolean>(false);
-  const [isSettingsOpen, setIsSettingsOpen] = useState<boolean>(false);
-  const [isFullscreenOpen, setIsFullscreenOpen] = useState<boolean>(false);
-  const [isQueueOpen, setIsQueueOpen] = useState<boolean>(false);
-  const [isMiniPlayer, setIsMiniPlayer] = useState<boolean>(false);
-  const [isAppMinimized, setIsAppMinimized] = useState<boolean>(false);
-  const [detachedPipWindow, setDetachedPipWindow] = useState<Window | null>(null);
-  const [pipNotification, setPipNotification] = useState<string | null>(null);
-  const [isCreatePlaylistModalOpen, setIsCreatePlaylistModalOpen] = useState<boolean>(false);
-  const [isManageSidebarOpen, setIsManageSidebarOpen] = useState<boolean>(false);
-  const [trimmerTrack, setTrimmerTrack] = useState<Track | null>(null);
-  const [tagEditorTrack, setTagEditorTrack] = useState<Track | null>(null);
-  const [isDeduplicatorOpen, setIsDeduplicatorOpen] = useState<boolean>(false);
-  const [isCommandPaletteOpen, setIsCommandPaletteOpen] = useState<boolean>(false);
-  const [isStatsOpen, setIsStatsOpen] = useState<boolean>(false);
-  const [isMergerOpen, setIsMergerOpen] = useState<boolean>(false);
+  // Modals & Panels Manager Hook
+  const {
+    isEqualizerOpen,
+    setIsEqualizerOpen,
+    openEqualizer,
+    isSettingsOpen,
+    setIsSettingsOpen,
+    settingsInitialTab,
+    setSettingsInitialTab,
+    openSettings,
+    isFullscreenOpen,
+    setIsFullscreenOpen,
+    openFullscreen,
+    isQueueOpen,
+    setIsQueueOpen,
+    openQueue,
+    isMiniPlayer,
+    setIsMiniPlayer,
+    openMiniPlayer,
+    handleOpenDetachedPip,
+    detachedPipWindow,
+    setDetachedPipWindow,
+    closeDetachedPip: handleCloseDetachedPip,
+    pipNotification,
+    isCreatePlaylistModalOpen,
+    setIsCreatePlaylistModalOpen,
+    openCreatePlaylistModal,
+    isManageSidebarOpen,
+    setIsManageSidebarOpen,
+    openManageSidebar,
+    trimmerTrack,
+    setTrimmerTrack,
+    openTrimmer: handleOpenTrimmer,
+    tagEditorTrack,
+    setTagEditorTrack,
+    openTagEditor,
+    isDeduplicatorOpen,
+    setIsDeduplicatorOpen,
+    openDeduplicator,
+    isMergerOpen,
+    setIsMergerOpen,
+    openMerger,
+    isStatsOpen,
+    setIsStatsOpen,
+    openStats,
+    isCommandPaletteOpen,
+    setIsCommandPaletteOpen,
+    openCommandPalette,
+  } = useModalManager();
 
   // Settings
   const [playerSettings, setPlayerSettings] = useState<PlayerSettings>(DEFAULT_PLAYER_SETTINGS);
   const [equalizerSettings, setEqualizerSettings] = useState<EqualizerSettings>(DEFAULT_EQ_SETTINGS);
-  const [settingsInitialTab, setSettingsInitialTab] = useState<
-    'appearance' | 'audio' | 'video' | 'general' | 'system' | 'shortcuts'
-  >('appearance');
 
   // Application Updates State
   const [appVersion, setAppVersion] = useState<string>(APP_VERSION);
@@ -909,30 +938,6 @@ export default function App() {
     setIsPlaying(false);
   }, [currentPlayingTrack]);
 
-  // Open Detached Always-on-Top / Picture-in-Picture window
-  const handleOpenDetachedPip = useCallback(async () => {
-    setIsMiniPlayer((prev) => {
-      const next = !prev;
-      if (next) {
-        window.electronAPI?.setCompactMode?.(true, 360, 240);
-        setPipNotification('Mode Widget Flottant activé');
-      } else {
-        window.electronAPI?.setCompactMode?.(false);
-      }
-      setTimeout(() => setPipNotification(null), 3000);
-      return next;
-    });
-  }, []);
-
-  const handleCloseDetachedPip = useCallback(() => {
-    if (detachedPipWindow && !detachedPipWindow.closed) {
-      try {
-        detachedPipWindow.close();
-      } catch {}
-    }
-    setDetachedPipWindow(null);
-  }, [detachedPipWindow]);
-
   // Seek
   const handleSeek = (newTime: number) => {
     const activeMedia = currentPlayingTrackRef.current?.isVideo ? videoRef.current : audioRef.current;
@@ -1172,11 +1177,6 @@ export default function App() {
 
   const handleDeleteTrack = async (trackId: string) => {
     await handleDeleteTracks([trackId]);
-  };
-
-  // Track Trimmer Handlers
-  const handleOpenTrimmer = (track: Track) => {
-    setTrimmerTrack(track);
   };
 
   const handleTrackCreated = async (newTrack: Track) => {

@@ -524,6 +524,285 @@ public class HttpServer
             }
         });
 
+        // Video container tracks parser (subtitles & audio tracks)
+        app.MapGet("/api/video/tracks", async (HttpContext ctx) =>
+        {
+            var filePath = ctx.Request.Query["filePath"].ToString();
+            if (string.IsNullOrWhiteSpace(filePath) || !IsSafeMediaPath(filePath))
+            {
+                return Results.Json(new { success = false, message = "Chemin non autorisé ou introuvable", subtitles = Array.Empty<object>(), audioTracks = Array.Empty<object>() });
+            }
+
+            var subtitles = new System.Collections.Generic.List<object>();
+            var audioTracks = new System.Collections.Generic.List<object>();
+
+            // 1. Détection des sous-titres sidecars (.srt, .vtt, .ass, .ssa)
+            try
+            {
+                var dir = Path.GetDirectoryName(filePath);
+                var baseName = Path.GetFileNameWithoutExtension(filePath);
+                if (!string.IsNullOrEmpty(dir) && Directory.Exists(dir))
+                {
+                    var sidecarExts = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { ".srt", ".vtt", ".ass", ".ssa", ".sub" };
+                    int sidecarIdx = 0;
+                    foreach (var file in Directory.EnumerateFiles(dir))
+                    {
+                        var ext = Path.GetExtension(file);
+                        if (sidecarExts.Contains(ext))
+                        {
+                            var fNameNoExt = Path.GetFileNameWithoutExtension(file);
+                            if (fNameNoExt.Equals(baseName, StringComparison.OrdinalIgnoreCase) ||
+                                fNameNoExt.StartsWith(baseName + ".", StringComparison.OrdinalIgnoreCase) ||
+                                fNameNoExt.StartsWith(baseName + "_", StringComparison.OrdinalIgnoreCase) ||
+                                fNameNoExt.StartsWith(baseName + "-", StringComparison.OrdinalIgnoreCase))
+                            {
+                                var parts = fNameNoExt.Substring(baseName.Length).Split(new[] { '.', '_', '-' }, StringSplitOptions.RemoveEmptyEntries);
+                                var langSuffix = parts.Length > 0 ? parts[^1].ToLowerInvariant() : "";
+                                string langLabel = GetLanguageLabel(langSuffix);
+                                subtitles.Add(new
+                                {
+                                    id = $"sidecar-{sidecarIdx++}",
+                                    label = $"{langLabel} ({Path.GetFileName(file)})",
+                                    language = string.IsNullOrEmpty(langSuffix) ? null : langSuffix,
+                                    format = ext.TrimStart('.').ToLowerInvariant(),
+                                    type = "sidecar",
+                                    filePath = file,
+                                    isDefault = sidecarIdx == 1
+                                });
+                            }
+                        }
+                    }
+                }
+            }
+            catch {}
+
+            // 2. ffprobe show_streams
+            var ffprobePath = BinaryManager.GetFfprobePath();
+            if (string.IsNullOrWhiteSpace(ffprobePath) || (!File.Exists(ffprobePath) && ffprobePath.EndsWith(".exe", StringComparison.OrdinalIgnoreCase)))
+            {
+                return Results.Json(new { success = true, subtitles, audioTracks });
+            }
+
+            try
+            {
+                var psi = new ProcessStartInfo
+                {
+                    FileName = ffprobePath,
+                    RedirectStandardOutput = true,
+                    RedirectStandardError = true,
+                    UseShellExecute = false,
+                    CreateNoWindow = true
+                };
+                psi.ArgumentList.Add("-v");
+                psi.ArgumentList.Add("quiet");
+                psi.ArgumentList.Add("-print_format");
+                psi.ArgumentList.Add("json");
+                psi.ArgumentList.Add("-show_streams");
+                psi.ArgumentList.Add(filePath);
+
+                using var proc = new Process { StartInfo = psi };
+                if (proc.Start())
+                {
+                    using var cts = new System.Threading.CancellationTokenSource(TimeSpan.FromSeconds(8));
+                    var stdout = await proc.StandardOutput.ReadToEndAsync(cts.Token);
+                    await proc.WaitForExitAsync(cts.Token);
+
+                    if (!string.IsNullOrWhiteSpace(stdout))
+                    {
+                        using var doc = JsonDocument.Parse(stdout);
+                        if (doc.RootElement.TryGetProperty("streams", out var streamsEl) && streamsEl.ValueKind == JsonValueKind.Array)
+                        {
+                            int subCount = 0;
+                            int audioCount = 0;
+                            foreach (var s in streamsEl.EnumerateArray())
+                            {
+                                string codecType = s.TryGetProperty("codec_type", out var ct) ? ct.GetString() ?? "" : "";
+                                int idx = s.TryGetProperty("index", out var ix) && ix.TryGetInt32(out var parsedIdx) ? parsedIdx : 0;
+                                string codecName = s.TryGetProperty("codec_name", out var cn) ? cn.GetString() ?? "" : "";
+
+                                string lang = "";
+                                string title = "";
+                                if (s.TryGetProperty("tags", out var tagsEl))
+                                {
+                                    if (tagsEl.TryGetProperty("language", out var langProp)) lang = langProp.GetString() ?? "";
+                                    else if (tagsEl.TryGetProperty("LANGUAGE", out var langProp2)) lang = langProp2.GetString() ?? "";
+
+                                    if (tagsEl.TryGetProperty("title", out var titleProp)) title = titleProp.GetString() ?? "";
+                                    else if (tagsEl.TryGetProperty("TITLE", out var titleProp2)) title = titleProp2.GetString() ?? "";
+                                }
+
+                                bool isDefault = false;
+                                if (s.TryGetProperty("disposition", out var dispEl) && dispEl.TryGetProperty("default", out var defProp) && defProp.TryGetInt32(out var defVal))
+                                {
+                                    isDefault = defVal == 1;
+                                }
+
+                                if (codecType == "subtitle")
+                                {
+                                    subCount++;
+                                    string langLabel = GetLanguageLabel(lang);
+                                    if (string.IsNullOrEmpty(langLabel) || langLabel == "Fichier externe") langLabel = $"Piste {subCount}";
+                                    string label = !string.IsNullOrEmpty(title) ? $"{langLabel} - {title}" : $"{langLabel} (Intégré)";
+                                    subtitles.Add(new
+                                    {
+                                        id = $"embedded-{idx}",
+                                        label,
+                                        language = string.IsNullOrEmpty(lang) ? null : lang,
+                                        format = string.IsNullOrEmpty(codecName) ? "subrip" : codecName,
+                                        type = "embedded",
+                                        streamIndex = idx,
+                                        filePath,
+                                        isDefault = isDefault || (subtitles.Count == 0 && subCount == 1)
+                                    });
+                                }
+                                else if (codecType == "audio")
+                                {
+                                    audioCount++;
+                                    string langLabel = GetLanguageLabel(lang);
+                                    if (string.IsNullOrEmpty(langLabel) || langLabel == "Fichier externe") langLabel = $"Audio {audioCount}";
+                                    int channels = s.TryGetProperty("channels", out var chProp) && chProp.TryGetInt32(out var chVal) ? chVal : 0;
+                                    string chStr = channels > 0 ? $"{channels}.0" : "";
+                                    string codecUpper = codecName.ToUpperInvariant();
+                                    string label = !string.IsNullOrEmpty(title) ? $"{langLabel} - {title} [{codecUpper}]" : $"{langLabel} [{codecUpper} {chStr}]".Trim();
+                                    audioTracks.Add(new
+                                    {
+                                        id = $"audio-{idx}",
+                                        index = idx,
+                                        label,
+                                        language = string.IsNullOrEmpty(lang) ? null : lang,
+                                        codec = codecName,
+                                        channels,
+                                        isDefault = isDefault || audioCount == 1
+                                    });
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            catch {}
+
+            return Results.Json(new { success = true, subtitles, audioTracks });
+        });
+
+        // Endpoint : Extraction ou conversion des sous-titres en flux WebVTT standard
+        app.MapGet("/api/video/subtitles/webvtt", async (HttpContext ctx) =>
+        {
+            var filePath = ctx.Request.Query["filePath"].ToString();
+            if (string.IsNullOrWhiteSpace(filePath) || !IsSafeMediaPath(filePath))
+            {
+                return Results.Text("WEBVTT\n\nNOTE Chemin non autorisé ou introuvable", "text/vtt; charset=utf-8", statusCode: 403);
+            }
+
+            var sidecarPathRaw = ctx.Request.Query["sidecarPath"].ToString();
+            var streamIndexRaw = ctx.Request.Query["streamIndex"].ToString();
+            double.TryParse(ctx.Request.Query["offset"], System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out var offset);
+            var ffmpegPath = BinaryManager.GetFfmpegPath();
+
+            if (!string.IsNullOrWhiteSpace(sidecarPathRaw))
+            {
+                if (!IsSafeMediaPath(sidecarPathRaw) || !File.Exists(sidecarPathRaw))
+                {
+                    return Results.Text("WEBVTT\n\nNOTE Fichier sous-titres introuvable", "text/vtt; charset=utf-8", statusCode: 404);
+                }
+
+                if (sidecarPathRaw.EndsWith(".vtt", StringComparison.OrdinalIgnoreCase) && Math.Abs(offset) < 0.001)
+                {
+                    var vttContent = await File.ReadAllTextAsync(sidecarPathRaw);
+                    return Results.Text(vttContent, "text/vtt; charset=utf-8");
+                }
+
+                if (!string.IsNullOrWhiteSpace(ffmpegPath) && (File.Exists(ffmpegPath) || !ffmpegPath.EndsWith(".exe", StringComparison.OrdinalIgnoreCase)))
+                {
+                    try
+                    {
+                        var psi = new ProcessStartInfo
+                        {
+                            FileName = ffmpegPath,
+                            RedirectStandardOutput = true,
+                            UseShellExecute = false,
+                            CreateNoWindow = true
+                        };
+                        psi.ArgumentList.Add("-v");
+                        psi.ArgumentList.Add("quiet");
+                        if (Math.Abs(offset) >= 0.001)
+                        {
+                            psi.ArgumentList.Add("-itsoffset");
+                            psi.ArgumentList.Add(offset.ToString(System.Globalization.CultureInfo.InvariantCulture));
+                        }
+                        psi.ArgumentList.Add("-i");
+                        psi.ArgumentList.Add(sidecarPathRaw);
+                        psi.ArgumentList.Add("-f");
+                        psi.ArgumentList.Add("webvtt");
+                        psi.ArgumentList.Add("pipe:1");
+
+                        using var proc = new Process { StartInfo = psi };
+                        if (proc.Start())
+                        {
+                            var vttOutput = await proc.StandardOutput.ReadToEndAsync();
+                            await proc.WaitForExitAsync();
+                            if (!string.IsNullOrWhiteSpace(vttOutput))
+                            {
+                                return Results.Text(vttOutput, "text/vtt; charset=utf-8");
+                            }
+                        }
+                    }
+                    catch {}
+                }
+
+                // Fallback direct parser
+                var rawSrt = await File.ReadAllTextAsync(sidecarPathRaw);
+                return Results.Text(ConvertSrtToWebVtt(rawSrt, offset), "text/vtt; charset=utf-8");
+            }
+
+            if (int.TryParse(streamIndexRaw, out var streamIdx) && streamIdx >= 0)
+            {
+                if (string.IsNullOrWhiteSpace(ffmpegPath) || (!File.Exists(ffmpegPath) && ffmpegPath.EndsWith(".exe", StringComparison.OrdinalIgnoreCase)))
+                {
+                    return Results.Text("WEBVTT\n\nNOTE ffmpeg requis", "text/vtt; charset=utf-8", statusCode: 500);
+                }
+
+                try
+                {
+                    var psi = new ProcessStartInfo
+                    {
+                        FileName = ffmpegPath,
+                        RedirectStandardOutput = true,
+                        UseShellExecute = false,
+                        CreateNoWindow = true
+                    };
+                    psi.ArgumentList.Add("-v");
+                    psi.ArgumentList.Add("quiet");
+                    if (Math.Abs(offset) >= 0.001)
+                    {
+                        psi.ArgumentList.Add("-itsoffset");
+                        psi.ArgumentList.Add(offset.ToString(System.Globalization.CultureInfo.InvariantCulture));
+                    }
+                    psi.ArgumentList.Add("-i");
+                    psi.ArgumentList.Add(filePath);
+                    psi.ArgumentList.Add("-map");
+                    psi.ArgumentList.Add($"0:{streamIdx}");
+                    psi.ArgumentList.Add("-f");
+                    psi.ArgumentList.Add("webvtt");
+                    psi.ArgumentList.Add("pipe:1");
+
+                    using var proc = new Process { StartInfo = psi };
+                    if (proc.Start())
+                    {
+                        var vttOutput = await proc.StandardOutput.ReadToEndAsync();
+                        await proc.WaitForExitAsync();
+                        return Results.Text(vttOutput, "text/vtt; charset=utf-8");
+                    }
+                }
+                catch (Exception ex)
+                {
+                    return Results.Text($"WEBVTT\n\nNOTE Erreur: {ex.Message}", "text/vtt; charset=utf-8", statusCode: 500);
+                }
+            }
+
+            return Results.Text("WEBVTT\n\nNOTE Paramètres streamIndex ou sidecarPath requis", "text/vtt; charset=utf-8", statusCode: 400);
+        });
+
         // Intro Skipper Endpoints : Snapping chirurgical aux silences audio / black frames
         app.MapGet("/api/video/fine-tune-markers", async (HttpContext ctx) =>
         {
@@ -1061,6 +1340,65 @@ public class HttpServer
         {
             return false;
         }
+    }
+
+    private static string GetLanguageLabel(string? langCode)
+    {
+        if (string.IsNullOrWhiteSpace(langCode)) return "Fichier externe";
+        var lower = langCode.ToLowerInvariant().Trim();
+        return lower switch
+        {
+            "fr" or "fra" or "fre" => "Français",
+            "en" or "eng" => "English",
+            "ja" or "jpn" => "日本語 (Japonais)",
+            "es" or "spa" => "Español",
+            "de" or "deu" or "ger" => "Deutsch",
+            "it" or "ita" => "Italiano",
+            "pt" or "por" => "Português",
+            "ru" or "rus" => "Русский",
+            "zh" or "chi" or "zho" => "中文 (Chinois)",
+            "ko" or "kor" => "한국어 (Coréen)",
+            "ar" or "ara" => "العربية (Arabe)",
+            "nl" or "nld" or "dut" => "Nederlands",
+            "pl" or "pol" => "Polski",
+            "sv" or "swe" => "Svenska",
+            _ => lower.ToUpperInvariant()
+        };
+    }
+
+    private static string ConvertSrtToWebVtt(string srt, double offsetSeconds = 0.0)
+    {
+        if (string.IsNullOrWhiteSpace(srt)) return "WEBVTT\n\n";
+        if (srt.TrimStart().StartsWith("WEBVTT", StringComparison.OrdinalIgnoreCase) && Math.Abs(offsetSeconds) < 0.001) return srt;
+
+        var vtt = "WEBVTT\n\n" + srt.Trim();
+        vtt = System.Text.RegularExpressions.Regex.Replace(vtt, @"(\d{2}:\d{2}:\d{2}),(\d{3})", "$1.$2");
+        vtt = System.Text.RegularExpressions.Regex.Replace(vtt, @"\{[^\}]*\}", "");
+
+        if (Math.Abs(offsetSeconds) >= 0.001)
+        {
+            var timeRegex = new System.Text.RegularExpressions.Regex(@"(\d{2}):(\d{2}):(\d{2})\.(\d{3})\s*-->\s*(\d{2}):(\d{2}):(\d{2})\.(\d{3})");
+            vtt = timeRegex.Replace(vtt, m =>
+            {
+                double ParseTime(string h, string min, string s, string ms) =>
+                    int.Parse(h) * 3600 + int.Parse(min) * 60 + int.Parse(s) + int.Parse(ms) / 1000.0;
+                string FormatTime(double sec)
+                {
+                    var clamped = Math.Max(0.0, sec);
+                    var h = (int)(clamped / 3600);
+                    var min = (int)((clamped % 3600) / 60);
+                    var s = (int)(clamped % 60);
+                    var ms = (int)Math.Round((clamped - Math.Floor(clamped)) * 1000);
+                    if (ms >= 1000) { s += 1; ms = 0; }
+                    return $"{h:D2}:{min:D2}:{s:D2}.{ms:D3}";
+                }
+                var start = ParseTime(m.Groups[1].Value, m.Groups[2].Value, m.Groups[3].Value, m.Groups[4].Value) + offsetSeconds;
+                var end = ParseTime(m.Groups[5].Value, m.Groups[6].Value, m.Groups[7].Value, m.Groups[8].Value) + offsetSeconds;
+                return $"{FormatTime(start)} --> {FormatTime(end)}";
+            });
+        }
+
+        return vtt;
     }
 
     public async Task StopAsync()
