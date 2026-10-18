@@ -4,6 +4,7 @@ using System.IO;
 using System.Net.Http;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 
 namespace FlowLuna.Services;
@@ -190,28 +191,32 @@ public static class BinaryManager
                 await response.Content.CopyToAsync(fileStream);
             }
 
-            // Verify SHA-256 checksum against official release checksums
+            // Verify SHA-256 checksum against official release checksums (Fail-closed)
             try
             {
                 using var sumsResponse = await HttpClient.GetAsync(checksumsUrl);
-                if (sumsResponse.IsSuccessStatusCode)
+                if (!sumsResponse.IsSuccessStatusCode)
                 {
-                    var sumsContent = await sumsResponse.Content.ReadAsStringAsync();
-                    using var sha256 = System.Security.Cryptography.SHA256.Create();
-                    await using var readStream = File.OpenRead(tempExe);
-                    var hashBytes = await sha256.ComputeHashAsync(readStream);
-                    var calculatedHash = Convert.ToHexString(hashBytes).ToLowerInvariant();
+                    if (File.Exists(tempExe)) File.Delete(tempExe);
+                    return (false, $"Échec de vérification cryptographique : impossible de récupérer le fichier officiel de sommes de contrôle ({sumsResponse.StatusCode}).");
+                }
 
-                    if (!sumsContent.ToLowerInvariant().Contains(calculatedHash))
-                    {
-                        File.Delete(tempExe);
-                        return (false, "Échec de vérification cryptographique : la somme de contrôle SHA-256 de yt-dlp.exe ne correspond pas à la signature officielle GitHub.");
-                    }
+                var sumsContent = await sumsResponse.Content.ReadAsStringAsync();
+                using var sha256 = System.Security.Cryptography.SHA256.Create();
+                await using var readStream = File.OpenRead(tempExe);
+                var hashBytes = await sha256.ComputeHashAsync(readStream);
+                var calculatedHash = Convert.ToHexString(hashBytes).ToLowerInvariant();
+
+                if (!sumsContent.ToLowerInvariant().Contains(calculatedHash))
+                {
+                    File.Delete(tempExe);
+                    return (false, "Échec de vérification cryptographique : la somme de contrôle SHA-256 de yt-dlp.exe ne correspond pas à la signature officielle GitHub.");
                 }
             }
             catch (Exception csEx)
             {
-                Console.WriteLine($"[BinaryManager] Note de vérification SHA-256 : {csEx.Message}");
+                if (File.Exists(tempExe)) { try { File.Delete(tempExe); } catch {} }
+                return (false, $"Échec de vérification cryptographique SHA-256 obligatoire : {csEx.Message}");
             }
 
             if (File.Exists(targetExe))
@@ -310,7 +315,7 @@ public static class BinaryManager
         return 0;
     }
 
-    public static string CurrentAppVersion => typeof(BinaryManager).Assembly.GetName().Version?.ToString(3) ?? "1.22.9";
+    public static string CurrentAppVersion => typeof(BinaryManager).Assembly.GetName().Version?.ToString(3) ?? "1.23.0";
 
     public static async Task<AppUpdateStatus> CheckAppUpdateAsync()
     {
@@ -382,6 +387,22 @@ public static class BinaryManager
         );
     }
 
+    public static bool IsAllowedUpdateUrl(Uri? uri)
+    {
+        if (uri == null || uri.Scheme != Uri.UriSchemeHttps) return false;
+        if (uri.Host.Equals("github.com", StringComparison.OrdinalIgnoreCase) &&
+            uri.AbsolutePath.StartsWith("/vortexazur/FlowLuna/releases/download/", StringComparison.OrdinalIgnoreCase))
+        {
+            return true;
+        }
+        if (uri.Host.Equals("objects.githubusercontent.com", StringComparison.OrdinalIgnoreCase) &&
+            uri.AbsolutePath.StartsWith("/github-production-release-asset-", StringComparison.OrdinalIgnoreCase))
+        {
+            return true;
+        }
+        return false;
+    }
+
     public static async Task<object> StartAppUpdateDownloadAsync(string? downloadUrl, string? version)
     {
         if (string.IsNullOrWhiteSpace(downloadUrl))
@@ -393,10 +414,7 @@ public static class BinaryManager
         else
         {
             // Security: validate that downloadUrl comes from official FlowLuna GitHub releases
-            if (!Uri.TryCreate(downloadUrl, UriKind.Absolute, out var dUri) ||
-                dUri.Scheme != Uri.UriSchemeHttps ||
-                !((dUri.Host.Equals("github.com", StringComparison.OrdinalIgnoreCase) && dUri.AbsolutePath.StartsWith("/vortexazur/FlowLuna/releases/download/", StringComparison.OrdinalIgnoreCase)) ||
-                  dUri.Host.EndsWith("githubusercontent.com", StringComparison.OrdinalIgnoreCase)))
+            if (!Uri.TryCreate(downloadUrl, UriKind.Absolute, out var dUri) || !IsAllowedUpdateUrl(dUri))
             {
                 _appUpdateProgress = new AppUpdateProgressReport("error", 0, 0, 0, "", "URL de téléchargement non autorisée.", null);
                 return new { success = false, message = "URL de téléchargement non autorisée. Seules les releases GitHub officielles sont acceptées." };
@@ -409,9 +427,10 @@ public static class BinaryManager
             return new { success = false, message = "Aucun fichier d'installation trouvé." };
         }
 
-        var updatesDir = Path.Combine(FlowLunaDataDir, "updates");
+        var safeVersion = Regex.IsMatch(version ?? "", @"^\d+\.\d+\.\d+$") ? version! : "latest";
+        var updatesDir = Path.GetFullPath(Path.Combine(FlowLunaDataDir, "updates"));
         Directory.CreateDirectory(updatesDir);
-        var targetFile = Path.Combine(updatesDir, $"FlowLuna-Setup-{version ?? "latest"}.exe");
+        var targetFile = Path.Combine(updatesDir, $"FlowLuna-Setup-{safeVersion}.exe");
 
         _appUpdateProgress = new AppUpdateProgressReport("downloading", 0, 0, 0, "Connexion...", "Démarrage du téléchargement...", targetFile);
 
@@ -419,11 +438,42 @@ public static class BinaryManager
         {
             try
             {
-                using var req = new HttpRequestMessage(HttpMethod.Get, downloadUrl);
-                req.Headers.UserAgent.ParseAdd($"FlowLuna-App/{CurrentAppVersion}");
+                if (!Uri.TryCreate(downloadUrl, UriKind.Absolute, out var currentUri) || !IsAllowedUpdateUrl(currentUri))
+                {
+                    throw new System.Security.SecurityException("URL initiale non autorisée.");
+                }
 
-                using var response = await HttpClient.SendAsync(req, HttpCompletionOption.ResponseHeadersRead);
-                response.EnsureSuccessStatusCode();
+                HttpResponseMessage? response = null;
+                int redirectCount = 0;
+                while (redirectCount < 5)
+                {
+                    using var req = new HttpRequestMessage(HttpMethod.Get, currentUri);
+                    req.Headers.UserAgent.ParseAdd($"FlowLuna-App/{CurrentAppVersion}");
+
+                    var handler = new HttpClientHandler { AllowAutoRedirect = false };
+                    using var client = new HttpClient(handler) { Timeout = TimeSpan.FromMinutes(5) };
+                    response = await client.SendAsync(req, HttpCompletionOption.ResponseHeadersRead);
+
+                    if (response.StatusCode is System.Net.HttpStatusCode.MovedPermanently or System.Net.HttpStatusCode.Found or System.Net.HttpStatusCode.SeeOther or System.Net.HttpStatusCode.TemporaryRedirect or (System.Net.HttpStatusCode)308)
+                    {
+                        var location = response.Headers.Location;
+                        if (location == null) throw new InvalidOperationException("Redirection sans en-tête Location.");
+                        var nextUri = location.IsAbsoluteUri ? location : new Uri(currentUri, location);
+                        if (!IsAllowedUpdateUrl(nextUri))
+                        {
+                            throw new System.Security.SecurityException("Redirection vers une URL non autorisée refusée.");
+                        }
+                        currentUri = nextUri;
+                        redirectCount++;
+                        response.Dispose();
+                        continue;
+                    }
+
+                    response.EnsureSuccessStatusCode();
+                    break;
+                }
+
+                if (response == null) throw new InvalidOperationException("Impossible d'établir la connexion de mise à jour.");
 
                 var totalBytes = response.Content.Headers.ContentLength ?? 0;
                 await using var stream = await response.Content.ReadAsStreamAsync();
@@ -489,18 +539,19 @@ public static class BinaryManager
         return new { success = true, message = "Téléchargement démarré.", targetFile };
     }
 
-    public static object ApplyAppUpdate(string? installerPath)
+    public static object ApplyAppUpdate(string? installerPath = null)
     {
-        var targetPath = !string.IsNullOrWhiteSpace(installerPath) ? installerPath : _appUpdateProgress.InstallerPath;
-        if (string.IsNullOrWhiteSpace(targetPath))
+        // Security: enforce internally verified installer path; ignore untrusted client input
+        var targetPath = _appUpdateProgress.InstallerPath;
+        if (string.IsNullOrWhiteSpace(targetPath) || _appUpdateProgress.Status != "ready_to_install")
         {
-            return new { success = false, message = "Fichier d'installation introuvable." };
+            return new { success = false, message = "Aucune mise à jour vérifiée prête à être installée." };
         }
 
         var fullPath = Path.GetFullPath(targetPath);
         var updatesDir = Path.GetFullPath(Path.Combine(FlowLunaDataDir, "updates"));
 
-        // Security: must be located inside %APPDATA%/FlowLuna/updates and be an .exe installer
+        // Security: must be located strictly inside %APPDATA%/FlowLuna/updates and be an .exe installer
         if (!fullPath.StartsWith(updatesDir + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase) ||
             !fullPath.EndsWith(".exe", StringComparison.OrdinalIgnoreCase))
         {

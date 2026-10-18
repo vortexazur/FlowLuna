@@ -575,10 +575,18 @@ public static class IntroSkipperService
             return cached;
         }
 
+        // Constantes partagées avec le backend Node.js
+        const double PearsonThreshold = 0.70;
+        const int WindowSamples = 1800;   // 90 s × 20 Hz
+        const int SampleRateHz = 20;
+        const double OpMinDurationS = 60.0;
+        const double OpMaxDurationS = 120.0;
+        const int EnvelopeDurationS = 240;
+
         try
         {
             var dir = Path.GetDirectoryName(filePath);
-            var candidates = (siblingFilePaths ?? (string.IsNullOrEmpty(dir) ? Array.Empty<string>() : Directory.GetFiles(dir)))
+            var allCandidates = (siblingFilePaths ?? (string.IsNullOrEmpty(dir) ? Array.Empty<string>() : Directory.GetFiles(dir)))
                 .Where(f => !string.Equals(f, filePath, StringComparison.OrdinalIgnoreCase))
                 .Where(f =>
                 {
@@ -588,68 +596,121 @@ public static class IntroSkipperService
                 .OrderBy(f => f)
                 .ToList();
 
-            if (candidates.Count == 0)
+            if (allCandidates.Count == 0)
             {
                 return new AcousticMatchResult(false, 0, 0, 0, null, "Aucun épisode frère trouvé dans le dossier");
             }
 
-            // Choisir le fichier frère le plus proche
-            var sibling = candidates.First();
+            // Sélection des frères par préfixe de nom et proximité de numéro d'épisode
+            var candidates = ChooseSiblings(filePath, allCandidates, maxCandidates: 2);
 
-            // Extraire 4 minutes d'enveloppe sonore (0 à 240s) à 20 Hz (20 échantillons / seconde)
-            var env1 = await ExtractAudioEnergyEnvelopeAsync(ffmpegPath, filePath, 240, ct);
-            var env2 = await ExtractAudioEnergyEnvelopeAsync(ffmpegPath, sibling, 240, ct);
-
-            if (env1.Length < 100 || env2.Length < 100)
+            foreach (var sibling in candidates)
             {
-                return new AcousticMatchResult(false, 0, 0, 0, null, "Échec d'extraction de l'enveloppe audio");
-            }
+                var env1 = await ExtractAudioEnergyEnvelopeAsync(ffmpegPath, filePath, EnvelopeDurationS, ct);
+                var env2 = await ExtractAudioEnergyEnvelopeAsync(ffmpegPath, sibling, EnvelopeDurationS, ct);
 
-            // Longueur standard d'opening : ~85s à 95s (à 20 Hz -> 1700 à 1900 échantillons)
-            int windowSize = 1800; // 90 secondes
-            double bestScore = 0.0;
-            int bestT1 = -1;
+                if (env1.Length < 100 || env2.Length < 100) continue;
 
-            // Recherche glissante de corrélation
-            for (int t1 = 200; t1 <= env1.Length - windowSize; t1 += 20) // Par pas d'1 seconde
-            {
-                for (int t2 = 200; t2 <= env2.Length - windowSize; t2 += 20)
+                double bestScore = 0.0;
+                int bestT1 = -1;
+                int bestT2 = -1;
+
+                for (int t1 = 200; t1 <= env1.Length - WindowSamples; t1 += 20)
                 {
-                    double corr = ComputeNormalizedCorrelation(env1, t1, env2, t2, windowSize);
-                    if (corr > bestScore)
+                    for (int t2 = 200; t2 <= env2.Length - WindowSamples; t2 += 20)
                     {
-                        bestScore = corr;
-                        bestT1 = t1;
+                        double corr = ComputeNormalizedCorrelation(env1, t1, env2, t2, WindowSamples);
+                        if (corr > bestScore)
+                        {
+                            bestScore = corr;
+                            bestT1 = t1;
+                            bestT2 = t2;
+                        }
                     }
                 }
+
+                if (bestScore >= PearsonThreshold && bestT1 >= 0)
+                {
+                    double opStart = Math.Round(bestT1 / (double)SampleRateHz, 1);
+
+                    // Estimer la fin de l'OP : étendre la fenêtre corrélée tant que Pearson ≥ seuil
+                    int stepSamples = SampleRateHz; // 1 seconde
+                    int extLen = WindowSamples;
+                    int maxExtLen = (int)Math.Round(OpMaxDurationS * SampleRateHz);
+
+                    while (
+                        extLen + stepSamples <= maxExtLen &&
+                        bestT1 + extLen + stepSamples <= env1.Length &&
+                        bestT2 + extLen + stepSamples <= env2.Length)
+                    {
+                        double extCorr = ComputeNormalizedCorrelation(env1, bestT1, env2, bestT2, extLen + stepSamples);
+                        if (extCorr < PearsonThreshold) break;
+                        extLen += stepSamples;
+                    }
+
+                    double rawOpEnd = opStart + extLen / (double)SampleRateHz;
+                    // Bornes min/max
+                    double opEnd = Math.Round(
+                        Math.Max(opStart + OpMinDurationS, Math.Min(rawOpEnd, opStart + OpMaxDurationS)), 1);
+
+                    var res = new AcousticMatchResult(
+                        Success: true,
+                        Start: opStart,
+                        End: opEnd,
+                        Confidence: Math.Round(bestScore, 2),
+                        MatchedSibling: Path.GetFileName(sibling),
+                        Message: $"Générique corrélé avec succès contre {Path.GetFileName(sibling)}"
+                    );
+
+                    AcousticMatchCache[filePath] = res;
+                    return res;
+                }
+                // Corrélation insuffisante sur ce candidat → essayer le suivant
             }
 
-            // Seuil de corrélation acoustique (0.70 = forte similarité sonore)
-            if (bestScore >= 0.70 && bestT1 >= 0)
-            {
-                double opStart = Math.Round(bestT1 / 20.0, 1);
-                double opEnd = Math.Round(opStart + 90.0, 1);
-
-                var res = new AcousticMatchResult(
-                    Success: true,
-                    Start: opStart,
-                    End: opEnd,
-                    Confidence: Math.Round(bestScore, 2),
-                    MatchedSibling: Path.GetFileName(sibling),
-                    Message: $"Générique corrélé avec succès contre {Path.GetFileName(sibling)}"
-                );
-
-                AcousticMatchCache[filePath] = res;
-                return res;
-            }
-
-            return new AcousticMatchResult(false, 0, 0, bestScore, Path.GetFileName(sibling), "Corrélation sonore insuffisante");
+            return new AcousticMatchResult(false, 0, 0, 0, Path.GetFileName(candidates.FirstOrDefault() ?? ""), "Corrélation sonore insuffisante sur tous les candidats");
         }
         catch (Exception ex)
         {
             return new AcousticMatchResult(false, 0, 0, 0, null, ex.Message);
         }
     }
+
+    /// <summary>
+    /// Choisit les épisodes frères les plus pertinents : même préfixe de nom et épisode voisin, max maxCandidates.
+    /// </summary>
+    private static List<string> ChooseSiblings(string filePath, List<string> allCandidates, int maxCandidates)
+    {
+        var baseName = Path.GetFileNameWithoutExtension(filePath);
+        // Extraire le numéro d'épisode
+        var epMatch = Regex.Match(baseName, @"(?:[Ss]\d+)?[Ee](\d+)|[-_ ](\d{1,4})(?:v\d+)?(?:\s|$)");
+        int epNum = epMatch.Success
+            ? int.Parse(epMatch.Groups[1].Success ? epMatch.Groups[1].Value : epMatch.Groups[2].Value)
+            : -1;
+
+        // Préfixe approximatif (sans numéro d'épisode)
+        var prefix = Regex.Replace(baseName, @"(?:[Ss]\d+)?[Ee]\d+.*", "");
+        prefix = Regex.Replace(prefix, @"[-_ ]\d{1,4}(?:v\d+)?.*", "").ToLowerInvariant().Trim();
+        var prefixShort = prefix.Length > 8 ? prefix.Substring(0, 8) : prefix;
+
+        return allCandidates
+            .Select(f =>
+            {
+                var fn = Path.GetFileNameWithoutExtension(f).ToLowerInvariant();
+                bool hasSamePrefix = prefixShort.Length > 3 && fn.StartsWith(prefixShort);
+                var sibEpMatch = Regex.Match(fn, @"(?:[Ss]\d+)?[Ee](\d+)|[-_ ](\d{1,4})(?:v\d+)?(?:\s|$)");
+                int sibEp = sibEpMatch.Success
+                    ? int.Parse(sibEpMatch.Groups[1].Success ? sibEpMatch.Groups[1].Value : sibEpMatch.Groups[2].Value)
+                    : -1;
+                int epDist = (epNum >= 0 && sibEp >= 0) ? Math.Abs(sibEp - epNum) : 999;
+                return (f, score: (hasSamePrefix ? 0 : 100) + epDist);
+            })
+            .OrderBy(x => x.score)
+            .Take(maxCandidates)
+            .Select(x => x.f)
+            .ToList();
+    }
+
 
     private static async Task<float[]> ExtractAudioEnergyEnvelopeAsync(
         string ffmpegPath,

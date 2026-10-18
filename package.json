@@ -1,7 +1,7 @@
 {
   "name": "flowluna",
   "private": true,
-  "version": "1.22.9",
+  "version": "1.23.0",
   "license": "GPL-3.0-or-later",
   "description": "Lecteur audio haute fidélité native Windows avec égaliseur 10 bandes, cache hors-ligne et extraction yt-dlp/ffmpeg",
   "author": "vortexazur",
@@ -22,28 +22,28 @@
     "start": "node dist/server.cjs",
     "preview": "vite preview",
     "clean": "rm -rf dist dist-electron release server.js",
+    "test": "tsx --tsconfig tsconfig.json tests/skipMarkersDrift.test.ts && tsx --tsconfig tsconfig.json tests/introSkipperEnhancements.test.ts && tsx --tsconfig tsconfig.json tests/aiModelManagement.test.ts && tsx --tsconfig tsconfig.json tests/videoInteractions.test.ts",
     "lint": "tsc --noEmit",
     "screenshots": "node scripts/generate-screenshots.mjs"
   },
   "dependencies": {
     "@google/genai": "^2.4.0",
-    "@tailwindcss/vite": "^4.1.14",
-    "@vitejs/plugin-react": "^5.0.4",
     "dotenv": "^17.2.3",
     "express": "^4.21.2",
     "jszip": "^3.10.2",
     "lucide-react": "^0.546.0",
     "motion": "^12.23.24",
     "react": "^19.0.1",
-    "react-dom": "^19.0.1",
-    "vite": "^6.2.3"
+    "react-dom": "^19.0.1"
   },
   "devDependencies": {
+    "@tailwindcss/vite": "^4.1.14",
     "@types/express": "^4.17.21",
     "@types/jszip": "^3.4.1",
     "@types/node": "^22.14.0",
     "@types/react": "^19.3.0",
     "@types/react-dom": "^19.3.0",
+    "@vitejs/plugin-react": "^5.0.4",
     "autoprefixer": "^10.4.21",
     "concurrently": "^10.0.5",
     "cross-env": "^10.1.0",

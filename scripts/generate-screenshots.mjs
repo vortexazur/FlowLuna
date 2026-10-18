@@ -89,7 +89,10 @@ const coverStarboy = makeSvgCover('Starboy', 'The Weeknd', '#ef4444', '#3b82f6')
 const coverResonance = makeSvgCover('Resonance', 'HOME', '#f59e0b', '#8b5cf6');
 const coverDaftPunk = makeSvgCover('Random Access Memories', 'Daft Punk', '#10b981', '#06b6d4');
 const coverNightcall = makeSvgCover('Nightcall', 'Kavinsky', '#f43f5e', '#6366f1');
-const coverVideo = makeVideoPoster();
+const interstellaFramePath = path.join(projectRoot, 'public', 'interstella-frame.jpg');
+const coverVideo = fs.existsSync(interstellaFramePath)
+  ? `data:image/jpeg;base64,${fs.readFileSync(interstellaFramePath).toString('base64')}`
+  : makeVideoPoster();
 
 const SILENT_AUDIO = 'data:audio/wav;base64,UklGRigAAABXQVZFZm10IBIAAAABAAEARKwAAIhYAQACABAAAABkYXRhAgAAAAEA';
 
@@ -232,7 +235,7 @@ const DEMO_TRACKS = [
     videoWidth: 3840,
     videoHeight: 2160,
     url: SILENT_AUDIO,
-    coverUrl: coverDaftPunk,
+    coverUrl: coverVideo,
     source: 'local',
     isFavorite: true,
     isCachedOffline: true,
@@ -606,18 +609,24 @@ async function main() {
   });
   await new Promise((r) => setTimeout(r, 1000));
 
-  // Play video track
+  // Play video track (specifically Episode 01 : One More Time)
   await page.evaluate(() => {
-    const card = document.querySelector('div.grid > div') || document.querySelector('div[class*="group relative rounded-2xl"]');
-    if (card) card.click();
+    const cards = Array.from(document.querySelectorAll('div.grid > div, div[class*="group relative rounded-2xl"]'));
+    const targetCard = cards.find(c => c.innerText && c.innerText.includes('One More Time')) || cards[0];
+    if (targetCard) targetCard.click();
   });
-  await new Promise((r) => setTimeout(r, 1000));
+  await new Promise((r) => setTimeout(r, 1200));
 
   // Open Cinema / Theater mode
   await page.evaluate((posterUrl) => {
-    document.querySelectorAll('video, audio').forEach((media) => {
+    document.querySelectorAll('video').forEach((media) => {
       try {
-        if (media.tagName === 'VIDEO') media.poster = posterUrl;
+        media.poster = posterUrl;
+        media.style.backgroundImage = `url("${posterUrl}")`;
+        media.style.backgroundSize = 'contain';
+        media.style.backgroundPosition = 'center';
+        media.style.backgroundRepeat = 'no-repeat';
+        media.style.backgroundColor = '#000000';
         Object.defineProperty(media, 'duration', { get: () => 320, configurable: true });
         Object.defineProperty(media, 'currentTime', { get: () => 65, configurable: true });
         media.dispatchEvent(new Event('loadedmetadata'));
@@ -628,11 +637,17 @@ async function main() {
     const cinemaBtn = Array.from(document.querySelectorAll('button')).find(b => b.innerText && b.innerText.includes('Cinéma'));
     if (cinemaBtn) cinemaBtn.click();
   }, coverVideo);
-  await new Promise((r) => setTimeout(r, 1000));
+  await new Promise((r) => setTimeout(r, 1200));
 
-  await page.evaluate(() => {
-    document.querySelectorAll('video, audio').forEach((media) => {
+  await page.evaluate((posterUrl) => {
+    document.querySelectorAll('video').forEach((media) => {
       try {
+        media.poster = posterUrl;
+        media.style.backgroundImage = `url("${posterUrl}")`;
+        media.style.backgroundSize = 'contain';
+        media.style.backgroundPosition = 'center';
+        media.style.backgroundRepeat = 'no-repeat';
+        media.style.backgroundColor = '#000000';
         Object.defineProperty(media, 'duration', { get: () => 320, configurable: true });
         Object.defineProperty(media, 'currentTime', { get: () => 65, configurable: true });
         media.dispatchEvent(new Event('loadedmetadata'));
@@ -652,7 +667,9 @@ async function main() {
       rangeInput.dispatchEvent(new Event('input', { bubbles: true }));
       rangeInput.dispatchEvent(new Event('change', { bubbles: true }));
     }
-  });
+  }, coverVideo);
+
+  await page.mouse.move(720, 450);
   await new Promise((r) => setTimeout(r, 1200));
 
   const screenshot3Path = path.join(outputDir, '03-lecteur-video.png');

@@ -353,7 +353,7 @@ export const CommandPaletteModal: React.FC<CommandPaletteModalProps> = ({
             <div className="flex items-center justify-between border-b border-neutral-800 pb-2">
               <span className="text-sm font-bold text-neutral-200 flex items-center gap-2">
                 <Keyboard className="w-4 h-4 text-cyan-400" />
-                Raccourcis Clavier Globaux PlayZic
+                Raccourcis Clavier Globaux FlowLuna
               </span>
               <button
                 type="button"

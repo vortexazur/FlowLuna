@@ -99,6 +99,27 @@ public class HttpServer
         builder.Services.AddRouting();
 
         var app = builder.Build();
+
+        app.Use(async (context, next) =>
+        {
+            var host = context.Request.Host.Host.ToLowerInvariant();
+            if (host != "localhost" && host != "127.0.0.1")
+            {
+                context.Response.StatusCode = 403;
+                await context.Response.WriteAsync("Forbidden: Host not allowed");
+                return;
+            }
+
+            if (context.Request.Headers.TryGetValue("Sec-Fetch-Site", out var secSite) && secSite == "cross-site")
+            {
+                context.Response.StatusCode = 403;
+                await context.Response.WriteAsync("Forbidden: Cross-site requests rejected");
+                return;
+            }
+
+            await next();
+        });
+
         app.UseCors();
 
         ConfigureEndpoints(app, wwwroot);
@@ -591,22 +612,9 @@ public class HttpServer
             return Results.Json(status);
         });
 
-        app.MapPost("/api/app/apply-update", async (HttpContext ctx) =>
+        app.MapPost("/api/app/apply-update", () =>
         {
-            using var reader = new StreamReader(ctx.Request.Body);
-            var bodyText = await reader.ReadToEndAsync();
-            string? installerPath = null;
-            if (!string.IsNullOrWhiteSpace(bodyText))
-            {
-                try
-                {
-                    using var doc = JsonDocument.Parse(bodyText);
-                    if (doc.RootElement.TryGetProperty("installerPath", out var ip)) installerPath = ip.GetString();
-                }
-                catch { }
-            }
-
-            var res = BinaryManager.ApplyAppUpdate(installerPath);
+            var res = BinaryManager.ApplyAppUpdate();
             return Results.Json(res);
         });
 
@@ -675,7 +683,7 @@ public class HttpServer
                 var filePath = await DownloaderEngine.DownloadToTempAsync(req, prog =>
                 {
                     if (!string.IsNullOrWhiteSpace(jobId)) ActiveJobs[jobId] = prog;
-                });
+                }, ctx.RequestAborted);
 
                 var ext = Path.GetExtension(filePath);
                 var cleanTitle = string.IsNullOrWhiteSpace(title) ? "Media" : DownloaderEngine.CleanTrackTitle(title);
@@ -694,8 +702,8 @@ public class HttpServer
 
                 var finalFileName = $"{DownloaderEngine.SanitizeFileName(baseName)}{ext}";
 
-                // If destinationPath was chosen via Save Dialog, copy directly to destination
-                if (!string.IsNullOrWhiteSpace(destinationPath))
+                // Security: if destinationPath was chosen via Save Dialog, validate it strictly to prevent arbitrary file overwrite
+                if (!string.IsNullOrWhiteSpace(destinationPath) && IsSafeDestinationPath(destinationPath))
                 {
                     var destDir = Path.GetDirectoryName(destinationPath);
                     if (!string.IsNullOrWhiteSpace(destDir)) Directory.CreateDirectory(destDir);
@@ -954,6 +962,41 @@ public class HttpServer
                     await ctx.Response.WriteAsync("FlowLuna UI non trouvée.");
                 }
             });
+        }
+    }
+
+    private static readonly HashSet<string> DangerousExtensions = new(StringComparer.OrdinalIgnoreCase)
+    {
+        ".exe", ".dll", ".bat", ".cmd", ".ps1", ".vbs", ".vbe", ".js", ".jse",
+        ".wsf", ".wsh", ".msc", ".msi", ".msp", ".com", ".scr", ".hta", ".cpl", ".pif"
+    };
+
+    public static bool IsSafeDestinationPath(string? destPath)
+    {
+        if (string.IsNullOrWhiteSpace(destPath)) return false;
+        try
+        {
+            var fullPath = Path.GetFullPath(destPath);
+            var ext = Path.GetExtension(fullPath);
+            if (DangerousExtensions.Contains(ext)) return false;
+
+            var userHome = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+            var allowedRoots = new List<string>
+            {
+                Environment.GetFolderPath(Environment.SpecialFolder.MyMusic),
+                Environment.GetFolderPath(Environment.SpecialFolder.MyVideos),
+                Path.Combine(userHome, "Downloads"),
+                Path.Combine(userHome, "Téléchargements"),
+                Environment.GetFolderPath(Environment.SpecialFolder.Desktop),
+                Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments),
+                BinaryManager.FlowLunaDataDir
+            };
+
+            return allowedRoots.Any(root => !string.IsNullOrEmpty(root) && fullPath.StartsWith(Path.GetFullPath(root) + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase));
+        }
+        catch
+        {
+            return false;
         }
     }
 

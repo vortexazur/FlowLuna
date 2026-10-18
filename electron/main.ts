@@ -278,9 +278,41 @@ function createMainWindow(): void {
       preload: path.join(__dirname, 'preload.cjs'),
       contextIsolation: true,
       nodeIntegration: false,
-      sandbox: false,
+      sandbox: true,
       webSecurity: true,
     },
+  });
+
+  // Security: block any internal top-level navigation away from local app
+  mainWindow.webContents.on('will-navigate', (event, navigationUrl) => {
+    try {
+      const parsed = new URL(navigationUrl);
+      const isLocal = parsed.hostname === 'localhost' || parsed.hostname === '127.0.0.1';
+      if (!isLocal) {
+        event.preventDefault();
+        if (navigationUrl.startsWith('http:') || navigationUrl.startsWith('https:')) {
+          shell.openExternal(navigationUrl);
+        }
+      }
+    } catch {
+      event.preventDefault();
+    }
+  });
+
+  // Security: block redirects away from local app
+  mainWindow.webContents.on('will-redirect', (event, navigationUrl) => {
+    try {
+      const parsed = new URL(navigationUrl);
+      const isLocal = parsed.hostname === 'localhost' || parsed.hostname === '127.0.0.1';
+      if (!isLocal) {
+        event.preventDefault();
+        if (navigationUrl.startsWith('http:') || navigationUrl.startsWith('https:')) {
+          shell.openExternal(navigationUrl);
+        }
+      }
+    } catch {
+      event.preventDefault();
+    }
   });
 
   // Track maximize state and broadcast to renderer

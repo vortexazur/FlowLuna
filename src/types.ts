@@ -1,5 +1,5 @@
 declare const __APP_VERSION__: string | undefined;
-export const APP_VERSION = typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__ : '1.22.9';
+export const APP_VERSION = typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__ : '1.23.0';
 
 export type MediaFormat =
   | 'mp3'
@@ -67,6 +67,7 @@ export interface SkipInterval {
   snapped?: boolean;        // Si le marqueur a été ajusté sur un silence/coupure (TimeAdjustment inspiré d'intro-skipper)
   snapType?: 'silence' | 'black' | 'none';
   offsetApplied?: number;   // Décalage en secondes appliqué lors du snapping
+  drift?: boolean;          // true si cet intervalle provient d'une API avec dérive temporelle détectée (> 4s)
 }
 
 export interface PlayerSkipState {
@@ -82,7 +83,8 @@ export interface VideoSkipMarkers {
   preview?: SkipInterval | null;
   hasPostCredits: boolean;
   postCreditsStart?: number;
-  driftDetected?: boolean;        // true si écart significatif entre durée vidéo et référence API (> 4s)
+  /** @deprecated Utiliser interval.drift à la place. Conservé uniquement pour la rétro-compatibilité du cache localStorage. */
+  driftDetected?: boolean;
   referenceDuration?: number;     // durée théorique fournie par l'API
   snapped?: boolean;              // true si un micro-ajustement audio/silence a été appliqué
 }
@@ -316,4 +318,36 @@ export const DEFAULT_AI_SETTINGS: AISettings = {
     endpoint: 'http://localhost:1234',
     model: 'local-model',
   },
+};
+
+export const DEFAULT_PLAYER_SETTINGS: PlayerSettings = {
+  language: 'fr',
+  theme: 'dark',
+  accent: 'emerald',
+  backdropEffect: 'glass',
+  glassIntensity: 70,
+  acrylicIntensity: 30,
+  visualizerStyle: 'minimal',
+  crossfadeDuration: 0,
+  gaplessPlayback: true,
+  autoCacheFavorites: true,
+  maxCacheSizeMb: 1024,
+  highQualityStream: true,
+  volumeNormalization: true,
+  normalizationTarget: 'streaming',
+  discordRpcEnabled: true,
+  smtcEnabled: true,
+  compactMode: false,
+  compactPlayerDock: 'bottom',
+  compactPlayerGhost: false,
+  autoSkipOpening: false,
+  enableSkipOpening: true,
+  marathonConfig: DEFAULT_MARATHON_CONFIG,
+  videoSkipForwardInterval: 10,
+  videoAspectRatio: 'contain',
+  animeSkipClientId: '',
+  skipOpAiMode: 'disabled',
+  skipOpAiProvider: 'gemini',
+  skipOpAiApiKey: '',
+  aiSettings: DEFAULT_AI_SETTINGS,
 };

@@ -292,7 +292,48 @@ public partial class MainWindow : Window
             await InitializeWebView2WithRetryAsync();
 
             WebViewControl.CoreWebView2.Settings.IsStatusBarEnabled = false;
+#if DEBUG
             WebViewControl.CoreWebView2.Settings.AreDevToolsEnabled = true;
+#else
+            WebViewControl.CoreWebView2.Settings.AreDevToolsEnabled = false;
+#endif
+
+            // Security: prevent any external top-level navigation inside WebView2
+            WebViewControl.CoreWebView2.NavigationStarting += (sender, args) =>
+            {
+                if (Uri.TryCreate(args.Uri, UriKind.Absolute, out var navUri))
+                {
+                    if (!navUri.IsLoopback && navUri.Scheme != "data" && navUri.Scheme != "about")
+                    {
+                        args.Cancel = true;
+                        try
+                        {
+                            System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(args.Uri)
+                            {
+                                UseShellExecute = true
+                            });
+                        }
+                        catch { }
+                    }
+                }
+            };
+
+            // Security: open all popups / new window requests in external default browser
+            WebViewControl.CoreWebView2.NewWindowRequested += (sender, args) =>
+            {
+                args.Handled = true;
+                if (Uri.TryCreate(args.Uri, UriKind.Absolute, out var popUri) && (popUri.Scheme == "http" || popUri.Scheme == "https"))
+                {
+                    try
+                    {
+                        System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(args.Uri)
+                        {
+                            UseShellExecute = true
+                        });
+                    }
+                    catch { }
+                }
+            };
 
             // 3. Register NativeBridge COM host object
             _nativeBridge = new NativeBridge(this);
@@ -644,6 +685,12 @@ public partial class MainWindow : Window
     {
         try
         {
+            // Security: only accept messages from local origins
+            if (Uri.TryCreate(e.Source, UriKind.Absolute, out var srcUri) && !srcUri.IsLoopback)
+            {
+                return;
+            }
+
             using var doc = JsonDocument.Parse(e.WebMessageAsJson);
             if (doc.RootElement.TryGetProperty("action", out var actProp))
             {
@@ -682,8 +729,7 @@ public partial class MainWindow : Window
                         ApplyWindows11Backdrop(eff ?? "glass", thm ?? "dark");
                         break;
                     case "apply-update":
-                        string? ip = doc.RootElement.TryGetProperty("installerPath", out var ipp) ? ipp.GetString() : null;
-                        _nativeBridge?.ApplyUpdate(ip ?? "");
+                        _nativeBridge?.ApplyUpdate();
                         break;
                     case "open-default-apps":
                         _nativeBridge?.OpenDefaultAppsSettings();

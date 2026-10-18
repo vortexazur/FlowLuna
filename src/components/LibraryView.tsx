@@ -280,24 +280,26 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
 
   // Filter tracks
   let filtered = musicTracks.filter((t) => {
+    const q = (searchQuery || '').toLowerCase();
     const matchesSearch =
-      t.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      t.artist.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      t.album.toLowerCase().includes(searchQuery.toLowerCase());
+      !q ||
+      (t.title || '').toLowerCase().includes(q) ||
+      (t.artist || '').toLowerCase().includes(q) ||
+      (t.album || '').toLowerCase().includes(q);
 
     const matchesFormat =
-      selectedFormat === 'all' || t.format.toLowerCase() === selectedFormat.toLowerCase();
+      selectedFormat === 'all' || (t.format || '').toLowerCase() === selectedFormat.toLowerCase();
 
     return matchesSearch && matchesFormat;
   });
 
   // Sort
   filtered = [...filtered].sort((a, b) => {
-    if (sortBy === 'artist') return a.artist.localeCompare(b.artist);
-    if (sortBy === 'added') return b.addedAt - a.addedAt;
-    if (sortBy === 'duration') return b.duration - a.duration;
+    if (sortBy === 'artist') return (a.artist || '').localeCompare(b.artist || '');
+    if (sortBy === 'added') return (b.addedAt || 0) - (a.addedAt || 0);
+    if (sortBy === 'duration') return (b.duration || 0) - (a.duration || 0);
     if (sortBy === 'plays') return (b.playCount || 0) - (a.playCount || 0);
-    return a.title.localeCompare(b.title);
+    return (a.title || '').localeCompare(b.title || '');
   });
 
   const formatDuration = (secs: number) => {

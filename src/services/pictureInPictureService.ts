@@ -15,7 +15,7 @@ export interface PipWindowResult {
 export function injectStylesToWindow(targetWindow: Window) {
   try {
     const doc = targetWindow.document;
-    doc.title = 'PlayZic';
+    doc.title = 'FlowLuna';
 
     // Copy external CSS links
     document.querySelectorAll('link[rel="stylesheet"]').forEach((link) => {
@@ -42,7 +42,7 @@ export function injectStylesToWindow(targetWindow: Window) {
 
     // Inject base reset and auto-scaling rules for PiP
     const pipCustomStyle = doc.createElement('style');
-    pipCustomStyle.id = 'playzic-pip-responsive-styles';
+    pipCustomStyle.id = 'flowluna-pip-responsive-styles';
     pipCustomStyle.textContent = `
       html, body {
         margin: 0 !important;
@@ -357,7 +357,7 @@ export async function openAlwaysOnTopWindow(
       });
 
       if (pipWindow) {
-        pipWindow.document.title = 'PlayZic';
+        pipWindow.document.title = 'FlowLuna';
         injectStylesToWindow(pipWindow);
         return { window: pipWindow, type: 'document-pip' };
       }
@@ -372,12 +372,12 @@ export async function openAlwaysOnTopWindow(
     const top = Math.max(0, window.screen.height - height - 100);
     const popup = window.open(
       '',
-      'playzic_always_on_top',
+      'flowluna_always_on_top',
       `width=${width},height=${height},left=${left},top=${top},menubar=no,toolbar=no,location=no,status=no,resizable=yes`
     );
 
     if (popup && !popup.closed) {
-      popup.document.title = 'PlayZic';
+      popup.document.title = 'FlowLuna';
       injectStylesToWindow(popup);
       return { window: popup, type: 'popup' };
     }

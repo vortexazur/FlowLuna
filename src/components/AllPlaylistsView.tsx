@@ -148,10 +148,11 @@ export const AllPlaylistsView: React.FC<AllPlaylistsViewProps> = ({
   );
 
   const filterFn = (p: Playlist) => {
-    if (!searchQuery.trim()) return true;
+    const q = (searchQuery || '').trim().toLowerCase();
+    if (!q) return true;
     return (
-      p.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      (p.description && p.description.toLowerCase().includes(searchQuery.toLowerCase()))
+      (p.title || '').toLowerCase().includes(q) ||
+      (p.description ? p.description.toLowerCase().includes(q) : false)
     );
   };
 

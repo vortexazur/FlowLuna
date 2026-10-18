@@ -4,7 +4,7 @@
   <img src="public/logo.jpg" alt="FlowLuna Logo" width="160" style="border-radius: 20px; margin-bottom: 12px;" />
 
   <p>
-    <a href="https://github.com/vortexazur/FlowLuna/releases"><img src="https://img.shields.io/badge/version-1.22.9-emerald.svg?style=for-the-badge" alt="Version" /></a>
+    <a href="https://github.com/vortexazur/FlowLuna/releases"><img src="https://img.shields.io/badge/version-1.23.0-emerald.svg?style=for-the-badge" alt="Version" /></a>
     <a href="https://github.com/vortexazur/FlowLuna"><img src="https://img.shields.io/badge/platform-Windows%2010%20%7C%2011%20x64-blue.svg?style=for-the-badge&logo=windows" alt="Platform" /></a>
     <a href="https://dotnet.microsoft.com/"><img src="https://img.shields.io/badge/.NET-9.0-512BD4.svg?style=for-the-badge&logo=dotnet" alt=".NET 9" /></a>
     <a href="https://developer.microsoft.com/microsoft-edge/webview2/"><img src="https://img.shields.io/badge/WebView2-Evergreen-0078D7.svg?style=for-the-badge&logo=microsoftedge" alt="WebView2" /></a>
@@ -27,7 +27,8 @@
     <a href="#-fonctionnalités-clés">Fonctionnalités Clés</a> • 
     <a href="#-installation">Installation</a> • 
     <a href="#-raccourcis-clavier">Raccourcis Clavier</a> • 
-    <a href="#-architecture-technique">Architecture</a>
+    <a href="#-architecture-technique">Architecture</a> • 
+    <a href="#-sécurité--confidentialité">Sécurité</a>
   </p>
 </div>
 
@@ -85,7 +86,7 @@ FlowLuna réunit la puissance du moteur multimédia **LibVLCSharp** ([VideoLAN](
 - **Double Mode Picture-in-Picture (PiP) :** Mini-lecteur vidéo docké dans l'interface et mode Picture-in-Picture natif OS Always-on-Top pour continuer à regarder vos vidéos par-dessus vos autres applications.
 
 <p align="center">
-  <img src="docs/screenshots/03-lecteur-video.png" alt="Lecteur Vidéo & Mode Cinéma" width="100%">
+  <img src="docs/screenshots/03-lecteur-video.png" alt="Lecteur Vidéo 4K Cinéma Pure Glass & Détection Skip Opening" width="100%">
 </p>
 
 ### 🧠 Gestionnaire Agnostique des Modèles d'IA (Cloud & Inférence Locale Ollama / LM Studio)
@@ -161,7 +162,7 @@ FlowLuna est **100% agnostique vis-à-vis des modèles d'intelligence artificiel
 ## 📦 Installation
 
 1. Rendez-vous dans la section [Releases](https://github.com/vortexazur/FlowLuna/releases).
-2. Téléchargez l'installateur officiel **`FlowLuna-Setup-1.22.9.exe`** (~115 Mo).
+2. Téléchargez l'installateur officiel **`FlowLuna-Setup-1.23.0.exe`** (~115 Mo).
 3. Lancez l'exécutable : l'application installe automatiquement le binaire natif C# .NET 9 + WebView2, configure les dépendances audio LibVLCSharp et crée les raccourcis sur le Bureau et le Menu Démarrer.
 
 ---
@@ -232,6 +233,22 @@ flowluna/
 ├── release-dotnet/               # Sortie du binaire unique autonome C# (FlowLuna.exe)
 └── vite.config.ts                # Configuration Vite avec base relative './'
 ```
+
+---
+
+## 🔒 Sécurité & Confidentialité
+
+FlowLuna est conçu avec une attention intransigeante portée à la sécurité de l'utilisateur, à l'intégrité de ses données locales et au respect absolu de sa vie privée :
+
+- **Zero-Telemetry & 100% Hors-Ligne :** Aucune collecte de données personnelles, aucune télémétrie ni traceur espion tiers. Votre bibliothèque, vos playlists et votre historique d'écoute demeurent confinés à 100% sur votre disque dur.
+- **Inférence IA Agnostique & Privée :** Prise en charge native d'une exécution 100% locale via **Ollama** ou **LM Studio** sans abonnement ni transmission de vos métadonnées à des serveurs tiers distants.
+- **Isolation IPC & Sandboxing WebView2 / Electron :** `contextIsolation` activé, `nodeIntegration` désactivé sur le moteur de rendu, exposition minimale et typée des API hôtes via `contextBridge` sans surface de passage direct vers le shell de l'OS.
+- **Serveurs In-Process Sécurisés (ASP.NET Core Kestrel & Express) :**
+  - Écoute strictement bornée à l'interface de bouclage locale (`127.0.0.1` / Loopback), rendant l'API invisible et inaccessible depuis le réseau local (LAN).
+  - Contrôle d'accès CORS restreint aux origines applicatives locales autorisées (`localhost`, `127.0.0.1`, protocoles natifs).
+  - Validation anti-traversée de répertoire (*Path Traversal Protection*) stricte sur les routes de streaming local (`/api/library/stream`), d'artworks (`/api/covers/:name`) et filtrage strict sur une liste blanche d'extensions multimédias autorisées.
+- **Exécution Sûre des Binaires Externes (`yt-dlp` & `ffmpeg`) :** Appel direct par vecteurs d'arguments isolés (`ProcessStartInfo.ArgumentList` en C# et `execFile` en Node.js) prévenant toute injection de commande shell.
+- **Protection du Système d'Exploitation :** Garde-fous interdisant toute interaction ou altération de fichiers en dehors du répertoire applicatif et des dossiers multimédias de l'utilisateur.
 
 ---
 

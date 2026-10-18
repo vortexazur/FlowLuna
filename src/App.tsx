@@ -9,6 +9,8 @@ import {
   BackdropEffect,
   AppUpdateInfo,
   DEFAULT_MARATHON_CONFIG,
+  DEFAULT_PLAYER_SETTINGS,
+  DEFAULT_AI_SETTINGS,
   APP_VERSION,
 } from './types';
 import { compareSemVer } from './utils/semver';
@@ -61,40 +63,7 @@ import { discordRpc } from './services/discordRpcService';
 import { UpdateNotificationToast } from './components/UpdateNotificationToast';
 import { showSystemNotification } from './utils/systemNotification';
 import { setCustomAnimeSkipClientId, setSkipOpAiConfig } from './services/openingDetectorService';
-import { DEFAULT_AI_SETTINGS } from './types';
 import { getEffectiveAiConfig } from './services/aiService';
-
-const DEFAULT_PLAYER_SETTINGS: PlayerSettings = {
-  language: 'fr',
-  theme: 'dark',
-  accent: 'emerald',
-  backdropEffect: 'glass',
-  glassIntensity: 70,
-  acrylicIntensity: 30,
-  visualizerStyle: 'minimal',
-  crossfadeDuration: 0,
-  gaplessPlayback: true,
-  autoCacheFavorites: true,
-  maxCacheSizeMb: 1024,
-  highQualityStream: true,
-  volumeNormalization: true,
-  normalizationTarget: 'streaming',
-  discordRpcEnabled: true,
-  smtcEnabled: true,
-  compactMode: false,
-  compactPlayerDock: 'bottom',
-  compactPlayerGhost: false,
-  autoSkipOpening: false,
-  enableSkipOpening: true,
-  marathonConfig: DEFAULT_MARATHON_CONFIG,
-  videoSkipForwardInterval: 10,
-  videoAspectRatio: 'contain',
-  animeSkipClientId: '',
-  skipOpAiMode: 'disabled',
-  skipOpAiProvider: 'gemini',
-  skipOpAiApiKey: '',
-  aiSettings: DEFAULT_AI_SETTINGS,
-};
 
 const DEFAULT_EQ_SETTINGS: EqualizerSettings = {
   enabled: true,

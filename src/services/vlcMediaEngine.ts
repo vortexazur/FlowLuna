@@ -110,6 +110,9 @@ export class VLCMedia {
 
 type EventListener = (...args: any[]) => void;
 
+// Cache single MediaElementAudioSourceNode per HTMLMediaElement to strictly prevent InvalidStateError
+const mediaElementSourceMap = new WeakMap<HTMLMediaElement, MediaElementAudioSourceNode>();
+
 export class VLCMediaPlayer {
   private media: VLCMedia | null = null;
   private state: VLCState = VLCState.NothingSpecial;
@@ -261,9 +264,12 @@ export class VLCMediaPlayer {
     if (!this.audioEl || !this.audioContext || this.isConnected) return;
 
     try {
-      if (!this.sourceNode) {
-        this.sourceNode = this.audioContext.createMediaElementSource(this.audioEl);
+      let source = mediaElementSourceMap.get(this.audioEl);
+      if (!source) {
+        source = this.audioContext.createMediaElementSource(this.audioEl);
+        mediaElementSourceMap.set(this.audioEl, source);
       }
+      this.sourceNode = source;
 
       // Preamp Gain
       this.preampGainNode = this.audioContext.createGain();

@@ -369,11 +369,12 @@ export function useMarathonController({
 
         // Règle stricte :
         // - Interdiction d'auto-skip sans confirmation si source === 'heuristic'
-        // - Interdiction d'auto-skip sans confirmation si driftDetected === true
+        // - Interdiction d'auto-skip sans confirmation si l'OP lui-même signale une dérive (drift sur l'intervalle)
         const canAutoSkipOp =
           isConfiguredToAutoSkip &&
           opSource !== 'heuristic' &&
-          !markers.driftDetected;
+          opSource !== 'ai' &&
+          !markers.op?.drift;
 
         if (canAutoSkipOp) {
           if (!isSeekingRef.current && !hasSkippedOpRef.current) {

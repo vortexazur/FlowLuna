@@ -39,9 +39,14 @@ function getSourceBadge(
     label = trans.badgeHeuristic;
     colorClass = 'text-slate-300 bg-slate-500/20 border-slate-500/40';
     isWarning = true;
+  } else if (interval.source === 'ai') {
+    label = trans.badgeAi;
+    colorClass = 'text-violet-400 bg-violet-500/15 border-violet-500/30';
+    isWarning = true;
   } else {
     // interval.source === 'api'
-    const isDrift = !!driftDetected || interval.confidence === 'moderate';
+    // Lire la dérive sur l'intervalle lui-même (drift) en priorité, puis le prop global pour rétro-compat
+    const isDrift = !!interval.drift || !!driftDetected || interval.confidence === 'moderate';
     if (isDrift) {
       label = trans.badgeApiDrift;
       colorClass = 'text-amber-400 bg-amber-500/15 border-amber-500/30';
@@ -72,9 +77,13 @@ export const SkipOpeningButton: React.FC<SkipOpeningButtonProps> = ({
 }) => {
   const t = getT(settings?.language || language);
 
-  // Détection de l'incertitude (Heuristique ou Drift temporel)
+  // Détection de l'incertitude (Heuristique, IA, ou Drift temporel sur l'intervalle)
   const isUncertain =
-    interval?.source === 'heuristic' || !!driftDetected || interval?.confidence === 'moderate';
+    interval?.source === 'heuristic' ||
+    interval?.source === 'ai' ||
+    !!interval?.drift ||
+    !!driftDetected ||
+    interval?.confidence === 'moderate';
 
   // Forcer l'affichage du bouton manuel en cas d'incertitude même si autoSkipEnabled est actif
   const shouldShowButton = isVisible && interval && (!autoSkipEnabled || isUncertain);

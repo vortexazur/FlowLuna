@@ -8,6 +8,7 @@ using System.Text;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
+using System.Text.RegularExpressions;
 
 namespace FlowLuna.Services;
 
@@ -17,6 +18,53 @@ public static class AiProxyService
     {
         Timeout = TimeSpan.FromSeconds(35)
     };
+
+    public static string ValidateEndpoint(string provider, string? rawEndpoint)
+    {
+        var defaultEp = provider switch
+        {
+            "anthropic" => "https://api.anthropic.com/v1",
+            "openai" => "https://api.openai.com/v1",
+            "mistral" => "https://api.mistral.ai/v1",
+            "gemini" => "https://generativelanguage.googleapis.com/v1beta",
+            "custom" => "https://api.groq.com/openai/v1",
+            "ollama" => "http://localhost:11434",
+            "lmstudio" => "http://localhost:1234",
+            _ => "https://generativelanguage.googleapis.com/v1beta"
+        };
+
+        var endpoint = string.IsNullOrWhiteSpace(rawEndpoint) ? defaultEp : rawEndpoint.Trim().TrimEnd('/');
+        if (!Uri.TryCreate(endpoint, UriKind.Absolute, out var uri))
+        {
+            throw new ArgumentException("Format d'endpoint IA invalide.");
+        }
+
+        if (provider is "ollama" or "lmstudio")
+        {
+            if (!uri.IsLoopback)
+            {
+                throw new InvalidOperationException($"Sécurité SSRF : L'endpoint pour {provider} doit impérativement cibler la machine locale (localhost ou 127.0.0.1).");
+            }
+            return endpoint;
+        }
+
+        if (uri.Scheme != Uri.UriSchemeHttps)
+        {
+            throw new InvalidOperationException("Sécurité SSRF : Les fournisseurs Cloud requièrent obligatoirement une connexion HTTPS.");
+        }
+
+        var host = uri.Host.ToLowerInvariant();
+        if (uri.IsLoopback ||
+            host.StartsWith("10.") ||
+            host.StartsWith("192.168.") ||
+            host.StartsWith("169.254.") ||
+            Regex.IsMatch(host, @"^172\.(1[6-9]|2\d|3[01])\."))
+        {
+            throw new InvalidOperationException("Sécurité SSRF : Connexion aux adresses IP privées ou locales interdite pour les fournisseurs Cloud.");
+        }
+
+        return endpoint;
+    }
 
     public static async Task<string> ExecuteAiChatAsync(
         JsonElement config,
@@ -28,6 +76,8 @@ public static class AiProxyService
         var apiKey = config.TryGetProperty("apiKey", out var kProp) ? (kProp.GetString() ?? "").Trim() : "";
         var endpoint = config.TryGetProperty("endpoint", out var eProp) ? (eProp.GetString() ?? "").Trim().TrimEnd('/') : "";
         var model = config.TryGetProperty("model", out var mProp) ? (mProp.GetString() ?? "").Trim() : "";
+
+        var cleanEndpoint = ValidateEndpoint(provider, endpoint);
 
         double temperature = 0.2;
         int maxTokens = 1024;
@@ -50,7 +100,6 @@ public static class AiProxyService
             if (string.IsNullOrWhiteSpace(apiKey))
                 throw new InvalidOperationException("Clé API Anthropic requise.");
 
-            var cleanEndpoint = string.IsNullOrWhiteSpace(endpoint) ? "https://api.anthropic.com/v1" : endpoint;
             var targetModel = string.IsNullOrWhiteSpace(model) ? "claude-3-5-haiku-20241022" : model;
 
             string? systemPrompt = null;
@@ -132,7 +181,6 @@ public static class AiProxyService
             if (string.IsNullOrWhiteSpace(apiKey))
                 throw new InvalidOperationException("Clé API Google Gemini requise.");
 
-            var cleanEndpoint = string.IsNullOrWhiteSpace(endpoint) ? "https://generativelanguage.googleapis.com/v1beta" : endpoint;
             var targetModel = string.IsNullOrWhiteSpace(model) ? "gemini-flash-latest" : model;
 
             // Rétro-compatibilité : mapper les anciens modèles dépréciés vers les versions récentes
@@ -230,16 +278,7 @@ public static class AiProxyService
         }
 
         // 3. OpenAI, Mistral, Custom Endpoint, Ollama, LM Studio (OpenAI chat/completions standard)
-        var defaultEndpoint = provider switch
-        {
-            "mistral" => "https://api.mistral.ai/v1",
-            "ollama" => "http://localhost:11434",
-            "lmstudio" => "http://localhost:1234",
-            "custom" => "https://api.groq.com/openai/v1",
-            _ => "https://api.openai.com/v1"
-        };
-
-        var effectiveEndpoint = string.IsNullOrWhiteSpace(endpoint) ? defaultEndpoint : endpoint;
+        var effectiveEndpoint = cleanEndpoint;
         var defaultModel = provider switch
         {
             "mistral" => "mistral-small-latest",
@@ -370,12 +409,12 @@ public static class AiProxyService
 
     public static async Task<List<string>> FetchAvailableModelsAsync(string provider, string? endpoint, CancellationToken ct = default)
     {
-        var cleanEndpoint = (endpoint ?? "").Trim().TrimEnd('/');
+        var cleanEndpoint = ValidateEndpoint(provider, endpoint);
         var models = new List<string>();
 
         if (provider == "ollama")
         {
-            var baseUri = string.IsNullOrWhiteSpace(cleanEndpoint) ? "http://localhost:11434" : cleanEndpoint;
+            var baseUri = cleanEndpoint;
             using var req = new HttpRequestMessage(HttpMethod.Get, $"{baseUri}/api/tags");
             using var res = await HttpClient.SendAsync(req, ct);
             if (!res.IsSuccessStatusCode) return models;
@@ -399,7 +438,7 @@ public static class AiProxyService
         }
         else if (provider == "lmstudio")
         {
-            var baseUri = string.IsNullOrWhiteSpace(cleanEndpoint) ? "http://localhost:1234" : cleanEndpoint;
+            var baseUri = cleanEndpoint;
             var modelsUrl = baseUri.EndsWith("/v1", StringComparison.OrdinalIgnoreCase) ? $"{baseUri}/models" : $"{baseUri}/v1/models";
 
             using var req = new HttpRequestMessage(HttpMethod.Get, modelsUrl);

@@ -174,7 +174,10 @@ public static class DownloaderEngine
         };
     }
 
-    public static async Task<string> DownloadToTempAsync(DownloadRequest request, Action<YtDlpProgressUpdate>? onProgress)
+    public static async Task<string> DownloadToTempAsync(
+        DownloadRequest request,
+        Action<YtDlpProgressUpdate>? onProgress,
+        CancellationToken cancellationToken = default)
     {
         if (!IsValidMediaUrl(request.Url))
         {
@@ -264,18 +267,23 @@ public static class DownloaderEngine
         // Actively drain stderr to prevent OS anonymous pipe saturation and deadlock
         process.ErrorDataReceived += (_, _) => { };
 
-        using var cts = new CancellationTokenSource(TimeSpan.FromMinutes(10));
+        using var timeoutCts = new CancellationTokenSource(TimeSpan.FromMinutes(10));
+        using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(timeoutCts.Token, cancellationToken);
         process.Start();
         process.BeginOutputReadLine();
         process.BeginErrorReadLine();
 
         try
         {
-            await process.WaitForExitAsync(cts.Token);
+            await process.WaitForExitAsync(linkedCts.Token);
         }
         catch (OperationCanceledException)
         {
             try { process.Kill(entireProcessTree: true); } catch { }
+            if (cancellationToken.IsCancellationRequested)
+            {
+                throw new OperationCanceledException("Téléchargement annulé par l'utilisateur.");
+            }
             throw new TimeoutException("Le téléchargement via yt-dlp a dépassé le délai imparti de 10 minutes.");
         }
 

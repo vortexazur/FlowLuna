@@ -42,11 +42,23 @@ export const EqualizerModal: React.FC<EqualizerModalProps> = ({
   onUpdatePlayerSettings,
 }) => {
   const t = getT(playerSettings?.language);
+
+  const effectiveBands = React.useMemo(() => {
+    if (settings?.bands && Array.isArray(settings.bands) && settings.bands.length > 0) {
+      return settings.bands;
+    }
+    return DEFAULT_EQ_FREQUENCIES.map((freq) => ({
+      frequency: freq,
+      gain: 0,
+      label: freq >= 1000 ? `${freq / 1000}k` : `${freq}`,
+    }));
+  }, [settings?.bands]);
+
   if (!isOpen) return null;
 
   const handleBandChange = (index: number, gain: number) => {
-    const newBands = [...settings.bands];
-    newBands[index] = { ...newBands[index], gain };
+    const newBands = [...effectiveBands];
+    newBands[index] = { ...(newBands[index] || { frequency: DEFAULT_EQ_FREQUENCIES[index] || 1000, label: '1k' }), gain };
     const updated: EqualizerSettings = {
       ...settings,
       preset: 'Custom',
@@ -183,7 +195,7 @@ export const EqualizerModal: React.FC<EqualizerModalProps> = ({
           </div>
 
           <div className="grid grid-cols-10 gap-2 items-center justify-items-center h-48 py-2">
-            {settings.bands.map((band, idx) => (
+            {effectiveBands.map((band, idx) => (
               <div key={band.frequency} className="flex flex-col items-center justify-between h-full w-full">
                 <span className="text-[11px] font-mono text-neutral-400 font-semibold mb-1">
                   {band.gain > 0 ? `+${band.gain}` : band.gain}

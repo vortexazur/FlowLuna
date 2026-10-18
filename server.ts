@@ -291,8 +291,14 @@ function pipeRemoteMedia(
   });
 }
 
-app.use(express.json({ limit: '50mb' }));
-app.use(express.raw({ limit: '100mb', type: ['audio/*', 'application/octet-stream'] }));
+app.use(express.json({ limit: '10mb' }));
+app.use(express.raw({ limit: '50mb', type: ['audio/*', 'application/octet-stream'] }));
+
+export function isHostSafe(hostHeader?: string): boolean {
+  if (!hostHeader) return true;
+  const host = hostHeader.split(':')[0].toLowerCase();
+  return host === 'localhost' || host === '127.0.0.1';
+}
 
 export function isOriginSafe(origin: string): boolean {
   if (!origin) return true; // Direct local calls or same-origin top-level navigation
@@ -311,6 +317,16 @@ export function isOriginSafe(origin: string): boolean {
 }
 
 app.use((req, res, next) => {
+  // 1. Anti-DNS Rebinding guard
+  if (!isHostSafe(req.headers.host)) {
+    return res.status(403).send('Forbidden: Host not allowed');
+  }
+
+  // 2. Cross-site request blocking
+  if (req.headers['sec-fetch-site'] === 'cross-site') {
+    return res.status(403).send('Forbidden: Cross-site requests rejected');
+  }
+
   const origin = req.headers.origin || '';
   const isAllowed = isOriginSafe(origin);
   if (origin && isAllowed) {
@@ -318,18 +334,26 @@ app.use((req, res, next) => {
   }
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
-  if (!isAllowed) {
+
+  if (origin && !isAllowed) {
     return res.status(403).send('Origin not allowed');
   }
+
+  // If origin is missing on non-safe HTTP methods, verify referer if present
+  if (!origin && req.method !== 'GET' && req.method !== 'HEAD' && req.method !== 'OPTIONS') {
+    const referer = req.headers.referer || '';
+    if (referer && !isOriginSafe(referer)) {
+      return res.status(403).send('Forbidden: Referer not allowed');
+    }
+  }
+
   if (req.method === 'OPTIONS') {
     return res.sendStatus(200);
   }
   next();
 });
 
-const COOKIES_PATH = fs.existsSync(path.join(process.cwd(), 'cookies.txt'))
-  ? path.join(process.cwd(), 'cookies.txt')
-  : path.join(getFlowLunaDataDir(), 'cookies.txt');
+const COOKIES_PATH = path.join(getFlowLunaDataDir(), 'cookies.txt');
 
 // Real-time Download Jobs Progress Tracker
 const activeJobListeners = new Map<string, Set<(data: YtDlpProgressUpdate) => void>>();
@@ -569,6 +593,28 @@ app.get('/api/app/check-update', async (req, res) => {
   }
 });
 
+export function isAllowedUpdateUrl(urlStr: string): boolean {
+  try {
+    const parsed = new URL(urlStr);
+    if (parsed.protocol !== 'https:') return false;
+    if (
+      parsed.hostname === 'github.com' &&
+      parsed.pathname.startsWith('/vortexazur/FlowLuna/releases/download/')
+    ) {
+      return true;
+    }
+    if (
+      parsed.hostname === 'objects.githubusercontent.com' &&
+      parsed.pathname.startsWith('/github-production-release-asset-')
+    ) {
+      return true;
+    }
+    return false;
+  } catch {
+    return false;
+  }
+}
+
 function downloadUpdateFileWithProgress(urlStr: string, destPath: string, maxRedirects = 5) {
   if (maxRedirects <= 0) {
     appUpdateState.status = 'error';
@@ -576,10 +622,21 @@ function downloadUpdateFileWithProgress(urlStr: string, destPath: string, maxRed
     return;
   }
 
-  const client = urlStr.startsWith('https') ? https : http;
-  const req = client.get(urlStr, { headers: { 'User-Agent': `FlowLuna-App/${getCurrentAppVersion()}` } }, (res) => {
+  if (!isAllowedUpdateUrl(urlStr)) {
+    appUpdateState.status = 'error';
+    appUpdateState.message = 'Tentative de téléchargement depuis une URL non autorisée.';
+    return;
+  }
+
+  const req = https.get(urlStr, { headers: { 'User-Agent': `FlowLuna-App/${getCurrentAppVersion()}` } }, (res) => {
     if (res.statusCode && [301, 302, 303, 307, 308].includes(res.statusCode) && res.headers.location) {
-      downloadUpdateFileWithProgress(res.headers.location, destPath, maxRedirects - 1);
+      const nextUrl = new URL(res.headers.location, urlStr).toString();
+      if (!isAllowedUpdateUrl(nextUrl)) {
+        appUpdateState.status = 'error';
+        appUpdateState.message = 'Redirection vers une URL non autorisée refusée.';
+        return;
+      }
+      downloadUpdateFileWithProgress(nextUrl, destPath, maxRedirects - 1);
       return;
     }
 
@@ -673,14 +730,17 @@ app.post('/api/app/download-update', express.json(), async (req, res) => {
     }
 
     // Security: only allow downloads from official GitHub release URLs
-    const TRUSTED_URL_PATTERN = /^https:\/\/(?:github\.com\/vortexazur\/FlowLuna\/releases\/download\/|objects\.githubusercontent\.com\/)/i;
-    if (!TRUSTED_URL_PATTERN.test(downloadUrl)) {
+    if (!isAllowedUpdateUrl(downloadUrl)) {
       return res.status(403).json({ error: 'URL de téléchargement non autorisée. Seules les releases GitHub officielles sont acceptées.' });
     }
 
-    const updatesDir = path.join(getFlowLunaDataDir(), 'updates');
+    const safeVersion = /^\d+\.\d+\.\d+$/.test(targetVersion) ? targetVersion : 'latest';
+    const updatesDir = path.resolve(getFlowLunaDataDir(), 'updates');
     fs.mkdirSync(updatesDir, { recursive: true });
-    const targetFile = path.join(updatesDir, `FlowLuna-Setup-${targetVersion}.exe`);
+    const targetFile = path.resolve(updatesDir, `FlowLuna-Setup-${safeVersion}.exe`);
+    if (!targetFile.startsWith(updatesDir + path.sep)) {
+      return res.status(400).json({ error: 'Nom de version non autorisé.' });
+    }
 
     appUpdateState = {
       status: 'downloading',
@@ -690,7 +750,7 @@ app.post('/api/app/download-update', express.json(), async (req, res) => {
       speed: 'Connexion...',
       message: 'Téléchargement de la mise à jour officielle...',
       installerPath: targetFile,
-      latestVersion: targetVersion,
+      latestVersion: safeVersion,
     };
 
     res.json({ success: true, message: 'Téléchargement démarré', targetFile });
@@ -716,11 +776,11 @@ app.get('/api/app/update-progress', (req, res) => {
 app.post('/api/app/apply-update', express.json(), (req, res) => {
   // Security: never trust client-supplied paths — only use the internally tracked installer
   const installerPath = appUpdateState.installerPath;
-  if (!installerPath || !fs.existsSync(installerPath)) {
-    return res.status(400).json({ error: 'Fichier installateur introuvable sur le disque.' });
+  if (!installerPath || !fs.existsSync(installerPath) || appUpdateState.status !== 'ready_to_install') {
+    return res.status(400).json({ error: 'Fichier installateur introuvable ou mise à jour non prête.' });
   }
 
-  // Security: validate the installer is within the trusted updates directory
+  // Security: validate the installer is strictly within the trusted updates directory
   const updatesDir = path.resolve(path.join(getFlowLunaDataDir(), 'updates'));
   const resolvedInstaller = path.resolve(installerPath);
   if (!resolvedInstaller.startsWith(updatesDir + path.sep) || path.extname(resolvedInstaller).toLowerCase() !== '.exe') {
@@ -1932,6 +1992,41 @@ app.post('/api/downloader/inspect', async (req, res) => {
   }
 });
 
+const DANGEROUS_EXTENSIONS = new Set([
+  '.exe', '.dll', '.bat', '.cmd', '.ps1', '.vbs', '.vbe', '.js', '.jse',
+  '.wsf', '.wsh', '.msc', '.msi', '.msp', '.com', '.scr', '.hta', '.cpl', '.pif'
+]);
+
+export function isSafeDestinationPath(destPath?: string): boolean {
+  if (!destPath || typeof destPath !== 'string') return false;
+  try {
+    const resolved = path.resolve(destPath);
+    const ext = path.extname(resolved).toLowerCase();
+    if (DANGEROUS_EXTENSIONS.has(ext)) return false;
+
+    const userHome = os.homedir();
+    const allowedRoots = [
+      path.join(userHome, 'Music'),
+      path.join(userHome, 'Musique'),
+      path.join(userHome, 'Videos'),
+      path.join(userHome, 'Vidéos'),
+      path.join(userHome, 'Downloads'),
+      path.join(userHome, 'Téléchargements'),
+      path.join(userHome, 'Desktop'),
+      path.join(userHome, 'Bureau'),
+      path.join(userHome, 'Documents'),
+      getFlowLunaDataDir(),
+    ];
+
+    return allowedRoots.some((root) => {
+      const normalizedRoot = path.resolve(root) + path.sep;
+      return resolved.startsWith(normalizedRoot);
+    });
+  } catch {
+    return false;
+  }
+}
+
 // 2. Download Media (Audio or Video) to PC with User Choices
 app.get(['/api/downloader/download', '/api/downloader/stream-file'], async (req, res) => {
   const url = (req.query.url as string)?.trim();
@@ -1944,6 +2039,10 @@ app.get(['/api/downloader/download', '/api/downloader/stream-file'], async (req,
   const customTitle = (req.query.title as string)?.trim();
   const customArtist = (req.query.artist as string)?.trim();
   const destinationPath = (req.query.destinationPath as string)?.trim();
+
+  if (destinationPath && !isSafeDestinationPath(destinationPath)) {
+    return res.status(400).json({ error: 'Emplacement de destination invalide ou non autorisé.' });
+  }
 
   if (!url) {
     return res.status(400).json({ error: 'Paramètre url requis.' });
@@ -2063,6 +2162,15 @@ app.get(['/api/downloader/download', '/api/downloader/stream-file'], async (req,
   let stdout = '';
   let stderr = '';
 
+  const onClientClose = () => {
+    if (proc.exitCode === null) {
+      try {
+        proc.kill('SIGTERM');
+      } catch {}
+    }
+  };
+  req.on('close', onClientClose);
+
   proc.stdout?.on('data', (data) => {
     const str = data.toString();
     stdout += str;
@@ -2082,6 +2190,7 @@ app.get(['/api/downloader/download', '/api/downloader/stream-file'], async (req,
   });
 
   proc.on('close', async (code) => {
+    req.off('close', onClientClose);
     const err = code === 0 ? null : new Error(stderr || `Process exited with code ${code}`);
     if (jobId) {
       broadcastJobProgress(jobId, {
@@ -2152,7 +2261,7 @@ app.get(['/api/downloader/download', '/api/downloader/stream-file'], async (req,
                   const downloadName = sanitizeFileName(cleanMeta.fileName || `${cleanMeta.artist} - ${cleanMeta.title}`);
                   const finalFileName = `${downloadName}.${chosenFormatExt}`;
 
-                  if (destinationPath) {
+                  if (destinationPath && isSafeDestinationPath(destinationPath)) {
                     try {
                       const destDir = path.dirname(destinationPath);
                       if (!fs.existsSync(destDir)) {
@@ -2220,7 +2329,7 @@ app.get(['/api/downloader/download', '/api/downloader/stream-file'], async (req,
       const downloadName = sanitizeFileName(cleanMeta.fileName || `${cleanMeta.artist} - ${cleanMeta.title}`);
       const finalFileName = `${downloadName}.${finalExt}`;
 
-      if (destinationPath) {
+      if (destinationPath && isSafeDestinationPath(destinationPath)) {
         try {
           const destDir = path.dirname(destinationPath);
           if (!fs.existsSync(destDir)) {
@@ -2472,13 +2581,54 @@ const SERVER_DEFAULT_MODELS: Record<string, string> = {
   lmstudio: 'local-model',
 };
 
+export function validateAiEndpoint(provider: string, rawEndpoint?: string): string {
+  const normProvider = (provider || 'gemini').toLowerCase();
+  const defaultEp = SERVER_DEFAULT_ENDPOINTS[normProvider] || 'https://generativelanguage.googleapis.com/v1beta';
+  const endpoint = (rawEndpoint || defaultEp).trim().replace(/\/+$/, '');
+
+  let parsed: URL;
+  try {
+    parsed = new URL(endpoint);
+  } catch {
+    throw new Error("Format d'endpoint IA invalide.");
+  }
+
+  const hostname = parsed.hostname.toLowerCase();
+  const isLoopback = hostname === 'localhost' || hostname === '127.0.0.1' || hostname === '::1';
+
+  if (normProvider === 'ollama' || normProvider === 'lmstudio') {
+    if (!isLoopback) {
+      throw new Error(`Sécurité SSRF : L'endpoint pour ${normProvider} doit impérativement cibler la machine locale (localhost ou 127.0.0.1).`);
+    }
+    return endpoint;
+  }
+
+  if (parsed.protocol !== 'https:') {
+    throw new Error('Sécurité SSRF : Les fournisseurs Cloud requièrent obligatoirement une connexion HTTPS.');
+  }
+
+  if (
+    isLoopback ||
+    hostname.endsWith('.localhost') ||
+    hostname.endsWith('.local') ||
+    hostname.startsWith('10.') ||
+    hostname.startsWith('192.168.') ||
+    hostname.startsWith('169.254.') ||
+    /^172\.(1[6-9]|2\d|3[01])\./.test(hostname)
+  ) {
+    throw new Error('Sécurité SSRF : Connexion aux adresses IP privées ou locales interdite pour les fournisseurs Cloud.');
+  }
+
+  return endpoint;
+}
+
 async function executeAiCallServer(
   config: ServerAiConfig,
   messages: Array<{ role: string; content: string }>,
   options?: { json?: boolean; temperature?: number; maxTokens?: number }
 ): Promise<string> {
-  const provider = config.provider || 'gemini';
-  const cleanEndpoint = (config.endpoint || SERVER_DEFAULT_ENDPOINTS[provider] || '').trim().replace(/\/+$/, '');
+  const provider = (config.provider || 'gemini').toLowerCase();
+  const cleanEndpoint = validateAiEndpoint(provider, config.endpoint);
   const model = (config.model || SERVER_DEFAULT_MODELS[provider] || '').trim();
   const apiKey = (config.apiKey || '').trim();
 
@@ -2679,10 +2829,14 @@ app.post('/api/ai/test', async (req, res) => {
 
 app.get('/api/ai/models', async (req, res) => {
   const provider = String(req.query.provider || 'ollama').toLowerCase();
-  const rawEndpoint = String(
-    req.query.endpoint || (provider === 'ollama' ? 'http://localhost:11434' : 'http://localhost:1234')
-  ).trim();
-  const cleanUrl = rawEndpoint.replace(/\/+$/, '');
+  const rawEndpoint = req.query.endpoint ? String(req.query.endpoint).trim() : undefined;
+
+  let cleanUrl: string;
+  try {
+    cleanUrl = validateAiEndpoint(provider, rawEndpoint);
+  } catch (valErr: any) {
+    return res.status(400).json({ success: false, error: valErr?.message || 'Endpoint invalide.' });
+  }
 
   try {
     if (provider === 'ollama') {
@@ -3025,13 +3179,38 @@ app.post('/api/audio/convert', async (req, res) => {
     } else if (req.body?.audioUrl || req.query.audioUrl) {
       const audioUrl = (req.body?.audioUrl || req.query.audioUrl) as string;
       if (audioUrl.startsWith('/audio/')) {
-        const localPath = path.join(process.cwd(), 'public', audioUrl);
-        if (fs.existsSync(localPath)) {
+        const publicDir = path.resolve(process.cwd(), 'public');
+        const localPath = path.resolve(publicDir, audioUrl.replace(/^\/+/, ''));
+        if (localPath.startsWith(publicDir + path.sep) && fs.existsSync(localPath)) {
           fs.copyFileSync(localPath, inputTempPath);
           hasInput = true;
         }
       } else if (audioUrl.startsWith('http://') || audioUrl.startsWith('https://')) {
-        const fetchRes = await fetch(audioUrl);
+        let isSafe = false;
+        try {
+          const parsed = new URL(audioUrl);
+          const hostname = parsed.hostname.toLowerCase();
+          const isBlocked =
+            hostname === 'localhost' ||
+            hostname === '127.0.0.1' ||
+            hostname === '::1' ||
+            hostname === '0.0.0.0' ||
+            hostname.endsWith('.localhost') ||
+            hostname.endsWith('.local') ||
+            hostname.startsWith('10.') ||
+            hostname.startsWith('192.168.') ||
+            hostname.startsWith('169.254.') ||
+            /^172\.(1[6-9]|2\d|3[01])\./.test(hostname);
+          isSafe = !isBlocked;
+        } catch {
+          isSafe = false;
+        }
+
+        if (!isSafe) {
+          return res.status(400).json({ error: 'URL audio distante non autorisée ou adresse privée/locale bloquée (SSRF).' });
+        }
+
+        const fetchRes = await fetch(audioUrl, { signal: AbortSignal.timeout(15000) });
         if (fetchRes.ok) {
           const ab = await fetchRes.arrayBuffer();
           fs.writeFileSync(inputTempPath, Buffer.from(ab));
@@ -3176,8 +3355,29 @@ function getCustomScannedDirs(): string[] {
   return [];
 }
 
+export function isSafeScanDirectory(dirPath: string): boolean {
+  if (!dirPath || typeof dirPath !== 'string') return false;
+  try {
+    const resolved = path.resolve(dirPath);
+    const parsed = path.parse(resolved);
+    // Disallow drive roots like "C:\" or "/"
+    if (resolved === parsed.root) return false;
+    const lower = resolved.toLowerCase();
+    const winDir = (process.env.WINDIR || 'C:\\Windows').toLowerCase();
+    const progFiles = (process.env.ProgramFiles || 'C:\\Program Files').toLowerCase();
+    const progFilesX86 = (process.env['ProgramFiles(x86)'] || 'C:\\Program Files (x86)').toLowerCase();
+    if (lower.startsWith(winDir) || lower.startsWith(progFiles) || lower.startsWith(progFilesX86)) {
+      return false;
+    }
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 function saveCustomScannedDir(dirPath: string): string[] {
   try {
+    if (!isSafeScanDirectory(dirPath)) return getCustomScannedDirs();
     const current = getCustomScannedDirs();
     const resolved = path.resolve(dirPath);
     if (!current.includes(resolved) && fs.existsSync(resolved)) {
@@ -3703,8 +3903,8 @@ app.get('/api/library/scan', async (req, res) => {
 app.post('/api/library/add-folder', express.json(), async (req, res) => {
   try {
     const { folderPath } = req.body;
-    if (!folderPath || !fs.existsSync(folderPath)) {
-      return res.status(400).json({ error: 'Dossier inexistant ou inaccessible' });
+    if (!folderPath || !fs.existsSync(folderPath) || !isSafeScanDirectory(folderPath)) {
+      return res.status(400).json({ error: 'Dossier inexistant, inaccessible ou non autorisé (racines disques et dossiers système exclus).' });
     }
 
     saveCustomScannedDir(folderPath);
@@ -3772,6 +3972,17 @@ app.get('/api/library/stream', (req, res) => {
   }
 
   const resolved = path.resolve(reqFile);
+  if (!fs.existsSync(resolved)) {
+    return res.status(404).send('Fichier audio introuvable');
+  }
+
+  // Security: resolve real filesystem path to prevent symlink traversal
+  let realPath: string;
+  try {
+    realPath = fs.realpathSync(resolved);
+  } catch {
+    return res.status(404).send('Chemin inaccessible');
+  }
 
   // Security: only serve files from authorized library directories or explicitly added files
   const allowedDirs = [
@@ -3786,17 +3997,13 @@ app.get('/api/library/stream', (req, res) => {
     path.join(os.homedir(), 'OneDrive', 'Musique'),
     getFlowLunaDataDir(),
   ].map((d) => path.resolve(d));
-  const isInAllowedDir = allowedDirs.some((dir) => resolved.startsWith(dir + path.sep) || resolved === dir);
-  const isExplicitlyAllowed = explicitlyAddedFiles.has(resolved);
+  const isInAllowedDir = allowedDirs.some((dir) => realPath.startsWith(dir + path.sep) || realPath === dir);
+  const isExplicitlyAllowed = explicitlyAddedFiles.has(realPath);
   if (!isInAllowedDir && !isExplicitlyAllowed) {
     return res.status(403).send('Accès au fichier non autorisé');
   }
 
-  if (!fs.existsSync(resolved)) {
-    return res.status(404).send('Fichier audio introuvable');
-  }
-
-  const ext = path.extname(resolved).toLowerCase();
+  const ext = path.extname(realPath).toLowerCase();
   if (!ALL_MEDIA_EXTENSIONS.has(ext)) {
     return res.status(403).send('Format média non autorisé');
   }
@@ -3828,17 +4035,25 @@ app.get('/api/library/stream', (req, res) => {
     '.ogv': 'video/ogg',
   };
 
-  const stat = fs.statSync(resolved);
+  const stat = fs.statSync(realPath);
   const range = req.headers.range;
 
   if (range) {
     const parts = range.replace(/bytes=/, '').split('-');
     const start = parseInt(parts[0], 10);
     const end = parts[1] ? parseInt(parts[1], 10) : stat.size - 1;
-    const chunksize = end - start + 1;
-    const file = fs.createReadStream(resolved, { start, end });
+
+    // Security: strict range validation
+    if (isNaN(start) || isNaN(end) || start < 0 || end < start || start >= stat.size) {
+      res.setHeader('Content-Range', `bytes */${stat.size}`);
+      return res.status(416).send('Range Not Satisfiable');
+    }
+
+    const safeEnd = Math.min(end, stat.size - 1);
+    const chunksize = safeEnd - start + 1;
+    const file = fs.createReadStream(realPath, { start, end: safeEnd });
     res.writeHead(206, {
-      'Content-Range': `bytes ${start}-${end}/${stat.size}`,
+      'Content-Range': `bytes ${start}-${safeEnd}/${stat.size}`,
       'Accept-Ranges': 'bytes',
       'Content-Length': chunksize,
       'Content-Type': mimeMap[ext] || 'audio/mpeg',
@@ -3852,7 +4067,7 @@ app.get('/api/library/stream', (req, res) => {
       'Accept-Ranges': 'bytes',
       'Cache-Control': 'private, max-age=3600',
     });
-    fs.createReadStream(resolved).pipe(res);
+    fs.createReadStream(realPath).pipe(res);
   }
 });
 
@@ -3936,6 +4151,13 @@ app.get('/api/video/chapters', (req, res) => {
 });
 
 // Intro Skipper Endpoint 1 : Snapping chirurgical aux silences audio / black frames
+// Constantes partagées avec la logique C# (IntroSkipperService.FineTuneIntervalAsync)
+const SNAP_SILENCE_NOISE = '-30dB';
+const SNAP_SILENCE_DURATION = '0.15';
+const SNAP_BLACK_PIX_TH = '0.98';
+const SNAP_BLACK_MIN_D = '0.1';
+const SNAP_MIN_INTERVAL_DURATION = 15.0; // Même règle de cohérence que le C#
+
 app.get('/api/video/fine-tune-markers', (req, res) => {
   try {
     const filePath = (req.query.filePath as string) || '';
@@ -3961,57 +4183,72 @@ app.get('/api/video/fine-tune-markers', (req, res) => {
       });
     }
 
+    /** Parse silences from ffmpeg stderr → tableau { start, end } */
+    function parseSilences(stderr: string, rangeMin: number): Array<{ start: number; end: number }> {
+      const startRegex = /silence_start:\s*([\d\.]+)/g;
+      const endRegex = /silence_end:\s*([\d\.]+)/g;
+      const silences: Array<{ start: number; end: number }> = [];
+      let curStart: number | null = null;
+      let m: RegExpExecArray | null;
+      while ((m = startRegex.exec(stderr)) !== null) {
+        curStart = rangeMin + parseFloat(m[1]);
+      }
+      while ((m = endRegex.exec(stderr)) !== null) {
+        const e = rangeMin + parseFloat(m[1]);
+        const s = curStart ?? (e - 0.2);
+        silences.push({ start: s, end: e });
+      }
+      return silences;
+    }
+
+    /** Parse black frames from ffmpeg stderr → tableau { start, end } */
+    function parseBlackFrames(stderr: string, rangeMin: number): Array<{ start: number; end: number }> {
+      const blackRegex = /black_start:([\d\.]+)\s+black_end:([\d\.]+)/g;
+      const frames: Array<{ start: number; end: number }> = [];
+      let m: RegExpExecArray | null;
+      while ((m = blackRegex.exec(stderr)) !== null) {
+        frames.push({ start: rangeMin + parseFloat(m[1]), end: rangeMin + parseFloat(m[2]) });
+      }
+      return frames;
+    }
+
+    /** Choisit le candidat le plus proche parmi des points temporels, dans la fenêtre */
+    function nearestPoint(candidates: number[], target: number, window: number): number | null {
+      let best: number | null = null;
+      let bestDist = Infinity;
+      for (const c of candidates) {
+        const d = Math.abs(c - target);
+        if (d < bestDist && d <= window && d > 0.05) {
+          bestDist = d;
+          best = c;
+        }
+      }
+      return best;
+    }
+
     // 1. Détecter silences autour de rawStart
     const startRangeMin = Math.max(0, rawStart - searchWindow);
     const startRangeDuration = searchWindow * 2.0;
-
     const silenceArgsStart = [
       '-v', 'info',
       '-ss', startRangeMin.toFixed(2),
       '-t', startRangeDuration.toFixed(2),
       '-i', filePath,
       '-vn', '-sn',
-      '-af', 'silencedetect=noise=-30dB:d=0.15',
-      '-f', 'null',
-      '-',
+      '-af', `silencedetect=noise=${SNAP_SILENCE_NOISE}:d=${SNAP_SILENCE_DURATION}`,
+      '-f', 'null', '-',
     ];
 
-    execFile(ffmpegPath, silenceArgsStart, { timeout: 7000 }, (err1, _stdout1, stderr1) => {
+    execFile(ffmpegPath, silenceArgsStart, { timeout: 7000 }, (err1, _out1, stderr1) => {
       let adjustedStart = rawStart;
       let startSnapped = false;
 
       if (!err1 && stderr1) {
-        const startRegex = /silence_start:\s*([\d\.]+)/g;
-        const endRegex = /silence_end:\s*([\d\.]+)/g;
-        let match;
-        const silences: Array<{ start: number; end: number }> = [];
-        let curStart: number | null = null;
-
-        while ((match = startRegex.exec(stderr1)) !== null) {
-          curStart = startRangeMin + parseFloat(match[1]);
-        }
-        while ((match = endRegex.exec(stderr1)) !== null) {
-          const e = startRangeMin + parseFloat(match[1]);
-          const s = curStart ?? (e - 0.2);
-          silences.push({ start: s, end: e });
-        }
-
-        let bestDist = Infinity;
-        let bestCandidate = rawStart;
-        for (const s of silences) {
-          const distEnd = Math.abs(s.end - rawStart);
-          if (distEnd < bestDist && distEnd <= searchWindow) {
-            bestDist = distEnd;
-            bestCandidate = s.end;
-          }
-          const distStart = Math.abs(s.start - rawStart);
-          if (distStart < bestDist && distStart <= searchWindow) {
-            bestDist = distStart;
-            bestCandidate = s.start;
-          }
-        }
-        if (bestDist <= searchWindow && Math.abs(bestCandidate - rawStart) > 0.05) {
-          adjustedStart = Math.round(bestCandidate * 100) / 100;
+        const silences = parseSilences(stderr1, startRangeMin);
+        const points = silences.flatMap(s => [s.end, s.start]);
+        const candidate = nearestPoint(points, rawStart, searchWindow);
+        if (candidate !== null) {
+          adjustedStart = Math.round(candidate * 100) / 100;
           startSnapped = true;
         }
       }
@@ -4019,60 +4256,101 @@ app.get('/api/video/fine-tune-markers', (req, res) => {
       // 2. Détecter silences autour de rawEnd
       const endRangeMin = Math.max(0, rawEnd - searchWindow);
       const endRangeDuration = searchWindow * 2.0;
-
       const silenceArgsEnd = [
         '-v', 'info',
         '-ss', endRangeMin.toFixed(2),
         '-t', endRangeDuration.toFixed(2),
         '-i', filePath,
         '-vn', '-sn',
-        '-af', 'silencedetect=noise=-30dB:d=0.15',
-        '-f', 'null',
-        '-',
+        '-af', `silencedetect=noise=${SNAP_SILENCE_NOISE}:d=${SNAP_SILENCE_DURATION}`,
+        '-f', 'null', '-',
       ];
 
-      execFile(ffmpegPath, silenceArgsEnd, { timeout: 7000 }, (err2, _stdout2, stderr2) => {
+      execFile(ffmpegPath, silenceArgsEnd, { timeout: 7000 }, (err2, _out2, stderr2) => {
         let adjustedEnd = rawEnd;
         let endSnapped = false;
 
         if (!err2 && stderr2) {
-          const startRegex = /silence_start:\s*([\d\.]+)/g;
-          const endRegex = /silence_end:\s*([\d\.]+)/g;
-          let match;
-          const silences: Array<{ start: number; end: number }> = [];
-          let curStart: number | null = null;
-
-          while ((match = startRegex.exec(stderr2)) !== null) {
-            curStart = endRangeMin + parseFloat(match[1]);
-          }
-          while ((match = endRegex.exec(stderr2)) !== null) {
-            const e = endRangeMin + parseFloat(match[1]);
-            const s = curStart ?? (e - 0.2);
-            silences.push({ start: s, end: e });
-          }
-
-          let bestDist = Infinity;
-          let bestCandidate = rawEnd;
-          for (const s of silences) {
-            const distStart = Math.abs(s.start - rawEnd);
-            if (distStart < bestDist && distStart <= searchWindow) {
-              bestDist = distStart;
-              bestCandidate = s.start;
-            }
-            const distEnd = Math.abs(s.end - rawEnd);
-            if (distEnd < bestDist && distEnd <= searchWindow) {
-              bestDist = distEnd;
-              bestCandidate = s.end;
-            }
-          }
-          if (bestDist <= searchWindow && Math.abs(bestCandidate - rawEnd) > 0.05) {
-            adjustedEnd = Math.round(bestCandidate * 100) / 100;
+          const silences = parseSilences(stderr2, endRangeMin);
+          // Le début du silence est le moment idéal où la musique se termine
+          const points = silences.flatMap(s => [s.start, s.end]);
+          const candidate = nearestPoint(points, rawEnd, searchWindow);
+          if (candidate !== null) {
+            adjustedEnd = Math.round(candidate * 100) / 100;
             endSnapped = true;
           }
         }
 
-        // Sécurité cohérence durée
-        if (adjustedEnd - adjustedStart < 15.0) {
+        // 3. Fallback blackdetect si aucun silence n'a snappé — parité avec DetectBlackFramesAsync C#
+        if (!startSnapped || !endSnapped) {
+          const blackRangeMin = startRangeMin;
+          const blackRangeDuration = Math.min(120, startRangeDuration + (rawEnd - rawStart));
+          const blackArgs = [
+            '-v', 'info',
+            '-ss', blackRangeMin.toFixed(2),
+            '-t', blackRangeDuration.toFixed(2),
+            '-i', filePath,
+            '-an', '-sn',
+            `-vf`, `blackdetect=d=${SNAP_BLACK_MIN_D}:pic_th=${SNAP_BLACK_PIX_TH}`,
+            '-f', 'null', '-',
+          ];
+
+          execFile(ffmpegPath, blackArgs, { timeout: 8000 }, (err3, _out3, stderr3) => {
+            let snapType = (startSnapped || endSnapped) ? 'silence' : 'none';
+
+            if (!err3 && stderr3) {
+              const blacks = parseBlackFrames(stderr3, blackRangeMin);
+              if (blacks.length > 0) {
+                if (!startSnapped) {
+                  // Fin de black = début idéal de l'opening (même logique C#)
+                  const pts = blacks.flatMap(b => [b.end, b.start]);
+                  const c = nearestPoint(pts, rawStart, searchWindow);
+                  if (c !== null) {
+                    adjustedStart = Math.round(c * 100) / 100;
+                    startSnapped = true;
+                    if (snapType === 'none') snapType = 'black';
+                  }
+                }
+                if (!endSnapped) {
+                  const pts = blacks.flatMap(b => [b.start, b.end]);
+                  const c = nearestPoint(pts, rawEnd, searchWindow);
+                  if (c !== null) {
+                    adjustedEnd = Math.round(c * 100) / 100;
+                    endSnapped = true;
+                    if (snapType === 'none') snapType = 'black';
+                  }
+                }
+              }
+            }
+
+            // Valider cohérence (≥ 15s) — même règle C#
+            if (adjustedEnd - adjustedStart < SNAP_MIN_INTERVAL_DURATION) {
+              adjustedStart = rawStart;
+              adjustedEnd = rawEnd;
+              startSnapped = false;
+              endSnapped = false;
+              snapType = 'none';
+            }
+
+            const snapped = startSnapped || endSnapped;
+            return res.json({
+              success: true,
+              originalStart: rawStart,
+              adjustedStart,
+              originalEnd: rawEnd,
+              adjustedEnd,
+              snapped,
+              snapType: snapped ? snapType : 'none',
+              startOffset: Math.round((adjustedStart - rawStart) * 100) / 100,
+              endOffset: Math.round((adjustedEnd - rawEnd) * 100) / 100,
+              message: snapped ? `Calé avec succès (${snapType})` : 'Aucune coupure franche à proximité',
+            });
+          });
+          return; // attendre le callback blackdetect
+        }
+
+        // Silences trouvés pour les deux marqueurs : on valide directement
+        if (adjustedEnd - adjustedStart < SNAP_MIN_INTERVAL_DURATION) {
           adjustedStart = rawStart;
           adjustedEnd = rawEnd;
           startSnapped = false;
@@ -4090,7 +4368,7 @@ app.get('/api/video/fine-tune-markers', (req, res) => {
           snapType: snapped ? 'silence' : 'none',
           startOffset: Math.round((adjustedStart - rawStart) * 100) / 100,
           endOffset: Math.round((adjustedEnd - rawEnd) * 100) / 100,
-          message: snapped ? 'Calé avec succès au silence' : 'Aucune coupure franche à proximité',
+          message: snapped ? 'Calé avec succès (silence)' : 'Aucune coupure franche à proximité',
         });
       });
     });
@@ -4210,6 +4488,46 @@ app.get('/api/video/subtitles/analyze', (req, res) => {
 });
 
 // Intro Skipper Endpoint 3 : Corrélation acoustique locale multi-épisodes
+// Constantes partagées avec C# MatchAudioOpeningAsync
+const ACOUSTIC_PEARSON_THRESHOLD = 0.70; // Seuil de corrélation de Pearson
+const ACOUSTIC_WINDOW_SAMPLES = 1800;    // 90 secondes × 20 Hz
+const ACOUSTIC_SAMPLE_RATE_HZ = 20;      // Après sous-échantillonnage (200 Hz / 10)
+const ACOUSTIC_OP_MIN_DURATION_S = 60;   // Durée minimale raisonnable d'un OP
+const ACOUSTIC_OP_MAX_DURATION_S = 120;  // Durée maximale raisonnable d'un OP
+const ACOUSTIC_ENVELOPE_DURATION_S = 240; // Plage d'extraction (4 minutes)
+
+/** Choisit les épisodes frères les plus pertinents (même préfixe, épisode voisin), max 2 */
+function chooseSiblings(filePath: string, allSiblings: string[]): string[] {
+  const baseName = path.basename(filePath, path.extname(filePath));
+  // Extraire le numéro d'épisode (S01E05, - 05, _05, espace + chiffres)
+  const epMatch = baseName.match(/(?:[Ss]\d+)?[Ee](\d+)|[-_ ](\d{1,4})(?:v\d+)?(?:\s|$)/);
+  const epNum = epMatch ? parseInt(epMatch[1] || epMatch[2], 10) : NaN;
+
+  // Préfixe = nom sans numéro d'épisode (approximatif)
+  const prefix = baseName
+    .replace(/(?:[Ss]\d+)?[Ee]\d+.*/, '')
+    .replace(/[-_ ]\d{1,4}(?:v\d+)?.*/, '')
+    .toLowerCase()
+    .trim();
+
+  // Classer : priorité aux épisodes adjacents avec le même préfixe
+  const scored = allSiblings
+    .map(f => {
+      const fn = path.basename(f, path.extname(f)).toLowerCase();
+      const hasSamePrefix = prefix.length > 3 && fn.startsWith(prefix.substring(0, Math.min(prefix.length, 8)));
+      const sibEpMatch = fn.match(/(?:[Ss]\d+)?[Ee](\d+)|[-_ ](\d{1,4})(?:v\d+)?(?:\s|$)/);
+      const sibEp = sibEpMatch ? parseInt(sibEpMatch[1] || sibEpMatch[2], 10) : NaN;
+      const epDist = (!isNaN(epNum) && !isNaN(sibEp)) ? Math.abs(sibEp - epNum) : 999;
+      // Score : adjacent (+priorité préfixe) d'abord
+      return { f, score: (hasSamePrefix ? 0 : 100) + epDist };
+    })
+    .sort((a, b) => a.score - b.score)
+    .slice(0, 2) // Au plus 2 candidats
+    .map(x => x.f);
+
+  return scored;
+}
+
 app.get('/api/video/acoustic-match', (req, res) => {
   try {
     const filePath = (req.query.filePath as string) || '';
@@ -4218,41 +4536,39 @@ app.get('/api/video/acoustic-match', (req, res) => {
     }
 
     const dir = path.dirname(filePath);
-    const siblings = fs
+    const allSiblings = fs
       .readdirSync(dir)
-      .map((f) => path.join(dir, f))
-      .filter((f) => f.toLowerCase() !== filePath.toLowerCase())
-      .filter((f) => /\.(mkv|mp4|avi|webm|m4v)$/i.test(f))
+      .map(f => path.join(dir, f))
+      .filter(f => f.toLowerCase() !== filePath.toLowerCase())
+      .filter(f => /\.(mkv|mp4|avi|webm|m4v)$/i.test(f))
       .sort();
 
-    if (siblings.length === 0) {
+    if (allSiblings.length === 0) {
       return res.json({ success: false, message: 'Aucun épisode frère trouvé dans le dossier' });
     }
 
-    const sibling = siblings[0];
+    const siblings = chooseSiblings(filePath, allSiblings);
     const ffmpegPath = getFfmpegPath();
     if (!fs.existsSync(ffmpegPath)) {
       return res.json({ success: false, message: 'FFmpeg non disponible' });
     }
 
-    // Extraction 240s PCM float à 200 Hz
+    // Extraction 240s PCM float à 200 Hz → enveloppe RMS à 20 Hz
     function extractEnvelope(target: string): Promise<Float32Array> {
       return new Promise((resolve) => {
-        const args = ['-v', 'quiet', '-ss', '0', '-t', '240', '-i', target, '-vn', '-sn', '-ac', '1', '-ar', '200', '-f', 'f32le', '-'];
+        const args = [
+          '-v', 'quiet', '-ss', '0', '-t', String(ACOUSTIC_ENVELOPE_DURATION_S),
+          '-i', target, '-vn', '-sn', '-ac', '1', '-ar', '200', '-f', 'f32le', '-',
+        ];
         execFile(ffmpegPath, args, { encoding: 'buffer', maxBuffer: 10 * 1024 * 1024, timeout: 10000 }, (err, stdout) => {
-          if (err || !stdout || stdout.length === 0) {
-            return resolve(new Float32Array(0));
-          }
+          if (err || !stdout || stdout.length === 0) return resolve(new Float32Array(0));
           const floatCount = Math.floor(stdout.length / 4);
           const raw = new Float32Array(stdout.buffer, stdout.byteOffset, floatCount);
           const envLen = Math.floor(floatCount / 10);
           const env = new Float32Array(envLen);
           for (let i = 0; i < envLen; i++) {
             let sumSq = 0;
-            for (let k = 0; k < 10; k++) {
-              const v = raw[i * 10 + k];
-              sumSq += v * v;
-            }
+            for (let k = 0; k < 10; k++) { const v = raw[i * 10 + k]; sumSq += v * v; }
             env[i] = Math.sqrt(sumSq / 10.0);
           }
           resolve(env);
@@ -4260,55 +4576,85 @@ app.get('/api/video/acoustic-match', (req, res) => {
       });
     }
 
-    Promise.all([extractEnvelope(filePath), extractEnvelope(sibling)]).then(([env1, env2]) => {
-      if (env1.length < 100 || env2.length < 100) {
-        return res.json({ success: false, message: "Échec d'extraction de l'enveloppe audio" });
+    function pearson(a: Float32Array, oA: number, b: Float32Array, oB: number, len: number): number {
+      let sA = 0, sB = 0, sAA = 0, sBB = 0, sAB = 0;
+      for (let i = 0; i < len; i++) {
+        const va = a[oA + i], vb = b[oB + i];
+        sA += va; sB += vb; sAA += va * va; sBB += vb * vb; sAB += va * vb;
       }
+      const mA = sA / len, mB = sB / len;
+      const vA = sAA / len - mA * mA, vB = sBB / len - mB * mB;
+      if (vA <= 1e-7 || vB <= 1e-7) return 0;
+      return (sAB / len - mA * mB) / Math.sqrt(vA * vB);
+    }
 
-      const windowSize = 1800; // 90 secondes à 20 Hz
-      let bestScore = 0;
-      let bestT1 = -1;
+    // Essai des candidats frères dans l'ordre
+    const tryNext = (idx: number): void => {
+      if (idx >= siblings.length) {
+        res.json({ success: false, message: 'Corrélation sonore insuffisante sur tous les candidats' });
+        return;
+      }
+      const sibling = siblings[idx];
 
-      for (let t1 = 200; t1 <= env1.length - windowSize; t1 += 20) {
-        for (let t2 = 200; t2 <= env2.length - windowSize; t2 += 20) {
-          let sumA = 0, sumB = 0, sumAA = 0, sumBB = 0, sumAB = 0;
-          for (let i = 0; i < windowSize; i++) {
-            const va = env1[t1 + i];
-            const vb = env2[t2 + i];
-            sumA += va; sumB += vb;
-            sumAA += va * va; sumBB += vb * vb;
-            sumAB += va * vb;
-          }
-          const meanA = sumA / windowSize;
-          const meanB = sumB / windowSize;
-          const varA = sumAA / windowSize - meanA * meanA;
-          const varB = sumBB / windowSize - meanB * meanB;
-          if (varA > 1e-7 && varB > 1e-7) {
-            const cov = sumAB / windowSize - meanA * meanB;
-            const corr = cov / Math.sqrt(varA * varB);
+      Promise.all([extractEnvelope(filePath), extractEnvelope(sibling)]).then(([env1, env2]) => {
+        if (env1.length < 100 || env2.length < 100) {
+          return tryNext(idx + 1);
+        }
+
+        let bestScore = 0;
+        let bestT1 = -1;
+        let bestT2 = -1;
+
+        for (let t1 = 200; t1 <= env1.length - ACOUSTIC_WINDOW_SAMPLES; t1 += 20) {
+          for (let t2 = 200; t2 <= env2.length - ACOUSTIC_WINDOW_SAMPLES; t2 += 20) {
+            const corr = pearson(env1, t1, env2, t2, ACOUSTIC_WINDOW_SAMPLES);
             if (corr > bestScore) {
               bestScore = corr;
               bestT1 = t1;
+              bestT2 = t2;
             }
           }
         }
-      }
 
-      if (bestScore >= 0.70 && bestT1 >= 0) {
-        const opStart = Math.round((bestT1 / 20.0) * 10) / 10;
-        const opEnd = Math.round((opStart + 90.0) * 10) / 10;
-        return res.json({
-          success: true,
-          start: opStart,
-          end: opEnd,
-          confidence: Math.round(bestScore * 100) / 100,
-          matchedSibling: path.basename(sibling),
-          message: `Générique corrélé avec succès contre ${path.basename(sibling)}`,
-        });
-      }
+        if (bestScore >= ACOUSTIC_PEARSON_THRESHOLD && bestT1 >= 0) {
+          const opStart = Math.round((bestT1 / ACOUSTIC_SAMPLE_RATE_HZ) * 10) / 10;
 
-      return res.json({ success: false, confidence: bestScore, matchedSibling: path.basename(sibling), message: 'Corrélation sonore insuffisante' });
-    });
+          // Estimer la fin de l'OP : étendre la fenêtre corrélée tant que Pearson ≥ seuil
+          // Pas de 1 seconde (20 échantillons à 20 Hz)
+          const stepSamples = ACOUSTIC_SAMPLE_RATE_HZ;
+          let extLen = ACOUSTIC_WINDOW_SAMPLES;
+          const maxExtLen = Math.round(ACOUSTIC_OP_MAX_DURATION_S * ACOUSTIC_SAMPLE_RATE_HZ);
+          while (
+            extLen + stepSamples <= maxExtLen &&
+            bestT1 + extLen + stepSamples <= env1.length &&
+            bestT2 + extLen + stepSamples <= env2.length
+          ) {
+            const extCorr = pearson(env1, bestT1, env2, bestT2, extLen + stepSamples);
+            if (extCorr < ACOUSTIC_PEARSON_THRESHOLD) break;
+            extLen += stepSamples;
+          }
+          const rawOpEnd = opStart + extLen / ACOUSTIC_SAMPLE_RATE_HZ;
+          // Bornes min/max
+          const opEnd = Math.round(
+            Math.max(opStart + ACOUSTIC_OP_MIN_DURATION_S, Math.min(rawOpEnd, opStart + ACOUSTIC_OP_MAX_DURATION_S)) * 10
+          ) / 10;
+
+          return res.json({
+            success: true,
+            start: opStart,
+            end: opEnd,
+            confidence: Math.round(bestScore * 100) / 100,
+            matchedSibling: path.basename(sibling),
+            message: `Générique corrélé avec succès contre ${path.basename(sibling)}`,
+          });
+        }
+
+        // Corrélation insuffisante sur ce candidat, essayer le suivant
+        tryNext(idx + 1);
+      });
+    };
+
+    tryNext(0);
   } catch (err: any) {
     return res.json({ success: false, error: err?.message });
   }

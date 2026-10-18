@@ -401,7 +401,7 @@ async function resolveAnimeMalId(cleanTitle: string): Promise<number | null> {
 }
 
 /**
- * Niveau 2 (Option A) : API Communautaire Aniskip (OP et ED avec Drift Check)
+ * Niveau 3 (Option A) : API Communautaire Aniskip (OP et ED avec Drift Check)
  */
 export async function resolveAniskipMarkers(
   cleanTitle: string,
@@ -468,6 +468,7 @@ export async function resolveAniskipMarkers(
             type: 'op',
             source: 'api',
             confidence,
+            drift: driftDetected || undefined,
             title: driftDetected ? 'Opening (Aniskip - Décalage possible)' : 'Opening (Aniskip)',
           };
         } else if (item.skipType === 'ed' && !ed) {
@@ -477,6 +478,7 @@ export async function resolveAniskipMarkers(
             type: 'ed',
             source: 'api',
             confidence,
+            drift: driftDetected || undefined,
             title: driftDetected ? 'Ending (Aniskip - Décalage possible)' : 'Ending (Aniskip)',
           };
         }
@@ -496,7 +498,7 @@ export async function resolveAniskipMarkers(
 }
 
 /**
- * Niveau 2 (Option B) : API Anime-Skip GraphQL (Client ID dédié)
+ * Niveau 3 (Option B) : API Anime-Skip GraphQL (Client ID dédié)
  */
 export async function resolveAnimeSkipMarkers(
   cleanTitle: string,
@@ -606,6 +608,7 @@ export async function resolveAnimeSkipMarkers(
           type: 'op',
           source: 'api',
           confidence,
+          drift: driftDetected || undefined,
           title: driftDetected ? 'Opening (Anime-Skip - Décalage possible)' : 'Opening (Anime-Skip)',
         };
       } else if (!ed && (typeName.includes('ed') || typeName.includes('ending'))) {
@@ -615,6 +618,7 @@ export async function resolveAnimeSkipMarkers(
           type: 'ed',
           source: 'api',
           confidence,
+          drift: driftDetected || undefined,
           title: driftDetected ? 'Ending (Anime-Skip - Décalage possible)' : 'Ending (Anime-Skip)',
         };
       }
@@ -882,7 +886,7 @@ Réponds STRICTEMENT sous forme de JSON valide avec cette structure exacte (sans
           end,
           type: 'op',
           source: 'ai',
-          confidence: 'high',
+          confidence: 'moderate', // Rétrogradé : l'IA émet une estimation, non une certitude
           title: `Opening (IA ${providerName})`,
         };
       }
@@ -897,7 +901,7 @@ Réponds STRICTEMENT sous forme de JSON valide avec cette structure exacte (sans
           end,
           type: 'ed',
           source: 'ai',
-          confidence: 'high',
+          confidence: 'moderate', // Rétrogradé : l'IA émet une estimation, non une certitude
           title: `Ending (IA ${providerName})`,
         };
       }
@@ -1087,15 +1091,4 @@ export async function resolveVideoMarkersCascade(
   return result;
 }
 
-/**
- * Rétro-compatibilité : Résolution de l'Opening seul
- */
-export async function resolveOpeningCascade(
-  videoElement: HTMLVideoElement | null,
-  track: Track | null,
-  duration: number,
-  enableSnapping: boolean = true
-): Promise<SkipInterval | null> {
-  const markers = await resolveVideoMarkersCascade(videoElement, track, duration, enableSnapping);
-  return markers.op;
-}
+

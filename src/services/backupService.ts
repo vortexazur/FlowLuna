@@ -1,4 +1,4 @@
-import { Track, Playlist, PlayerSettings } from '../types';
+import { Track, Playlist, PlayerSettings, DEFAULT_PLAYER_SETTINGS } from '../types';
 import { getAllTracks, getAllPlaylists, saveTrack, savePlaylist, getSetting, saveSetting } from './audioDb';
 
 export interface ExportArchiveData {
@@ -69,6 +69,25 @@ export async function exportLibraryArchive(): Promise<{ filename: string; tracks
     isPinned: p.isPinned !== false,
   }));
 
+  // Security: redact private API keys from the exported backup JSON
+  let sanitizedSettings: PlayerSettings | undefined = undefined;
+  if (settings) {
+    sanitizedSettings = {
+      ...settings,
+      skipOpAiApiKey: '',
+    };
+    if (sanitizedSettings.aiSettings) {
+      sanitizedSettings.aiSettings = {
+        ...sanitizedSettings.aiSettings,
+        openai: { ...sanitizedSettings.aiSettings.openai, apiKey: '' },
+        anthropic: { ...sanitizedSettings.aiSettings.anthropic, apiKey: '' },
+        mistral: { ...sanitizedSettings.aiSettings.mistral, apiKey: '' },
+        gemini: { ...sanitizedSettings.aiSettings.gemini, apiKey: '' },
+        custom: { ...sanitizedSettings.aiSettings.custom, apiKey: '' },
+      };
+    }
+  }
+
   const backupData: ExportArchiveData = {
     app: 'FlowLuna',
     version: '3.0',
@@ -78,7 +97,7 @@ export async function exportLibraryArchive(): Promise<{ filename: string; tracks
     playlistsCount: cleanPlaylists.length,
     tracks: cleanTracks,
     playlists: cleanPlaylists,
-    playerSettings: settings || undefined,
+    playerSettings: sanitizedSettings,
   };
 
   const jsonStr = JSON.stringify(backupData, null, 2);
@@ -235,11 +254,44 @@ export async function importLibraryArchive(file: File): Promise<{
   if (parsed.playerSettings && typeof parsed.playerSettings === 'object') {
     try {
       const existingSettings = await getSetting<PlayerSettings | null>('player_settings', null);
-      if (existingSettings) {
-        const mergedSettings = { ...existingSettings, ...parsed.playerSettings };
-        await saveSetting('player_settings', mergedSettings);
-        settingsRestored = true;
-      }
+      const baseSettings = existingSettings || DEFAULT_PLAYER_SETTINGS;
+      const imported = parsed.playerSettings;
+
+      // Security: preserve existing local API keys so importing a backup never erases or hijacks them
+      const baseAi = baseSettings.aiSettings || DEFAULT_PLAYER_SETTINGS.aiSettings!;
+      const mergedAiSettings = {
+        ...baseAi,
+        ...(imported.aiSettings || {}),
+        openai: {
+          ...(imported.aiSettings?.openai || {}),
+          apiKey: existingSettings?.aiSettings?.openai?.apiKey || '',
+        },
+        anthropic: {
+          ...(imported.aiSettings?.anthropic || {}),
+          apiKey: existingSettings?.aiSettings?.anthropic?.apiKey || '',
+        },
+        mistral: {
+          ...(imported.aiSettings?.mistral || {}),
+          apiKey: existingSettings?.aiSettings?.mistral?.apiKey || '',
+        },
+        gemini: {
+          ...(imported.aiSettings?.gemini || {}),
+          apiKey: existingSettings?.aiSettings?.gemini?.apiKey || '',
+        },
+        custom: {
+          ...(imported.aiSettings?.custom || {}),
+          apiKey: existingSettings?.aiSettings?.custom?.apiKey || '',
+        },
+      };
+
+      const mergedSettings: PlayerSettings = {
+        ...baseSettings,
+        ...imported,
+        skipOpAiApiKey: existingSettings?.skipOpAiApiKey || '',
+        aiSettings: mergedAiSettings,
+      };
+      await saveSetting('player_settings', mergedSettings);
+      settingsRestored = true;
     } catch {
       // ignore
     }

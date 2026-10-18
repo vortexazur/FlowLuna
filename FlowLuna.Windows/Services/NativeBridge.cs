@@ -199,9 +199,9 @@ public class NativeBridge
         });
     }
 
-    public void ApplyUpdate(string installerPath)
+    public void ApplyUpdate(string? installerPath = null)
     {
-        BinaryManager.ApplyAppUpdate(installerPath);
+        BinaryManager.ApplyAppUpdate();
     }
 
     public void OpenDefaultAppsSettings()
