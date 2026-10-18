@@ -1938,21 +1938,22 @@ export default function App() {
   );
 
   // Save updated settings
-  const handleUpdatePlayerSettings = async (settings: PlayerSettings) => {
-    setPlayerSettings(settings);
-    setCustomAnimeSkipClientId(settings.animeSkipClientId);
-    const aiSettings = settings.aiSettings || DEFAULT_AI_SETTINGS;
-    const effectiveAi = getEffectiveAiConfig(aiSettings, settings.skipOpAiProvider as any);
+  const handleUpdatePlayerSettings = async (settingsOrUpdater: PlayerSettings | ((prev: PlayerSettings) => PlayerSettings)) => {
+    const effective = typeof settingsOrUpdater === 'function' ? settingsOrUpdater(playerSettings) : settingsOrUpdater;
+    setPlayerSettings((prev) => (typeof settingsOrUpdater === 'function' ? settingsOrUpdater(prev) : effective));
+    setCustomAnimeSkipClientId(effective.animeSkipClientId);
+    const aiSettings = effective.aiSettings || DEFAULT_AI_SETTINGS;
+    const effectiveAi = getEffectiveAiConfig(aiSettings, effective.skipOpAiProvider as any);
     setSkipOpAiConfig({
-      mode: settings.skipOpAiMode,
-      provider: (settings.skipOpAiProvider || aiSettings.activeProvider || 'gemini') as any,
-      apiKey: settings.skipOpAiApiKey || effectiveAi.apiKey || '',
-      endpoint: settings.skipOpAiEndpoint || effectiveAi.endpoint,
-      model: settings.skipOpAiModel || effectiveAi.model,
+      mode: effective.skipOpAiMode,
+      provider: (effective.skipOpAiProvider || aiSettings.activeProvider || 'gemini') as any,
+      apiKey: effective.skipOpAiApiKey || effectiveAi.apiKey || '',
+      endpoint: effective.skipOpAiEndpoint || effectiveAi.endpoint,
+      model: effective.skipOpAiModel || effectiveAi.model,
     });
-    audioEngine.setVolumeNormalization(settings.volumeNormalization, settings.normalizationTarget ?? 'streaming');
-    discordRpc.updatePresence(currentPlayingTrack, isPlaying, currentTime, settings.discordRpcEnabled ?? true);
-    await saveSetting('player_settings', settings);
+    audioEngine.setVolumeNormalization(effective.volumeNormalization, effective.normalizationTarget ?? 'streaming');
+    discordRpc.updatePresence(currentPlayingTrack, isPlaying, currentTime, effective.discordRpcEnabled ?? true);
+    await saveSetting('player_settings', effective);
   };
 
   const handleUpdateEqualizerSettings = async (settings: EqualizerSettings) => {

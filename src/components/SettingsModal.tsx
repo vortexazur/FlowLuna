@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   Settings,
   X,
@@ -640,8 +640,19 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   const t = getT(settings.language);
   const accent = settings.accent || 'emerald';
 
+  const latestSettingsRef = useRef(settings);
+  useEffect(() => {
+    latestSettingsRef.current = settings;
+  }, [settings]);
+
+  const updateSettings = (partial: Partial<PlayerSettings>) => {
+    const next = { ...latestSettingsRef.current, ...partial };
+    latestSettingsRef.current = next;
+    onChange(next);
+  };
+
   const updateSetting = <K extends keyof PlayerSettings>(key: K, value: PlayerSettings[K]) => {
-    onChange({ ...settings, [key]: value });
+    updateSettings({ [key]: value } as Partial<PlayerSettings>);
   };
 
   const currentLang = SUPPORTED_LANGUAGES.find((l) => l.code === (settings.language || 'fr')) || SUPPORTED_LANGUAGES[0];
@@ -727,16 +738,18 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                     type="button"
                     id="theme-dark-btn"
                     onClick={() => {
-                      updateSetting('theme', 'dark');
-                      updateSetting('backdropEffect', 'glass');
+                      updateSettings({
+                        theme: 'dark',
+                        backdropEffect: 'glass',
+                      });
                     }}
-                    className={`p-3.5 rounded-xl border flex items-center justify-between transition-all cursor-pointer ${
+                    className={`p-3.5 rounded-xl border flex items-center justify-between transition-all cursor-pointer relative z-10 select-none ${
                       settings.theme === 'dark'
                         ? 'border-neutral-500 bg-neutral-800/90 text-white font-bold shadow-md ring-1 ring-neutral-400/30'
-                        : 'border-neutral-800 bg-neutral-900/60 text-neutral-400 hover:text-white hover:border-neutral-700'
+                        : 'border-neutral-800 bg-neutral-900/60 text-neutral-400 hover:text-white hover:border-neutral-700 hover:bg-neutral-800/50'
                     }`}
                   >
-                    <div className="flex items-center gap-3">
+                    <div className="flex items-center gap-3 pointer-events-none">
                       <div className="p-2 rounded-lg bg-sky-500/10 text-sky-400 border border-sky-500/20">
                         <Moon className="w-4 h-4" />
                       </div>
@@ -745,23 +758,25 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                         <span className="text-[10px] text-neutral-400">Contraste infini & sobriété</span>
                       </div>
                     </div>
-                    {settings.theme === 'dark' && <Check className={`w-4 h-4 ${ACCENT_TEXT[settings.accent] || 'text-emerald-400'}`} />}
+                    {settings.theme === 'dark' && <Check className={`w-4 h-4 ${ACCENT_TEXT[settings.accent] || 'text-emerald-400'} pointer-events-none`} />}
                   </button>
 
                   <button
                     type="button"
                     id="theme-light-btn"
                     onClick={() => {
-                      updateSetting('theme', 'light');
-                      updateSetting('backdropEffect', 'glass');
+                      updateSettings({
+                        theme: 'light',
+                        backdropEffect: 'glass',
+                      });
                     }}
-                    className={`p-3.5 rounded-xl border flex items-center justify-between transition-all cursor-pointer ${
+                    className={`p-3.5 rounded-xl border flex items-center justify-between transition-all cursor-pointer relative z-10 select-none ${
                       settings.theme === 'light'
                         ? 'border-neutral-500 bg-neutral-800/90 text-white font-bold shadow-md ring-1 ring-neutral-400/30'
-                        : 'border-neutral-800 bg-neutral-900/60 text-neutral-400 hover:text-white hover:border-neutral-700'
+                        : 'border-neutral-800 bg-neutral-900/60 text-neutral-400 hover:text-white hover:border-neutral-700 hover:bg-neutral-800/50'
                     }`}
                   >
-                    <div className="flex items-center gap-3">
+                    <div className="flex items-center gap-3 pointer-events-none">
                       <div className="p-2 rounded-lg bg-amber-500/10 text-amber-400 border border-amber-500/20">
                         <Sun className="w-4 h-4" />
                       </div>
@@ -770,24 +785,26 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                         <span className="text-[10px] text-neutral-400">Luminosité & clarté diurne</span>
                       </div>
                     </div>
-                    {settings.theme === 'light' && <Check className={`w-4 h-4 ${ACCENT_TEXT[settings.accent] || 'text-emerald-400'}`} />}
+                    {settings.theme === 'light' && <Check className={`w-4 h-4 ${ACCENT_TEXT[settings.accent] || 'text-emerald-400'} pointer-events-none`} />}
                   </button>
 
                   <button
                     type="button"
                     id="theme-transparent-btn"
                     onClick={() => {
-                      updateSetting('theme', 'transparent');
-                      updateSetting('backdropEffect', 'acrylic');
-                      updateSetting('acrylicIntensity', 100);
+                      updateSettings({
+                        theme: 'transparent',
+                        backdropEffect: 'acrylic',
+                        acrylicIntensity: 100,
+                      });
                     }}
-                    className={`p-3.5 rounded-xl border flex items-center justify-between transition-all cursor-pointer ${
+                    className={`p-3.5 rounded-xl border flex items-center justify-between transition-all cursor-pointer relative z-10 select-none ${
                       settings.theme === 'transparent'
                         ? 'border-neutral-500 bg-neutral-800/90 text-white font-bold shadow-md ring-1 ring-neutral-400/30'
-                        : 'border-neutral-800 bg-neutral-900/60 text-neutral-400 hover:text-white hover:border-neutral-700'
+                        : 'border-neutral-800 bg-neutral-900/60 text-neutral-400 hover:text-white hover:border-neutral-700 hover:bg-neutral-800/50'
                     }`}
                   >
-                    <div className="flex items-center gap-3">
+                    <div className="flex items-center gap-3 pointer-events-none">
                       <div className="p-2 rounded-lg bg-indigo-500/10 text-indigo-400 border border-indigo-500/20">
                         <Sparkles className="w-4 h-4" />
                       </div>
@@ -800,7 +817,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                         </span>
                       </div>
                     </div>
-                    {settings.theme === 'transparent' && <Check className={`w-4 h-4 ${ACCENT_TEXT[settings.accent] || 'text-emerald-400'}`} />}
+                    {settings.theme === 'transparent' && <Check className={`w-4 h-4 ${ACCENT_TEXT[settings.accent] || 'text-emerald-400'} pointer-events-none`} />}
                   </button>
                 </div>
               </div>

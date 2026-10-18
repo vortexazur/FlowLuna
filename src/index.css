@@ -1780,7 +1780,17 @@ html.theme-transparent body,
   accent-color: var(--primary, #10b981) !important;
 }
 
-/* Active Theme Card */
+/* Active Theme Card Accent Highlights */
+[data-theme="dark"] #theme-dark-btn {
+  border-color: var(--primary, #10b981) !important;
+  box-shadow: 0 0 16px rgba(var(--primary-rgb, 16, 185, 129), 0.25) !important;
+}
+
+[data-theme="light"] #theme-light-btn {
+  border-color: var(--primary, #10b981) !important;
+  box-shadow: 0 0 16px rgba(var(--primary-rgb, 16, 185, 129), 0.25) !important;
+}
+
 [data-theme="transparent"] #theme-transparent-btn {
   border-color: var(--primary, #10b981) !important;
   box-shadow: 0 0 16px rgba(var(--primary-rgb, 16, 185, 129), 0.3) !important;
