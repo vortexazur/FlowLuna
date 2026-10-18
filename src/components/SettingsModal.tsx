@@ -717,16 +717,19 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
           {/* TAB 1: APPARENCE */}
           {activeTab === 'appearance' && (
             <div className="flex flex-col gap-5 animate-in fade-in duration-150">
-              {/* Thème Sombre / Clair */}
+              {/* Mode Thème : Sombre OLED vs Clair Raffiné vs Transparent */}
               <div className="flex flex-col gap-2.5">
                 <label className="text-xs font-bold uppercase tracking-wider text-neutral-300">
-                  Mode Thème
+                  {t.themeMode || 'Mode Thème'}
                 </label>
-                <div className="grid grid-cols-2 gap-3">
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                   <button
                     type="button"
                     id="theme-dark-btn"
-                    onClick={() => updateSetting('theme', 'dark')}
+                    onClick={() => {
+                      updateSetting('theme', 'dark');
+                      updateSetting('backdropEffect', 'glass');
+                    }}
                     className={`p-3.5 rounded-xl border flex items-center justify-between transition-all cursor-pointer ${
                       settings.theme === 'dark'
                         ? 'border-neutral-500 bg-neutral-800/90 text-white font-bold shadow-md ring-1 ring-neutral-400/30'
@@ -742,13 +745,16 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                         <span className="text-[10px] text-neutral-400">Contraste infini & sobriété</span>
                       </div>
                     </div>
-                    {settings.theme === 'dark' && <Check className="w-4 h-4 text-emerald-400" />}
+                    {settings.theme === 'dark' && <Check className={`w-4 h-4 ${ACCENT_TEXT[settings.accent] || 'text-emerald-400'}`} />}
                   </button>
 
                   <button
                     type="button"
                     id="theme-light-btn"
-                    onClick={() => updateSetting('theme', 'light')}
+                    onClick={() => {
+                      updateSetting('theme', 'light');
+                      updateSetting('backdropEffect', 'glass');
+                    }}
                     className={`p-3.5 rounded-xl border flex items-center justify-between transition-all cursor-pointer ${
                       settings.theme === 'light'
                         ? 'border-neutral-500 bg-neutral-800/90 text-white font-bold shadow-md ring-1 ring-neutral-400/30'
@@ -764,51 +770,19 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                         <span className="text-[10px] text-neutral-400">Luminosité & clarté diurne</span>
                       </div>
                     </div>
-                    {settings.theme === 'light' && <Check className="w-4 h-4 text-emerald-400" />}
-                  </button>
-                </div>
-              </div>
-
-              {/* Choix du Matériau / Effet Visuel : Pure Glass vs Mica & Acrylic */}
-              <div className="flex flex-col gap-2.5">
-                <label className="text-xs font-bold uppercase tracking-wider text-neutral-300">
-                  {t.visualEffectMode || 'Effet Visuel & Matériau de Fond'}
-                </label>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  <button
-                    type="button"
-                    id="effect-glass-btn"
-                    onClick={() => updateSetting('backdropEffect', 'glass')}
-                    className={`p-3.5 rounded-xl border flex items-center justify-between transition-all cursor-pointer ${
-                      (settings.backdropEffect || 'glass') === 'glass'
-                        ? 'border-neutral-500 bg-neutral-800/90 text-white font-bold shadow-md ring-1 ring-neutral-400/30'
-                        : 'border-neutral-800 bg-neutral-900/60 text-neutral-400 hover:text-white hover:border-neutral-700'
-                    }`}
-                  >
-                    <div className="flex items-center gap-3">
-                      <div className="p-2 rounded-lg bg-cyan-500/10 text-cyan-400 border border-cyan-500/20">
-                        <Layers className="w-4 h-4" />
-                      </div>
-                      <div className="text-left">
-                        <span className="text-xs font-semibold block text-white">
-                          {t.visualEffectGlass || 'Pure Glass (Actuel)'}
-                        </span>
-                        <span className="text-[10px] text-neutral-400">
-                          {t.visualEffectGlassDesc || 'Verre dépoli vibrant, halos lumineux & intensité réglable'}
-                        </span>
-                      </div>
-                    </div>
-                    {(settings.backdropEffect || 'glass') === 'glass' && (
-                      <Check className="w-4 h-4 text-emerald-400" />
-                    )}
+                    {settings.theme === 'light' && <Check className={`w-4 h-4 ${ACCENT_TEXT[settings.accent] || 'text-emerald-400'}`} />}
                   </button>
 
                   <button
                     type="button"
-                    id="effect-acrylic-btn"
-                    onClick={() => updateSetting('backdropEffect', 'acrylic')}
+                    id="theme-transparent-btn"
+                    onClick={() => {
+                      updateSetting('theme', 'transparent');
+                      updateSetting('backdropEffect', 'acrylic');
+                      updateSetting('acrylicIntensity', 100);
+                    }}
                     className={`p-3.5 rounded-xl border flex items-center justify-between transition-all cursor-pointer ${
-                      settings.backdropEffect === 'acrylic' || settings.backdropEffect === 'mica'
+                      settings.theme === 'transparent'
                         ? 'border-neutral-500 bg-neutral-800/90 text-white font-bold shadow-md ring-1 ring-neutral-400/30'
                         : 'border-neutral-800 bg-neutral-900/60 text-neutral-400 hover:text-white hover:border-neutral-700'
                     }`}
@@ -819,22 +793,20 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                       </div>
                       <div className="text-left">
                         <span className="text-xs font-semibold block text-white">
-                          {t.visualEffectAcrylic || t.visualEffectMica || 'Acrylic (Windows 11)'}
+                          {t.themeTransparent || 'Transparent'}
                         </span>
                         <span className="text-[10px] text-neutral-400">
-                          {t.visualEffectAcrylicDesc || t.visualEffectMicaDesc || 'Transparence dépolie fluide de bureau (Desktop Acrylic)'}
+                          {t.themeTransparentDesc || 'Transparence dépolie fluide de bureau (Desktop Acrylic), flou matériel Windows 11'}
                         </span>
                       </div>
                     </div>
-                    {(settings.backdropEffect === 'acrylic' || settings.backdropEffect === 'mica') && (
-                      <Check className="w-4 h-4 text-emerald-400" />
-                    )}
+                    {settings.theme === 'transparent' && <Check className={`w-4 h-4 ${ACCENT_TEXT[settings.accent] || 'text-emerald-400'}`} />}
                   </button>
                 </div>
               </div>
 
-              {/* Si Pure Glass actif : Paramètres d'intensité */}
-              {(settings.backdropEffect || 'glass') === 'glass' ? (
+              {/* Si thème Sombre ou Clair : Paramètres d'intensité Pure Glass */}
+              {settings.theme !== 'transparent' && (
                 <div className="flex flex-col gap-3.5 bg-neutral-900/60 p-4.5 rounded-xl border border-neutral-800">
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-2">
@@ -914,96 +886,6 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                     </div>
                     <span className="text-[10px] font-mono text-cyan-300 font-semibold px-2 py-0.5 rounded bg-cyan-950/60 border border-cyan-500/20 z-10">
                       Flou {Math.round(((settings.glassIntensity ?? 70) / 100) * 28)}px
-                    </span>
-                  </div>
-                </div>
-              ) : (
-                /* Si Acrylic actif : Description, Réglage d'Intensité & Aperçu Fluent */
-                <div className="flex flex-col gap-3.5 bg-neutral-900/60 p-4.5 rounded-xl border border-neutral-800">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                      <Sparkles className="w-4 h-4 text-indigo-400" />
-                      <span className="text-xs font-bold text-neutral-200 uppercase tracking-wider">
-                        Matériau Desktop Acrylic Fluent
-                      </span>
-                    </div>
-                    <span className="text-xs font-mono font-bold px-2.5 py-0.5 rounded-full bg-indigo-950/80 text-indigo-400 border border-indigo-500/30">
-                      {(settings.acrylicIntensity ?? 30)}% {(settings.acrylicIntensity ?? 30) === 30 ? 'Par défaut' : (settings.acrylicIntensity ?? 30) < 30 ? 'Ultra Clair' : (settings.acrylicIntensity ?? 30) >= 80 ? 'Opaque' : 'Équilibré'}
-                    </span>
-                  </div>
-
-                  <p className="text-xs text-neutral-400 leading-relaxed">
-                    Le mode <strong className="text-white">Desktop Acrylic</strong> applique la transparence dépolie officielle de Windows 11. Grâce au flou d'arrière-plan DWM translucide, les fenêtres d'arrière-plan et le bureau apparaissent en transparence sous FlowLuna. Ajustez la translucidité ci-dessous.
-                  </p>
-
-                  {/* Slider de réglage de l'intensité acrylique (0% à 100%, par défaut 30%) */}
-                  <div className="flex flex-col gap-2.5 pt-1">
-                    <div className="flex items-center justify-between text-xs text-neutral-300">
-                      <span className="font-semibold">Transparence & Profondeur Acrylique</span>
-                      <span className="font-mono text-indigo-400 font-bold">{(settings.acrylicIntensity ?? 30)}%</span>
-                    </div>
-                    <div className="flex items-center gap-3">
-                      <span className="text-[11px] font-mono text-neutral-500 font-semibold w-8">0%</span>
-                      <input
-                        type="range"
-                        min="0"
-                        max="100"
-                        step="1"
-                        value={settings.acrylicIntensity ?? 30}
-                        onChange={(e) => updateSetting('acrylicIntensity', parseInt(e.target.value, 10))}
-                        className="flex-1 h-2 bg-neutral-800 rounded-lg appearance-none cursor-pointer accent-indigo-400"
-                      />
-                      <span className="text-[11px] font-mono text-indigo-400 font-bold w-10 text-right">100%</span>
-                    </div>
-
-                    {/* Raccourcis / Préréglages rapides */}
-                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 pt-1">
-                      {[
-                        { value: 10, label: '10% Ultra Clair' },
-                        { value: 30, label: '30% Par défaut' },
-                        { value: 55, label: '55% Équilibré' },
-                        { value: 85, label: '85% Opaque' },
-                      ].map((preset) => {
-                        const isActive = (settings.acrylicIntensity ?? 30) === preset.value;
-                        return (
-                          <button
-                            key={preset.value}
-                            type="button"
-                            onClick={() => updateSetting('acrylicIntensity', preset.value)}
-                            className={`py-1.5 px-2 rounded-lg text-[11px] font-medium transition-all text-center cursor-pointer border ${
-                              isActive
-                                ? 'border-indigo-500/60 bg-indigo-500/20 text-indigo-200 font-bold shadow-xs ring-1 ring-indigo-500/30'
-                                : 'border-neutral-800 bg-neutral-900/60 text-neutral-400 hover:text-neutral-200 hover:border-neutral-700'
-                            }`}
-                          >
-                            {preset.label}
-                          </button>
-                        );
-                      })}
-                    </div>
-                  </div>
-
-                  {/* Live Visual Desktop Acrylic Preview */}
-                  <div
-                    className="mt-1 p-3.5 rounded-xl border border-white/15 relative overflow-hidden flex items-center justify-between transition-all"
-                    style={{
-                      backdropFilter: `blur(${Math.round(Math.min(50, Math.max(8, 16 + ((settings.acrylicIntensity ?? 30) / 100) * 32)))}px) saturate(140%)`,
-                      WebkitBackdropFilter: `blur(${Math.round(Math.min(50, Math.max(8, 16 + ((settings.acrylicIntensity ?? 30) / 100) * 32)))}px) saturate(140%)`,
-                      backgroundColor:
-                        settings.theme === 'light'
-                          ? `rgba(255, 255, 255, ${Math.min(0.95, Math.max(0.08, 0.45 * ((settings.acrylicIntensity ?? 30) / 30))).toFixed(3)})`
-                          : `rgba(18, 18, 28, ${Math.min(0.95, Math.max(0.08, 0.45 * ((settings.acrylicIntensity ?? 30) / 30))).toFixed(3)})`,
-                      boxShadow: '0 8px 30px rgba(0, 0, 0, 0.25)',
-                    }}
-                  >
-                    <div className="flex items-center gap-2.5 z-10">
-                      <span className="w-2.5 h-2.5 rounded-full bg-indigo-400 shadow-[0_0_8px_#818cf8]" />
-                      <span className="text-xs font-semibold text-neutral-200">
-                        {settings.theme === 'dark' ? 'Surface Acrylique Translucide Sombre' : 'Surface Acrylique Translucide Claire'}
-                      </span>
-                    </div>
-                    <span className="text-[10px] font-mono text-indigo-300 font-semibold px-2 py-0.5 rounded bg-indigo-950/60 border border-indigo-500/20 z-10">
-                      DWM Desktop Acrylic ({(settings.acrylicIntensity ?? 30)}%)
                     </span>
                   </div>
                 </div>

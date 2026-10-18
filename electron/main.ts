@@ -270,7 +270,7 @@ function createMainWindow(): void {
     minHeight: 640,
     frame: false,
     titleBarStyle: 'hidden',
-    backgroundColor: '#0a0a0a',
+    backgroundColor: '#00000000',
     backgroundMaterial: process.platform === 'win32' ? 'acrylic' : undefined,
     icon: iconPath || undefined,
     show: false,
@@ -605,10 +605,19 @@ function setupIpcHandlers(): void {
     return result.filePaths;
   });
 
-  ipcMain.handle('window-set-backdrop', (_event, effect: string, _theme: string) => {
+  ipcMain.handle('window-set-backdrop', (_event, effect: string, theme: string) => {
     if (mainWindow && process.platform === 'win32') {
       try {
-        mainWindow.setBackgroundMaterial('acrylic');
+        if (theme === 'transparent' || effect === 'acrylic') {
+          mainWindow.setBackgroundColor('#00000000');
+          mainWindow.setBackgroundMaterial('acrylic');
+        } else if (theme === 'light') {
+          mainWindow.setBackgroundColor('#f8fafc');
+          mainWindow.setBackgroundMaterial('none');
+        } else {
+          mainWindow.setBackgroundColor('#0a0a0a');
+          mainWindow.setBackgroundMaterial('none');
+        }
       } catch {}
     }
   });

@@ -1,5 +1,5 @@
 declare const __APP_VERSION__: string | undefined;
-export const APP_VERSION = typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__ : '1.22.6';
+export const APP_VERSION = typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__ : '1.22.7';
 
 export type MediaFormat =
   | 'mp3'
@@ -156,7 +156,7 @@ export interface EqualizerSettings {
   playbackSpeed?: number; // 0.5 to 2.0
 }
 
-export type ThemeMode = 'dark' | 'light';
+export type ThemeMode = 'dark' | 'light' | 'transparent';
 
 export type AccentColor =
   | 'emerald' // Modern green

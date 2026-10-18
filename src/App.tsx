@@ -368,8 +368,9 @@ export default function App() {
   useEffect(() => {
     const root = document.documentElement;
     const currentTheme = playerSettings.theme || 'dark';
+    const isTransparent = currentTheme === 'transparent';
     const effect =
-      playerSettings.backdropEffect === 'acrylic' || playerSettings.backdropEffect === 'mica'
+      isTransparent || playerSettings.backdropEffect === 'acrylic' || playerSettings.backdropEffect === 'mica'
         ? 'acrylic'
         : (playerSettings.backdropEffect || 'glass');
     root.setAttribute('data-theme', currentTheme);
@@ -377,10 +378,13 @@ export default function App() {
     root.setAttribute('data-accent', playerSettings.accent || 'emerald');
     if (currentTheme === 'light') {
       root.classList.add('light');
-      root.classList.remove('dark');
+      root.classList.remove('dark', 'theme-transparent');
+    } else if (currentTheme === 'transparent') {
+      root.classList.add('dark', 'theme-transparent');
+      root.classList.remove('light');
     } else {
       root.classList.add('dark');
-      root.classList.remove('light');
+      root.classList.remove('light', 'theme-transparent');
     }
 
     if (window.electronAPI?.setBackdrop) {
@@ -2131,10 +2135,11 @@ export default function App() {
 
   const cachedTracksCount = tracks.filter((t) => t.isCachedOffline).length;
 
-  const isAcrylic = playerSettings.backdropEffect === 'acrylic' || playerSettings.backdropEffect === 'mica';
+  const isTransparent = playerSettings.theme === 'transparent';
+  const isAcrylic = isTransparent || playerSettings.backdropEffect === 'acrylic' || playerSettings.backdropEffect === 'mica';
   const backdropEffect: BackdropEffect = isAcrylic ? 'acrylic' : (playerSettings.backdropEffect || 'glass');
   const glassIntensity = playerSettings.glassIntensity ?? 70;
-  const acrylicIntensity = playerSettings.acrylicIntensity ?? 30;
+  const acrylicIntensity = isTransparent ? 100 : (playerSettings.acrylicIntensity ?? 30);
   const glassFactor = glassIntensity / 100;
   const acrylicFactor = acrylicIntensity / 30; // At 30%, exactly 1.0 (maintains existing baseline)
   const blurScale = Math.sqrt(Math.max(0.1, acrylicIntensity / 30));
@@ -2143,6 +2148,16 @@ export default function App() {
   // Dynamic CSS variables for Pure Glass vs Desktop Acrylic Fluent effect
   const glassStyle = useMemo(() => {
     const activeAccent = playerSettings.accent || 'emerald';
+    const accentTokens: Record<AccentColor, { primary: string; hover: string; rgb: string; glow: string }> = {
+      emerald: { primary: '#10b981', hover: '#059669', rgb: '16, 185, 129', glow: 'rgba(16, 185, 129, 0.4)' },
+      violet: { primary: '#8b5cf6', hover: '#7c3aed', rgb: '139, 92, 246', glow: 'rgba(139, 92, 246, 0.4)' },
+      blue: { primary: '#3b82f6', hover: '#2563eb', rgb: '59, 130, 246', glow: 'rgba(59, 130, 246, 0.4)' },
+      amber: { primary: '#f59e0b', hover: '#d97706', rgb: '245, 158, 11', glow: 'rgba(245, 158, 11, 0.4)' },
+      rose: { primary: '#f43f5e', hover: '#e11d48', rgb: '244, 63, 94', glow: 'rgba(244, 63, 94, 0.4)' },
+      cyan: { primary: '#06b6d4', hover: '#0891b2', rgb: '6, 182, 212', glow: 'rgba(6, 182, 212, 0.4)' },
+    };
+    const activeAccentToken = accentTokens[activeAccent] || accentTokens.emerald;
+
     const lightAccentTokens: Record<AccentColor, { primary: string; hover: string }> = {
       emerald: { primary: '#059669', hover: '#047857' },
       violet: { primary: '#7c3aed', hover: '#6d28d9' },
@@ -2170,6 +2185,39 @@ export default function App() {
           '--shadow-md': '0 4px 6px -1px rgb(0 0 0 / 0.07)',
         }
       : {};
+
+    // 100% Transparent theme: absolute zero opaque background, pure acrylic material
+    if (isTransparent) {
+      return {
+        ...lightTokens,
+        '--primary': activeAccentToken.primary,
+        '--primary-hover': activeAccentToken.hover,
+        '--primary-rgb': activeAccentToken.rgb,
+        '--primary-glow': activeAccentToken.glow,
+        '--primary-contrast': '#ffffff',
+        '--acrylic-intensity': '100%',
+        '--acrylic-root-bg': 'transparent',
+        '--acrylic-sidebar-bg': 'rgba(10, 10, 16, 0.18)',
+        '--acrylic-player-bg': 'rgba(12, 12, 20, 0.35)',
+        '--acrylic-main-bg': 'transparent',
+        '--acrylic-card-bg': 'rgba(255, 255, 255, 0.04)',
+        '--acrylic-modal-bg': 'rgba(14, 14, 24, 0.55)',
+        '--acrylic-sub-card-bg': 'rgba(255, 255, 255, 0.04)',
+        '--acrylic-blur': '24px',
+        '--acrylic-blur-main': '20px',
+        '--acrylic-blur-card': '16px',
+        '--acrylic-blur-modal': '32px',
+        '--glass-intensity': '100%',
+        '--glass-factor': '1.00',
+        '--glass-blur': '24px',
+        '--glass-border': 'rgba(255, 255, 255, 0.08)',
+        '--glass-sidebar-bg': 'rgba(10, 10, 16, 0.18)',
+        '--glass-main-bg': 'transparent',
+        '--glass-player-bg': 'rgba(12, 12, 20, 0.35)',
+        '--glass-card-bg': 'rgba(255, 255, 255, 0.04)',
+        '--glass-modal-bg': 'rgba(14, 14, 24, 0.55)',
+      } as unknown as React.CSSProperties;
+    }
 
     if (isAcrylic) {
       const acrylicSidebarBg = isDark
@@ -2248,7 +2296,7 @@ export default function App() {
         ? `rgba(14, 14, 22, ${Math.max(0.45, 0.95 - glassFactor * 0.5)})`
         : `rgba(255, 255, 255, ${Math.max(0.85, 0.98 - glassFactor * 0.13)})`,
     } as unknown as React.CSSProperties;
-  }, [isAcrylic, acrylicIntensity, acrylicFactor, blurScale, glassIntensity, glassFactor, isDark, playerSettings.accent]);
+  }, [isTransparent, isAcrylic, acrylicIntensity, acrylicFactor, blurScale, glassIntensity, glassFactor, isDark, playerSettings.accent]);
 
   // Check if fullscreen video or UI is active to prevent any foreground toast popup
   const isFullscreenActive = useMemo(() => {
@@ -2267,6 +2315,8 @@ export default function App() {
       className={`w-screen h-screen flex flex-col overflow-hidden transition-colors duration-200 relative ${
         playerSettings.theme === 'light'
           ? (isAcrylic ? 'light text-slate-900' : 'light bg-slate-100/60 text-slate-900')
+          : isTransparent
+          ? 'dark text-neutral-100 bg-transparent'
           : (isAcrylic ? 'dark text-neutral-100' : 'dark bg-neutral-950 text-neutral-100')
       }`}
     >

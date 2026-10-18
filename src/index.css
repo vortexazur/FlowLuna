@@ -1516,78 +1516,289 @@ html.light .glass-modal {
 }
 
 /* =========================================================================
-   17. WINDOWS 11 DESKTOP ACRYLIC DESIGN SYSTEM ([data-effect="acrylic"], [data-effect="mica"])
-   Translucent frosted Desktop Acrylic texture, soft ambient tint, genuine transparency.
-   Seamlessly adapts to both Dark mode and Light mode.
+   17. THÈME TRANSPARENT (100% TRANSPARENCE DESKTOP ACRYLIC FLUENT)
+   Scoping strict: [data-theme="transparent"], html.theme-transparent
+   Transparence absolue 100% sur toutes fenêtres, vues, menus déroulants et modales.
+   Connexion dynamique à la couleur d'accentuation (bordures, icônes, surbrillances).
+   Zéro impact / zéro régression sur [data-theme="dark"] et [data-theme="light"].
    ========================================================================= */
 
-/* Dark Mode Desktop Acrylic */
-:is([data-effect="acrylic"], [data-effect="mica"]):not([data-theme="light"]) #app-root-container,
-:is([data-effect="acrylic"], [data-effect="mica"])[data-theme="dark"] #app-root-container {
-  background-color: var(--acrylic-root-bg, rgba(10, 10, 16, 0.25)) !important;
+/* Transparent Theme Dynamic Accent Tokens */
+[data-theme="transparent"][data-accent="emerald"],
+[data-theme="transparent"] [data-accent="emerald"],
+html.theme-transparent[data-accent="emerald"] {
+  --primary: #10b981;
+  --primary-hover: #059669;
+  --primary-contrast: #ffffff;
+  --primary-rgb: 16, 185, 129;
+  --primary-glow: rgba(16, 185, 129, 0.4);
+}
+[data-theme="transparent"][data-accent="violet"],
+[data-theme="transparent"] [data-accent="violet"],
+html.theme-transparent[data-accent="violet"] {
+  --primary: #8b5cf6;
+  --primary-hover: #7c3aed;
+  --primary-contrast: #ffffff;
+  --primary-rgb: 139, 92, 246;
+  --primary-glow: rgba(139, 92, 246, 0.4);
+}
+[data-theme="transparent"][data-accent="blue"],
+[data-theme="transparent"] [data-accent="blue"],
+html.theme-transparent[data-accent="blue"] {
+  --primary: #3b82f6;
+  --primary-hover: #2563eb;
+  --primary-contrast: #ffffff;
+  --primary-rgb: 59, 130, 246;
+  --primary-glow: rgba(59, 130, 246, 0.4);
+}
+[data-theme="transparent"][data-accent="amber"],
+[data-theme="transparent"] [data-accent="amber"],
+html.theme-transparent[data-accent="amber"] {
+  --primary: #f59e0b;
+  --primary-hover: #d97706;
+  --primary-contrast: #ffffff;
+  --primary-rgb: 245, 158, 11;
+  --primary-glow: rgba(245, 158, 11, 0.4);
+}
+[data-theme="transparent"][data-accent="rose"],
+[data-theme="transparent"] [data-accent="rose"],
+html.theme-transparent[data-accent="rose"] {
+  --primary: #f43f5e;
+  --primary-hover: #e11d48;
+  --primary-contrast: #ffffff;
+  --primary-rgb: 244, 63, 94;
+  --primary-glow: rgba(244, 63, 94, 0.4);
+}
+[data-theme="transparent"][data-accent="cyan"],
+[data-theme="transparent"] [data-accent="cyan"],
+html.theme-transparent[data-accent="cyan"] {
+  --primary: #06b6d4;
+  --primary-hover: #0891b2;
+  --primary-contrast: #ffffff;
+  --primary-rgb: 6, 182, 212;
+  --primary-glow: rgba(6, 182, 212, 0.4);
 }
 
-:is([data-effect="acrylic"], [data-effect="mica"]):not([data-theme="light"]) .glass-sidebar,
-:is([data-effect="acrylic"], [data-effect="mica"])[data-theme="dark"] .glass-sidebar {
-  background-color: var(--acrylic-sidebar-bg, rgba(16, 16, 24, 0.40)) !important;
-  backdrop-filter: blur(var(--acrylic-blur, 28px)) saturate(140%) !important;
-  -webkit-backdrop-filter: blur(var(--acrylic-blur, 28px)) saturate(140%) !important;
-  border-right-color: rgba(255, 255, 255, 0.08) !important;
-  box-shadow: inset -1px 0 0 0 rgba(255, 255, 255, 0.04);
+/* 1. Global Window, Body & Root Canvas (100% Genuine Fixed Transparency) */
+html[data-theme="transparent"],
+html[data-theme="transparent"] body,
+html.theme-transparent,
+html.theme-transparent body,
+[data-theme="transparent"] #root,
+[data-theme="transparent"]#app-root-container,
+[data-theme="transparent"] #app-root-container {
+  background-color: transparent !important;
+  background: transparent !important;
 }
 
-:is([data-effect="acrylic"], [data-effect="mica"]):not([data-theme="light"]) .glass-player,
-:is([data-effect="acrylic"], [data-effect="mica"])[data-theme="dark"] .glass-player {
-  background-color: var(--acrylic-player-bg, rgba(18, 18, 28, 0.45)) !important;
-  backdrop-filter: blur(var(--acrylic-blur, 28px)) saturate(140%) !important;
-  -webkit-backdrop-filter: blur(var(--acrylic-blur, 28px)) saturate(140%) !important;
-  border-top-color: rgba(255, 255, 255, 0.08) !important;
-  box-shadow: 0 -8px 24px rgba(0, 0, 0, 0.25) !important;
+/* 2. Frameless Titlebar */
+[data-theme="transparent"] #flowluna-titlebar {
+  background-color: rgba(10, 10, 16, 0.20) !important;
+  backdrop-filter: blur(20px) !important;
+  -webkit-backdrop-filter: blur(20px) !important;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.07) !important;
+  color: #f3f4f6 !important;
 }
 
-:is([data-effect="acrylic"], [data-effect="mica"]):not([data-theme="light"]) .glass-main,
-:is([data-effect="acrylic"], [data-effect="mica"])[data-theme="dark"] .glass-main {
-  background-color: var(--acrylic-main-bg, rgba(10, 10, 16, 0.20)) !important;
-  backdrop-filter: blur(var(--acrylic-blur-main, 24px)) saturate(130%) !important;
-  -webkit-backdrop-filter: blur(var(--acrylic-blur-main, 24px)) saturate(130%) !important;
+/* 3. Left Navigation Sidebar */
+[data-theme="transparent"] .glass-sidebar,
+[data-theme="transparent"] #app-sidebar {
+  background-color: rgba(10, 10, 16, 0.20) !important;
+  backdrop-filter: blur(28px) saturate(140%) !important;
+  -webkit-backdrop-filter: blur(28px) saturate(140%) !important;
+  border-right: 1px solid rgba(255, 255, 255, 0.07) !important;
+  box-shadow: inset -1px 0 0 0 rgba(255, 255, 255, 0.03) !important;
 }
 
-:is([data-effect="acrylic"], [data-effect="mica"]):not([data-theme="light"]) .glass-card,
-:is([data-effect="acrylic"], [data-effect="mica"])[data-theme="dark"] .glass-card {
-  background-color: var(--acrylic-card-bg, rgba(26, 26, 38, 0.30)) !important;
-  backdrop-filter: blur(var(--acrylic-blur-card, 20px)) saturate(140%) !important;
-  -webkit-backdrop-filter: blur(var(--acrylic-blur-card, 20px)) saturate(140%) !important;
-  border-color: rgba(255, 255, 255, 0.08) !important;
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.20) !important;
+/* 4. Center Main Scrollable Canvas & All Views */
+[data-theme="transparent"] .glass-main,
+[data-theme="transparent"] #main-content-scroll,
+[data-theme="transparent"] #library-view,
+[data-theme="transparent"] #playlist-detail-view,
+[data-theme="transparent"] #all-playlists-view,
+[data-theme="transparent"] #videos-view,
+[data-theme="transparent"] #downloader-view {
+  background-color: transparent !important;
+  background: transparent !important;
 }
 
-:is([data-effect="acrylic"], [data-effect="mica"]):not([data-theme="light"]) .glass-modal,
-:is([data-effect="acrylic"], [data-effect="mica"])[data-theme="dark"] .glass-modal,
-:is([data-effect="acrylic"], [data-effect="mica"]):not([data-theme="light"]) #settings-modal-content,
-:is([data-effect="acrylic"], [data-effect="mica"]):not([data-theme="light"]) #equalizer-modal-content,
-:is([data-effect="acrylic"], [data-effect="mica"]):not([data-theme="light"]) #audio-merger-content,
-:is([data-effect="acrylic"], [data-effect="mica"]):not([data-theme="light"]) #duplicate-finder-content,
-:is([data-effect="acrylic"], [data-effect="mica"]):not([data-theme="light"]) #command-palette-content,
-:is([data-effect="acrylic"], [data-effect="mica"]):not([data-theme="light"]) #listening-stats-content,
-:is([data-effect="acrylic"], [data-effect="mica"]):not([data-theme="light"]) #track-tag-editor-content,
-:is([data-effect="acrylic"], [data-effect="mica"]):not([data-theme="light"]) #audio-trimmer-modal-content {
-  background-color: var(--acrylic-modal-bg, rgba(18, 18, 28, 0.60)) !important;
-  backdrop-filter: blur(var(--acrylic-blur-modal, 36px)) saturate(150%) !important;
-  -webkit-backdrop-filter: blur(var(--acrylic-blur-modal, 36px)) saturate(150%) !important;
-  border-color: rgba(255, 255, 255, 0.12) !important;
-  box-shadow: 0 25px 60px rgba(0, 0, 0, 0.5) !important;
+/* 5. Bottom Player Bar */
+[data-theme="transparent"] .glass-player,
+[data-theme="transparent"] #flowluna-playerbar {
+  background-color: rgba(12, 12, 20, 0.38) !important;
+  backdrop-filter: blur(28px) saturate(140%) !important;
+  -webkit-backdrop-filter: blur(28px) saturate(140%) !important;
+  border-top: 1px solid rgba(255, 255, 255, 0.08) !important;
+  box-shadow: 0 -8px 30px rgba(0, 0, 0, 0.3) !important;
 }
 
-:is([data-effect="acrylic"], [data-effect="mica"]):not([data-theme="light"]) #settings-modal-content .bg-neutral-900\/60,
-:is([data-effect="acrylic"], [data-effect="mica"]):not([data-theme="light"]) #settings-modal-content .bg-neutral-900\/80,
-:is([data-effect="acrylic"], [data-effect="mica"]):not([data-theme="light"]) #settings-modal-content .bg-neutral-950\/60,
-:is([data-effect="acrylic"], [data-effect="mica"])[data-theme="dark"] #settings-modal-content .bg-neutral-900\/60,
-:is([data-effect="acrylic"], [data-effect="mica"])[data-theme="dark"] #settings-modal-content .bg-neutral-900\/80,
-:is([data-effect="acrylic"], [data-effect="mica"])[data-theme="dark"] #settings-modal-content .bg-neutral-950\/60 {
-  background-color: var(--acrylic-sub-card-bg, rgba(255, 255, 255, 0.04)) !important;
+/* 6. Cards & List Elements in Views */
+[data-theme="transparent"] .glass-card,
+[data-theme="transparent"] #library-view .bg-neutral-900\/80,
+[data-theme="transparent"] #library-view .bg-neutral-900\/60,
+[data-theme="transparent"] #library-view .bg-neutral-950\/60,
+[data-theme="transparent"] #library-view .bg-neutral-900\/50,
+[data-theme="transparent"] #playlist-detail-view .bg-neutral-900\/80,
+[data-theme="transparent"] #playlist-detail-view .bg-neutral-900\/60,
+[data-theme="transparent"] #playlist-detail-view #playlist-header-banner,
+[data-theme="transparent"] #all-playlists-view .bg-neutral-900\/80,
+[data-theme="transparent"] #videos-view .bg-neutral-900\/80,
+[data-theme="transparent"] #videos-view .bg-neutral-900\/60,
+[data-theme="transparent"] #downloader-view .bg-neutral-900\/80,
+[data-theme="transparent"] #downloader-view .bg-neutral-900\/60,
+[data-theme="transparent"] #downloader-view .bg-neutral-950\/60 {
+  background-color: rgba(255, 255, 255, 0.04) !important;
   border-color: rgba(255, 255, 255, 0.08) !important;
   backdrop-filter: blur(16px) !important;
   -webkit-backdrop-filter: blur(16px) !important;
+}
+
+/* Table Hover & Playing Row */
+[data-theme="transparent"] tbody tr:hover,
+[data-theme="transparent"] .track-row-optimized:hover,
+[data-theme="transparent"] .track-card-optimized:hover {
+  background-color: rgba(255, 255, 255, 0.06) !important;
+}
+
+[data-theme="transparent"] tbody tr.bg-neutral-800\/60,
+[data-theme="transparent"] tbody tr.bg-white\/10 {
+  background-color: rgba(var(--primary-rgb, 16, 185, 129), 0.15) !important;
+  border-left: 2px solid var(--primary, #10b981) !important;
+}
+
+/* 7. All Modals & Dialog Overlays (Zero residual opaque backgrounds) */
+[data-theme="transparent"] .fixed.inset-0.bg-black\/80,
+[data-theme="transparent"] .fixed.inset-0.bg-black\/75,
+[data-theme="transparent"] .fixed.inset-0.bg-black\/70,
+[data-theme="transparent"] .fixed.inset-0.bg-black\/60,
+[data-theme="transparent"] [id$="-modal-overlay"],
+[data-theme="transparent"] #queue-drawer-backdrop {
+  background-color: rgba(0, 0, 0, 0.35) !important;
+  backdrop-filter: blur(16px) !important;
+  -webkit-backdrop-filter: blur(16px) !important;
+}
+
+/* Modal Content Containers (Settings, Equalizer, Merger, Tag Editor, Trimmer, Duplicate, Command, Stats, Queue, etc.) */
+[data-theme="transparent"] .glass-modal,
+[data-theme="transparent"] #settings-modal-content,
+[data-theme="transparent"] #equalizer-modal-content,
+[data-theme="transparent"] #audio-merger-content,
+[data-theme="transparent"] #duplicate-finder-content,
+[data-theme="transparent"] #command-palette-content,
+[data-theme="transparent"] #listening-stats-content,
+[data-theme="transparent"] #track-tag-editor-content,
+[data-theme="transparent"] #audio-trimmer-modal-content,
+[data-theme="transparent"] #queue-drawer-panel,
+[data-theme="transparent"] [id$="-modal-card"],
+[data-theme="transparent"] .fixed.inset-0 > div[class*="bg-neutral-900"],
+[data-theme="transparent"] .fixed.inset-0 > div[class*="bg-neutral-950"] {
+  background-color: rgba(14, 14, 24, 0.55) !important;
+  backdrop-filter: blur(36px) saturate(150%) !important;
+  -webkit-backdrop-filter: blur(36px) saturate(150%) !important;
+  border: 1px solid rgba(255, 255, 255, 0.12) !important;
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.45), 0 0 0 1px rgba(255, 255, 255, 0.08) !important;
+}
+
+/* Modal Internal Sub-cards & Sections */
+[data-theme="transparent"] #settings-modal-content .bg-neutral-900\/60,
+[data-theme="transparent"] #settings-modal-content .bg-neutral-900\/80,
+[data-theme="transparent"] #settings-modal-content .bg-neutral-900\/50,
+[data-theme="transparent"] #settings-modal-content .bg-neutral-900,
+[data-theme="transparent"] #settings-modal-content .bg-neutral-950\/60,
+[data-theme="transparent"] #settings-modal-content .bg-neutral-950,
+[data-theme="transparent"] .glass-modal .bg-neutral-900\/60,
+[data-theme="transparent"] .glass-modal .bg-neutral-900\/80,
+[data-theme="transparent"] .glass-modal .bg-neutral-900,
+[data-theme="transparent"] .glass-modal .bg-neutral-950\/60,
+[data-theme="transparent"] .glass-modal .bg-neutral-950,
+[data-theme="transparent"] [id$="-modal-content"] .bg-neutral-900\/60,
+[data-theme="transparent"] [id$="-modal-content"] .bg-neutral-900\/80,
+[data-theme="transparent"] [id$="-modal-content"] .bg-neutral-900,
+[data-theme="transparent"] [id$="-modal-content"] .bg-neutral-950\/60,
+[data-theme="transparent"] [id$="-modal-content"] .bg-neutral-950,
+[data-theme="transparent"] [id$="-modal-card"] div[class*="bg-neutral-950"],
+[data-theme="transparent"] [id$="-modal-card"] div[class*="bg-neutral-900"],
+[data-theme="transparent"] .fixed.inset-0 div[class*="bg-neutral-950"],
+[data-theme="transparent"] .fixed.inset-0 div[class*="bg-neutral-900"] {
+  background-color: rgba(255, 255, 255, 0.04) !important;
+  border-color: rgba(255, 255, 255, 0.08) !important;
+  backdrop-filter: blur(16px) !important;
+  -webkit-backdrop-filter: blur(16px) !important;
+}
+
+/* 8. Menus Déroulants & Context Menus */
+[data-theme="transparent"] .fixed.z-\[100\],
+[data-theme="transparent"] .absolute.z-40.w-64,
+[data-theme="transparent"] .absolute.z-50.w-80,
+[data-theme="transparent"] .absolute.z-50.w-64,
+[data-theme="transparent"] #sidebar-open-file-btn + div,
+[data-theme="transparent"] [id$="-dropdown-menu"],
+[data-theme="transparent"] div[class*="glass-modal"][class*="absolute"] {
+  background-color: rgba(14, 14, 24, 0.65) !important;
+  backdrop-filter: blur(32px) saturate(150%) !important;
+  -webkit-backdrop-filter: blur(32px) saturate(150%) !important;
+  border: 1px solid rgba(255, 255, 255, 0.12) !important;
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.4), 0 0 0 1px rgba(var(--primary-rgb, 16, 185, 129), 0.25) !important;
+}
+
+[data-theme="transparent"] .fixed.z-\[100\] button:hover,
+[data-theme="transparent"] .absolute.z-40.w-64 button:hover,
+[data-theme="transparent"] div[class*="glass-modal"][class*="absolute"] button:hover {
+  background-color: rgba(var(--primary-rgb, 16, 185, 129), 0.15) !important;
+  color: #ffffff !important;
+}
+
+/* 9. Inputs, Textareas, Selects */
+[data-theme="transparent"] input:not([type="range"]):not([type="checkbox"]):not([type="radio"]),
+[data-theme="transparent"] textarea,
+[data-theme="transparent"] select {
+  background-color: rgba(255, 255, 255, 0.06) !important;
+  border-color: rgba(255, 255, 255, 0.12) !important;
+  color: #ffffff !important;
+}
+
+[data-theme="transparent"] input:not([type="range"]):not([type="checkbox"]):not([type="radio"]):focus,
+[data-theme="transparent"] textarea:focus,
+[data-theme="transparent"] select:focus {
+  border-color: var(--primary, #10b981) !important;
+  box-shadow: 0 0 0 2px rgba(var(--primary-rgb, 16, 185, 129), 0.25) !important;
+  background-color: rgba(255, 255, 255, 0.09) !important;
+}
+
+/* 10. Accent Color Integration: Range Controls, Switches, Active States */
+[data-theme="transparent"] input[type="range"] {
+  accent-color: var(--primary, #10b981) !important;
+}
+
+[data-theme="transparent"] [role="switch"][aria-checked="true"] {
+  background-color: var(--primary, #10b981) !important;
+  border-color: transparent !important;
+}
+
+[data-theme="transparent"] input[type="checkbox"]:checked,
+[data-theme="transparent"] input[type="radio"]:checked {
+  accent-color: var(--primary, #10b981) !important;
+}
+
+/* Active Theme Card */
+[data-theme="transparent"] #theme-transparent-btn {
+  border-color: var(--primary, #10b981) !important;
+  box-shadow: 0 0 16px rgba(var(--primary-rgb, 16, 185, 129), 0.3) !important;
+}
+
+/* Active Tabs in SettingsModal */
+[data-theme="transparent"] [role="tab"][aria-selected="true"],
+[data-theme="transparent"] button.settings-tab-active {
+  border-color: var(--primary, #10b981) !important;
+  color: var(--primary, #10b981) !important;
+}
+
+/* Toasts and Overlays in Transparent Mode */
+[data-theme="transparent"] #update-notification-toast {
+  background-color: rgba(14, 14, 24, 0.65) !important;
+  backdrop-filter: blur(28px) saturate(150%) !important;
+  -webkit-backdrop-filter: blur(28px) saturate(150%) !important;
+  border-color: rgba(255, 255, 255, 0.12) !important;
 }
 
 /* Light Mode Desktop Acrylic */

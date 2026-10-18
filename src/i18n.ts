@@ -20,6 +20,9 @@ export const SUPPORTED_LANGUAGES: LanguageOption[] = [
 ];
 
 const extraTranslationsFr = {
+  themeTransparent: 'Transparent',
+  themeTransparentDesc: 'Transparence dépolie fluide de bureau (Desktop Acrylic), flou matériel Windows 11',
+  themeMode: 'Mode Thème',
   visualEffectMode: 'Effet Visuel & Matériau de Fond',
   visualEffectGlass: 'Pure Glass (Actuel)',
   visualEffectGlassDesc: 'Verre dépoli vibrant, halos de lumière et intensité dynamique',
@@ -44,6 +47,9 @@ const extraTranslationsFr = {
 };
 
 const extraTranslationsEn = {
+  themeTransparent: 'Transparent',
+  themeTransparentDesc: 'Fluid desktop frosted transparency (Desktop Acrylic), Windows 11 hardware blur',
+  themeMode: 'Theme Mode',
   visualEffectMode: 'Visual Effect & Background Material',
   visualEffectGlass: 'Pure Glass (Current)',
   visualEffectGlassDesc: 'Vibrant frosted glass, dynamic light aura, and customizable blur',
@@ -1171,6 +1177,9 @@ export const translations = {
     appearanceSection: 'Apparence & Thème Visuel',
     themeDark: 'Thème Sombre (OLED)',
     themeLight: 'Thème Clair Raffiné',
+    themeTransparent: 'Transparent',
+    themeTransparentDesc: 'Transparence dépolie fluide de bureau (Desktop Acrylic), flou matériel Windows 11',
+    themeMode: 'Mode Thème',
     accentColor: "Couleur d'Accentuation",
     pureGlassEffect: 'Effet Pure Glass (Translucidité & Verre Dépoli)',
     pureGlassDesc: "Ajustez l'intensité du flou de verre cristal et la translucidité de l'interface rattachée au thème",
@@ -1337,6 +1346,9 @@ export const translations = {
     appearanceSection: 'Appearance & Visual Theme',
     themeDark: 'Dark Mode (OLED)',
     themeLight: 'Refined Light Mode',
+    themeTransparent: 'Transparent',
+    themeTransparentDesc: 'Fluid desktop frosted transparency (Desktop Acrylic), Windows 11 hardware blur',
+    themeMode: 'Theme Mode',
     accentColor: 'Accent Color',
     pureGlassEffect: 'Pure Glass Effect (Crystal Translucency)',
     pureGlassDesc: 'Adjust frosted crystal glass backdrop blur and translucency tied to the theme',
