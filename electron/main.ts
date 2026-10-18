@@ -1,6 +1,7 @@
-import { app, BrowserWindow, ipcMain, Tray, Menu, nativeImage, globalShortcut, shell, dialog } from 'electron';
+import { app, BrowserWindow, ipcMain, Tray, Menu, nativeImage, globalShortcut, shell, dialog, session } from 'electron';
 import path from 'path';
 import fs from 'fs';
+import os from 'os';
 import http from 'http';
 import { getBinariesStatusReport, updateYtdlp } from '../src/services/binaryManager';
 
@@ -689,6 +690,28 @@ app.whenReady().then(async () => {
   registerGlobalShortcuts();
 
   await ensureServerRunning();
+
+  // Security: Inject internal secret token on loopback requests originating from Electron window
+  const getRuntimeToken = (): string => {
+    if (process.env.FLOWLUNA_INTERNAL_TOKEN) return process.env.FLOWLUNA_INTERNAL_TOKEN;
+    try {
+      const base = process.env.APPDATA || (process.platform === 'darwin' ? path.join(os.homedir(), 'Library', 'Preferences') : path.join(os.homedir(), '.config'));
+      const tokenFile = path.join(base, 'FlowLuna', '.runtime_token');
+      if (fs.existsSync(tokenFile)) {
+        return fs.readFileSync(tokenFile, 'utf-8').trim();
+      }
+    } catch {}
+    return '';
+  };
+
+  session.defaultSession.webRequest.onBeforeSendHeaders((details, callback) => {
+    const token = getRuntimeToken();
+    if (token && (details.url.startsWith('http://127.0.0.1') || details.url.startsWith('http://localhost'))) {
+      details.requestHeaders['X-FlowLuna-Token'] = token;
+    }
+    callback({ requestHeaders: details.requestHeaders });
+  });
+
   createMainWindow();
 
   app.on('activate', () => {

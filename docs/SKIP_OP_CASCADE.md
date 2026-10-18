@@ -206,31 +206,35 @@ Aucun serveur ni fichier vidéo réel n'est requis.
 
 ---
 
-## 8. Risques connus
+## 8. Blindages de sécurité (Résolution des risques DNS Rebinding & Path Traversal)
 
-> [!CAUTION]
-> Les points suivants sont documentés à titre informatif. Ils n'ont **pas** été corrigés dans
-> cette série de commits et doivent faire l'objet d'une décision de sécurité séparée.
+> [!NOTE]
+> Les risques d'exposition locale et de DNS rebinding ont été intégralement neutralisés
+> via une stratégie de **défense en profondeur à 3 couches** (Node Express & C# WinForms) :
 
-### DNS Rebinding sur `/api/video/*`
+### 1. Rejet strict du DNS Rebinding (`isHostSafe` & `isOriginSafe`)
+- **Vérification `Host`** : rejet immédiat (HTTP 403) de toute requête dont l'en-tête `Host`
+  n'est pas `localhost` ou `127.0.0.1`. Les attaques utilisant des domaines comme `evil.com` ou
+  des wildcards `127.0.0.1.nip.io` sont neutralisées avant tout traitement.
+- **Vérification `Origin` & `Sec-Fetch-Site`** : rejet des requêtes provenant de sites web tiers
+  (`Sec-Fetch-Site: cross-site`) et restriction CORS stricte aux origines locales.
 
-Le serveur Express (`server.ts`) écoute sur `127.0.0.1` mais :
+### 2. Jeton secret interne partagé (`X-FlowLuna-Token`)
+- Un jeton cryptographique aléatoire (`crypto.randomUUID()`) est généré à chaque démarrage
+  et partagé entre Electron et le serveur HTTP local (`.runtime_token`).
+- Le processus principal Electron injecte automatiquement cet en-tête sur tous les appels loopback
+  du renderer via `session.defaultSession.webRequest.onBeforeSendHeaders`.
+- Les routes sensibles (`/api/video/*`, `/api/lyrics*`, `/api/library/add-files`) exigent ce jeton
+  via le middleware `requireInternalToken`. Une page web externe dans un navigateur standard
+  ne peut ni deviner ce jeton ni l'injecter.
 
-- **Accepte des `filePath` arbitraires** dans les corps JSON de `/api/video/chapters`,
-  `/api/video/acoustic-match`, `/api/video/fine-tune-markers`, etc. Un attaquant capable
-  d'envoyer une requête à `127.0.0.1:3000` (par exemple via une attaque DNS rebinding depuis
-  un site web malveillant) peut lire n'importe quel fichier accessible sur le système de
-  fichiers local.
+### 3. Liste blanche hermétique des chemins (`resolveAllowedPath`)
+- Toute route manipulant des fichiers (`chapters`, `fine-tune-markers`, `subtitles/analyze`,
+  `acoustic-match`, `lyrics`, `stream`) vérifie désormais le chemin réel résolu (`fs.realpathSync`) :
+  1. Interdiction stricte des chemins ciblant Windows, System32, Program Files.
+  2. Vérification que le fichier appartient soit aux dossiers scannés de la bibliothèque
+     (`Music`, `Videos`, `Downloads`, `OneDrive`, répertoires configurés), soit aux fichiers
+     explicitement ouverts par l'utilisateur (`explicitlyAddedFiles`).
+  3. Filtrage obligatoire par les extensions de conteneurs audio/vidéo autorisés (`ALL_MEDIA_EXTENSIONS`).
+- Parité appliquée également sur le backend C# (`IsSafeMediaPath`).
 
-- **N'exige pas d'en-tête `Origin`** : aucune vérification `Origin` ou `Referer`. Les requêtes
-  cross-origin sans CORS bloquant peuvent aboutir selon la configuration du navigateur.
-
-- **Ne vérifie pas l'en-tête `Host`** : une requête avec un `Host` arbitraire est acceptée,
-  ce qui facilite les attaques de rebinding DNS.
-
-**Impact estimé** : lecture de fichiers locaux arbitraires, potentielle exfiltration de données.
-
-**Mitigations recommandées** (non implémentées) :
-- Valider que `filePath` est bien sous un répertoire autorisé (liste blanche).
-- Vérifier `req.headers.host === '127.0.0.1:3000'` sur toutes les routes.
-- Ajouter un en-tête `Authorization` secret connu uniquement du renderer Electron.

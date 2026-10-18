@@ -22,7 +22,7 @@
     "start": "node dist/server.cjs",
     "preview": "vite preview",
     "clean": "rm -rf dist dist-electron release server.js",
-    "test": "tsx --tsconfig tsconfig.json tests/skipMarkersDrift.test.ts && tsx --tsconfig tsconfig.json tests/introSkipperEnhancements.test.ts && tsx --tsconfig tsconfig.json tests/aiModelManagement.test.ts && tsx --tsconfig tsconfig.json tests/videoInteractions.test.ts",
+    "test": "tsx --tsconfig tsconfig.json tests/skipMarkersDrift.test.ts && tsx --tsconfig tsconfig.json tests/introSkipperEnhancements.test.ts && tsx --tsconfig tsconfig.json tests/aiModelManagement.test.ts && tsx --tsconfig tsconfig.json tests/videoInteractions.test.ts && tsx --tsconfig tsconfig.json tests/securityGuards.test.ts",
     "lint": "tsc --noEmit",
     "screenshots": "node scripts/generate-screenshots.mjs"
   },

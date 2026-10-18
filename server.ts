@@ -291,12 +291,107 @@ function pipeRemoteMedia(
   });
 }
 
-app.use(express.json({ limit: '10mb' }));
-app.use(express.raw({ limit: '50mb', type: ['audio/*', 'application/octet-stream'] }));
+export const AUDIO_EXTENSIONS = new Set([
+  '.mp3', '.flac', '.wav', '.ogg', '.oga', '.m4a', '.aac', '.webm', '.opus', '.wma', '.alac', '.aiff', '.aif', '.m4b'
+]);
+export const VIDEO_EXTENSIONS = new Set([
+  '.mp4', '.mkv', '.webm', '.mov', '.avi', '.m4v', '.wmv', '.flv', '.3gp', '.ts', '.m2ts', '.ogv'
+]);
+export const ALL_MEDIA_EXTENSIONS = new Set([...AUDIO_EXTENSIONS, ...VIDEO_EXTENSIONS]);
+
+export function getCustomScannedDirs(): string[] {
+  try {
+    const configPath = path.join(getFlowLunaDataDir(), 'custom_folders.json');
+    if (fs.existsSync(configPath)) {
+      const data = JSON.parse(fs.readFileSync(configPath, 'utf-8'));
+      if (Array.isArray(data)) return data.filter((p) => typeof p === 'string' && fs.existsSync(p));
+    }
+  } catch {}
+  return [];
+}
+
+export function isSafeScanDirectory(dirPath: string): boolean {
+  if (!dirPath || typeof dirPath !== 'string') return false;
+  try {
+    const resolved = path.resolve(dirPath);
+    const parsed = path.parse(resolved);
+    // Disallow drive roots like "C:\" or "/"
+    if (resolved === parsed.root) return false;
+    const lower = resolved.toLowerCase();
+    const winDir = (process.env.WINDIR || 'C:\\Windows').toLowerCase();
+    const progFiles = (process.env.ProgramFiles || 'C:\\Program Files').toLowerCase();
+    const progFilesX86 = (process.env['ProgramFiles(x86)'] || 'C:\\Program Files (x86)').toLowerCase();
+    if (lower.startsWith(winDir) || lower.startsWith(progFiles) || lower.startsWith(progFilesX86)) {
+      return false;
+    }
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+export const explicitlyAddedFiles = new Set<string>();
+
+export function getAllowedMediaDirs(): string[] {
+  const dirs = [
+    ...getCustomScannedDirs(),
+    path.join(os.homedir(), 'Music'),
+    path.join(os.homedir(), 'Musique'),
+    path.join(os.homedir(), 'Videos'),
+    path.join(os.homedir(), 'Vidéos'),
+    path.join(os.homedir(), 'Downloads'),
+    path.join(os.homedir(), 'Téléchargements'),
+    path.join(os.homedir(), 'OneDrive', 'Music'),
+    path.join(os.homedir(), 'OneDrive', 'Musique'),
+    getFlowLunaDataDir(),
+    getDownloadDir(false),
+    getDownloadDir(true),
+  ];
+
+  return dirs.map((d) => path.resolve(d));
+}
+
+export function resolveAllowedPath(rawPath: string, requireMediaExtension = true): string | null {
+  if (!rawPath || typeof rawPath !== 'string') return null;
+  let realPath: string;
+  try {
+    const resolved = path.resolve(rawPath);
+    if (!fs.existsSync(resolved)) return null;
+    realPath = fs.realpathSync(resolved);
+  } catch {
+    return null;
+  }
+
+  // Prevent path traversal targeting Windows/system directories
+  const lower = realPath.toLowerCase();
+  const winDir = (process.env.WINDIR || 'C:\\Windows').toLowerCase();
+  const progFiles = (process.env.ProgramFiles || 'C:\\Program Files').toLowerCase();
+  const progFilesX86 = (process.env['ProgramFiles(x86)'] || 'C:\\Program Files (x86)').toLowerCase();
+  if (lower.startsWith(winDir) || lower.startsWith(progFiles) || lower.startsWith(progFilesX86)) {
+    return null;
+  }
+
+  if (requireMediaExtension) {
+    const ext = path.extname(realPath).toLowerCase();
+    if (!ALL_MEDIA_EXTENSIONS.has(ext)) {
+      return null;
+    }
+  }
+
+  const allowedDirs = getAllowedMediaDirs();
+  const isInAllowedDir = allowedDirs.some((dir) => realPath.startsWith(dir + path.sep) || realPath === dir);
+  const isExplicitlyAllowed = explicitlyAddedFiles.has(realPath);
+
+  if (!isInAllowedDir && !isExplicitlyAllowed) {
+    return null;
+  }
+
+  return realPath;
+}
 
 export function isHostSafe(hostHeader?: string): boolean {
-  if (!hostHeader) return true;
-  const host = hostHeader.split(':')[0].toLowerCase();
+  if (!hostHeader || typeof hostHeader !== 'string') return false;
+  const host = hostHeader.trim().split(':')[0].toLowerCase();
   return host === 'localhost' || host === '127.0.0.1';
 }
 
@@ -316,8 +411,41 @@ export function isOriginSafe(origin: string): boolean {
   }
 }
 
+let internalToken: string | null = process.env.FLOWLUNA_INTERNAL_TOKEN || null;
+
+export function getInternalToken(): string | null {
+  return internalToken;
+}
+
+export function setInternalToken(token: string | null): void {
+  internalToken = token;
+}
+
+export function initRuntimeToken(): string {
+  if (!internalToken) {
+    internalToken = process.env.FLOWLUNA_INTERNAL_TOKEN || crypto.randomUUID();
+  }
+  try {
+    const tokenFile = path.join(getFlowLunaDataDir(), '.runtime_token');
+    fs.writeFileSync(tokenFile, internalToken, { encoding: 'utf-8' });
+  } catch {}
+  return internalToken;
+}
+
+export function requireInternalToken(req: express.Request, res: express.Response, next: express.NextFunction) {
+  if (!internalToken) {
+    return next();
+  }
+  const token = req.headers['x-flowluna-token'];
+  if (!token || token !== internalToken) {
+    return res.status(403).json({ success: false, message: 'Forbidden: Invalid or missing FlowLuna token' });
+  }
+  next();
+}
+
+// 1. Anti-DNS Rebinding guard & CORS (must execute BEFORE body parsers)
 app.use((req, res, next) => {
-  // 1. Anti-DNS Rebinding guard
+  // 1. Anti-DNS Rebinding guard: reject absent or unauthorized host
   if (!isHostSafe(req.headers.host)) {
     return res.status(403).send('Forbidden: Host not allowed');
   }
@@ -333,7 +461,7 @@ app.use((req, res, next) => {
     res.setHeader('Access-Control-Allow-Origin', origin);
   }
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-FlowLuna-Token');
 
   if (origin && !isAllowed) {
     return res.status(403).send('Origin not allowed');
@@ -352,6 +480,10 @@ app.use((req, res, next) => {
   }
   next();
 });
+
+// 2. Body parsers (only reached if Host and Origin are verified)
+app.use(express.json({ limit: '10mb' }));
+app.use(express.raw({ limit: '50mb', type: ['audio/*', 'application/octet-stream'] }));
 
 const COOKIES_PATH = path.join(getFlowLunaDataDir(), 'cookies.txt');
 
@@ -3312,14 +3444,6 @@ app.post('/api/audio/convert', async (req, res) => {
 // Automatically discovers local audio files
 // ==========================================
 
-const AUDIO_EXTENSIONS = new Set([
-  '.mp3', '.flac', '.wav', '.ogg', '.oga', '.m4a', '.aac', '.webm', '.opus', '.wma', '.alac', '.aiff', '.aif', '.m4b'
-]);
-const VIDEO_EXTENSIONS = new Set([
-  '.mp4', '.mkv', '.webm', '.mov', '.avi', '.m4v', '.wmv', '.flv', '.3gp', '.ts', '.m2ts', '.ogv'
-]);
-const ALL_MEDIA_EXTENSIONS = new Set([...AUDIO_EXTENSIONS, ...VIDEO_EXTENSIONS]);
-
 interface ScannedAudioTrack {
   id: string;
   title: string;
@@ -3342,37 +3466,6 @@ interface ScannedAudioTrack {
   year?: string;
   isVideo?: boolean;
   isTransient?: boolean;
-}
-
-function getCustomScannedDirs(): string[] {
-  try {
-    const configPath = path.join(getFlowLunaDataDir(), 'custom_folders.json');
-    if (fs.existsSync(configPath)) {
-      const data = JSON.parse(fs.readFileSync(configPath, 'utf-8'));
-      if (Array.isArray(data)) return data.filter((p) => typeof p === 'string' && fs.existsSync(p));
-    }
-  } catch {}
-  return [];
-}
-
-export function isSafeScanDirectory(dirPath: string): boolean {
-  if (!dirPath || typeof dirPath !== 'string') return false;
-  try {
-    const resolved = path.resolve(dirPath);
-    const parsed = path.parse(resolved);
-    // Disallow drive roots like "C:\" or "/"
-    if (resolved === parsed.root) return false;
-    const lower = resolved.toLowerCase();
-    const winDir = (process.env.WINDIR || 'C:\\Windows').toLowerCase();
-    const progFiles = (process.env.ProgramFiles || 'C:\\Program Files').toLowerCase();
-    const progFilesX86 = (process.env['ProgramFiles(x86)'] || 'C:\\Program Files (x86)').toLowerCase();
-    if (lower.startsWith(winDir) || lower.startsWith(progFiles) || lower.startsWith(progFilesX86)) {
-      return false;
-    }
-    return true;
-  } catch {
-    return false;
-  }
 }
 
 function saveCustomScannedDir(dirPath: string): string[] {
@@ -3927,10 +4020,8 @@ app.post('/api/library/add-folder', express.json(), async (req, res) => {
   }
 });
 
-const explicitlyAddedFiles = new Set<string>();
-
 // Endpoint to probe and return track metadata for a list of file paths (from native file dialog)
-app.post('/api/library/add-files', express.json(), async (req, res) => {
+app.post('/api/library/add-files', requireInternalToken, express.json(), async (req, res) => {
   try {
     const { filePaths, isTransient } = req.body;
     if (!Array.isArray(filePaths) || filePaths.length === 0) {
@@ -3971,36 +4062,9 @@ app.get('/api/library/stream', (req, res) => {
     return res.status(400).send('Fichier manquant');
   }
 
-  const resolved = path.resolve(reqFile);
-  if (!fs.existsSync(resolved)) {
-    return res.status(404).send('Fichier audio introuvable');
-  }
-
-  // Security: resolve real filesystem path to prevent symlink traversal
-  let realPath: string;
-  try {
-    realPath = fs.realpathSync(resolved);
-  } catch {
-    return res.status(404).send('Chemin inaccessible');
-  }
-
-  // Security: only serve files from authorized library directories or explicitly added files
-  const allowedDirs = [
-    ...getCustomScannedDirs(),
-    path.join(os.homedir(), 'Music'),
-    path.join(os.homedir(), 'Musique'),
-    path.join(os.homedir(), 'Videos'),
-    path.join(os.homedir(), 'Vidéos'),
-    path.join(os.homedir(), 'Downloads'),
-    path.join(os.homedir(), 'Téléchargements'),
-    path.join(os.homedir(), 'OneDrive', 'Music'),
-    path.join(os.homedir(), 'OneDrive', 'Musique'),
-    getFlowLunaDataDir(),
-  ].map((d) => path.resolve(d));
-  const isInAllowedDir = allowedDirs.some((dir) => realPath.startsWith(dir + path.sep) || realPath === dir);
-  const isExplicitlyAllowed = explicitlyAddedFiles.has(realPath);
-  if (!isInAllowedDir && !isExplicitlyAllowed) {
-    return res.status(403).send('Accès au fichier non autorisé');
+  const realPath = resolveAllowedPath(reqFile, true);
+  if (!realPath) {
+    return res.status(403).send('Accès au fichier non autorisé ou format invalide');
   }
 
   const ext = path.extname(realPath).toLowerCase();
@@ -4110,11 +4174,12 @@ app.get('/api/metadata/search', async (req, res) => {
 });
 
 // Video container chapters parser route (Niveau 1 : Inspection des chapitres intégrés)
-app.get('/api/video/chapters', (req, res) => {
+app.get('/api/video/chapters', requireInternalToken, (req, res) => {
   try {
-    const filePath = (req.query.filePath as string) || '';
-    if (!filePath || !fs.existsSync(filePath)) {
-      return res.json({ success: false, chapters: [] });
+    const rawPath = (req.query.filePath as string) || '';
+    const filePath = resolveAllowedPath(rawPath, true);
+    if (!filePath) {
+      return res.status(403).json({ success: false, message: 'Chemin non autorisé ou introuvable', chapters: [] });
     }
 
     const ffprobePath = getFfprobePath();
@@ -4158,15 +4223,16 @@ const SNAP_BLACK_PIX_TH = '0.98';
 const SNAP_BLACK_MIN_D = '0.1';
 const SNAP_MIN_INTERVAL_DURATION = 15.0; // Même règle de cohérence que le C#
 
-app.get('/api/video/fine-tune-markers', (req, res) => {
+app.get('/api/video/fine-tune-markers', requireInternalToken, (req, res) => {
   try {
-    const filePath = (req.query.filePath as string) || '';
+    const rawPath = (req.query.filePath as string) || '';
     const rawStart = parseFloat((req.query.start as string) || '');
     const rawEnd = parseFloat((req.query.end as string) || '');
     const searchWindow = parseFloat((req.query.window as string) || '3.5');
 
-    if (!filePath || !fs.existsSync(filePath) || isNaN(rawStart) || isNaN(rawEnd)) {
-      return res.status(400).json({ success: false, message: 'Paramètres filePath, start et end requis' });
+    const filePath = resolveAllowedPath(rawPath, true);
+    if (!filePath || isNaN(rawStart) || isNaN(rawEnd)) {
+      return res.status(400).json({ success: false, message: 'Paramètres filePath, start et end requis ou non autorisés' });
     }
 
     const ffmpegPath = getFfmpegPath();
@@ -4387,11 +4453,12 @@ app.get('/api/video/fine-tune-markers', (req, res) => {
 });
 
 // Intro Skipper Endpoint 2 : Analyse multilingue des sous-titres (Recap / Preview)
-app.get('/api/video/subtitles/analyze', (req, res) => {
+app.get('/api/video/subtitles/analyze', requireInternalToken, (req, res) => {
   try {
-    const filePath = (req.query.filePath as string) || '';
-    if (!filePath || !fs.existsSync(filePath)) {
-      return res.status(400).json({ success: false, message: 'Paramètre filePath requis' });
+    const rawPath = (req.query.filePath as string) || '';
+    const filePath = resolveAllowedPath(rawPath, true);
+    if (!filePath) {
+      return res.status(400).json({ success: false, message: 'Paramètre filePath requis ou non autorisé' });
     }
 
     const dir = path.dirname(filePath);
@@ -4528,11 +4595,12 @@ function chooseSiblings(filePath: string, allSiblings: string[]): string[] {
   return scored;
 }
 
-app.get('/api/video/acoustic-match', (req, res) => {
+app.get('/api/video/acoustic-match', requireInternalToken, (req, res) => {
   try {
-    const filePath = (req.query.filePath as string) || '';
-    if (!filePath || !fs.existsSync(filePath)) {
-      return res.status(400).json({ success: false, message: 'Paramètre filePath requis' });
+    const rawPath = (req.query.filePath as string) || '';
+    const filePath = resolveAllowedPath(rawPath, true);
+    if (!filePath) {
+      return res.status(400).json({ success: false, message: 'Paramètre filePath requis ou non autorisé' });
     }
 
     const dir = path.dirname(filePath);
@@ -4661,9 +4729,11 @@ app.get('/api/video/acoustic-match', (req, res) => {
 });
 
 // Lyrics lookup route (local .lrc or cache)
-app.get('/api/lyrics', (req, res) => {
-  const filePath = req.query.file as string;
-  if (!filePath) return res.json({ found: false });
+app.get('/api/lyrics', requireInternalToken, (req, res) => {
+  const rawPath = req.query.file as string;
+  if (!rawPath) return res.json({ found: false });
+  const filePath = resolveAllowedPath(rawPath, true);
+  if (!filePath) return res.status(403).json({ found: false, error: 'Chemin non autorisé' });
 
   // 1. Check local .lrc
   if (fs.existsSync(filePath)) {
@@ -4691,10 +4761,12 @@ app.get('/api/lyrics', (req, res) => {
 });
 
 // Lyrics caching route
-app.post('/api/lyrics/cache', express.json(), (req, res) => {
+app.post('/api/lyrics/cache', requireInternalToken, express.json(), (req, res) => {
   try {
-    const { filePath, lrc } = req.body;
-    if (filePath && lrc) {
+    const { filePath: rawPath, lrc } = req.body;
+    if (rawPath && lrc) {
+      const filePath = resolveAllowedPath(rawPath, true);
+      if (!filePath) return res.status(403).json({ error: 'Chemin non autorisé' });
       const hash = getTrackHash(filePath);
       const lyricsDir = path.join(getFlowLunaDataDir(), 'lyrics');
       if (!fs.existsSync(lyricsDir)) fs.mkdirSync(lyricsDir, { recursive: true });
@@ -4707,6 +4779,7 @@ app.post('/api/lyrics/cache', express.json(), (req, res) => {
 
 // Vite middleware & Static Serving
 export async function startServer(port: number = PORT): Promise<{ app: express.Express; server: http.Server; port?: number }> {
+  initRuntimeToken();
   const isPackagedOrProd =
     process.env.NODE_ENV === 'production' ||
     Boolean((process as any).resourcesPath) ||
@@ -4769,8 +4842,9 @@ export async function startServer(port: number = PORT): Promise<{ app: express.E
 
 export { app };
 
-// Auto-start only when run directly from command line (node or tsx), not when imported by Electron
-if (!process.versions.electron) {
+// Auto-start only when run directly from command line (node or tsx), not when imported by Electron or test suites
+const isDirectExecution = Boolean(process.argv[1] && /[/\\]server\.(ts|js|cjs|mjs)$/i.test(process.argv[1]));
+if (!process.versions.electron && isDirectExecution) {
   startServer().catch((err) => {
     console.error('[FlowLuna Server] Failed to start:', err);
   });

@@ -23,6 +23,7 @@ public class HttpServer
 
     public int Port { get; private set; } = 3000;
     public string BaseUrl => $"http://127.0.0.1:{Port}";
+    public static string? InternalToken { get; set; } = Environment.GetEnvironmentVariable("FLOWLUNA_INTERNAL_TOKEN");
 
     public static void BroadcastJobProgress(string jobId, YtDlpProgressUpdate update)
     {
@@ -115,6 +116,22 @@ public class HttpServer
                 context.Response.StatusCode = 403;
                 await context.Response.WriteAsync("Forbidden: Cross-site requests rejected");
                 return;
+            }
+
+            if (!string.IsNullOrEmpty(InternalToken))
+            {
+                var path = context.Request.Path.Value ?? string.Empty;
+                if (path.StartsWith("/api/video/", StringComparison.OrdinalIgnoreCase) ||
+                    path.StartsWith("/api/lyrics", StringComparison.OrdinalIgnoreCase) ||
+                    path.StartsWith("/api/downloader/", StringComparison.OrdinalIgnoreCase))
+                {
+                    if (!context.Request.Headers.TryGetValue("X-FlowLuna-Token", out var token) || token != InternalToken)
+                    {
+                        context.Response.StatusCode = 403;
+                        await context.Response.WriteAsync("Forbidden: Invalid or missing FlowLuna token");
+                        return;
+                    }
+                }
             }
 
             await next();
@@ -401,9 +418,9 @@ public class HttpServer
         app.MapGet("/api/video/chapters", async (HttpContext ctx) =>
         {
             var filePath = ctx.Request.Query["filePath"].ToString();
-            if (string.IsNullOrWhiteSpace(filePath) || !File.Exists(filePath))
+            if (string.IsNullOrWhiteSpace(filePath) || !IsSafeMediaPath(filePath))
             {
-                return Results.Json(new { success = false, chapters = Array.Empty<object>() });
+                return Results.Json(new { success = false, message = "Chemin non autorisé ou introuvable", chapters = Array.Empty<object>() });
             }
 
             var ffprobePath = BinaryManager.GetFfprobePath();
@@ -516,10 +533,11 @@ public class HttpServer
             var windowStr = ctx.Request.Query["window"].ToString();
 
             if (string.IsNullOrWhiteSpace(filePath) ||
+                !IsSafeMediaPath(filePath) ||
                 !double.TryParse(startStr, NumberStyles.Any, CultureInfo.InvariantCulture, out var start) ||
                 !double.TryParse(endStr, NumberStyles.Any, CultureInfo.InvariantCulture, out var end))
             {
-                return Results.BadRequest(new { success = false, message = "Paramètres filePath, start et end requis" });
+                return Results.BadRequest(new { success = false, message = "Paramètres filePath, start et end requis ou non autorisés" });
             }
 
             double window = double.TryParse(windowStr, NumberStyles.Any, CultureInfo.InvariantCulture, out var w) ? w : 3.5;
@@ -531,9 +549,9 @@ public class HttpServer
         app.MapGet("/api/video/subtitles/analyze", async (HttpContext ctx) =>
         {
             var filePath = ctx.Request.Query["filePath"].ToString();
-            if (string.IsNullOrWhiteSpace(filePath))
+            if (string.IsNullOrWhiteSpace(filePath) || !IsSafeMediaPath(filePath))
             {
-                return Results.BadRequest(new { success = false, message = "Paramètre filePath requis" });
+                return Results.BadRequest(new { success = false, message = "Paramètre filePath requis ou non autorisé" });
             }
 
             var res = await IntroSkipperService.AnalyzeSubtitlesAsync(filePath, ctx.RequestAborted);
@@ -544,9 +562,9 @@ public class HttpServer
         app.MapGet("/api/video/acoustic-match", async (HttpContext ctx) =>
         {
             var filePath = ctx.Request.Query["filePath"].ToString();
-            if (string.IsNullOrWhiteSpace(filePath))
+            if (string.IsNullOrWhiteSpace(filePath) || !IsSafeMediaPath(filePath))
             {
-                return Results.BadRequest(new { success = false, message = "Paramètre filePath requis" });
+                return Results.BadRequest(new { success = false, message = "Paramètre filePath requis ou non autorisé" });
             }
 
             var res = await IntroSkipperService.MatchAudioOpeningAsync(filePath, null, ctx.RequestAborted);
@@ -987,6 +1005,51 @@ public class HttpServer
                 Environment.GetFolderPath(Environment.SpecialFolder.MyVideos),
                 Path.Combine(userHome, "Downloads"),
                 Path.Combine(userHome, "Téléchargements"),
+                Environment.GetFolderPath(Environment.SpecialFolder.Desktop),
+                Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments),
+                BinaryManager.FlowLunaDataDir
+            };
+
+            return allowedRoots.Any(root => !string.IsNullOrEmpty(root) && fullPath.StartsWith(Path.GetFullPath(root) + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase));
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    public static bool IsSafeMediaPath(string? filePath)
+    {
+        if (string.IsNullOrWhiteSpace(filePath)) return false;
+        try
+        {
+            var fullPath = Path.GetFullPath(filePath);
+            if (!File.Exists(fullPath)) return false;
+
+            var ext = Path.GetExtension(fullPath).ToLowerInvariant();
+            if (DangerousExtensions.Contains(ext)) return false;
+
+            var winDir = Environment.GetFolderPath(Environment.SpecialFolder.Windows);
+            if (!string.IsNullOrEmpty(winDir) && fullPath.StartsWith(Path.GetFullPath(winDir), StringComparison.OrdinalIgnoreCase))
+            {
+                return false;
+            }
+
+            var progFiles = Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles);
+            if (!string.IsNullOrEmpty(progFiles) && fullPath.StartsWith(Path.GetFullPath(progFiles), StringComparison.OrdinalIgnoreCase))
+            {
+                return false;
+            }
+
+            var userHome = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+            var allowedRoots = new List<string>
+            {
+                Environment.GetFolderPath(Environment.SpecialFolder.MyMusic),
+                Environment.GetFolderPath(Environment.SpecialFolder.MyVideos),
+                Path.Combine(userHome, "Downloads"),
+                Path.Combine(userHome, "Téléchargements"),
+                Path.Combine(userHome, "OneDrive", "Music"),
+                Path.Combine(userHome, "OneDrive", "Musique"),
                 Environment.GetFolderPath(Environment.SpecialFolder.Desktop),
                 Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments),
                 BinaryManager.FlowLunaDataDir
