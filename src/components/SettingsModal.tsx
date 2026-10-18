@@ -252,6 +252,22 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   const [detectedLocalModels, setDetectedLocalModels] = useState<string[]>([]);
   const [isFetchingLocalModels, setIsFetchingLocalModels] = useState(false);
 
+  // Sync settings ref for atomic updates without stale closure races
+  const latestSettingsRef = useRef(settings);
+  useEffect(() => {
+    latestSettingsRef.current = settings;
+  }, [settings]);
+
+  const updateSettings = (partial: Partial<PlayerSettings>) => {
+    const next = { ...latestSettingsRef.current, ...partial };
+    latestSettingsRef.current = next;
+    onChange(next);
+  };
+
+  const updateSetting = <K extends keyof PlayerSettings>(key: K, value: PlayerSettings[K]) => {
+    updateSettings({ [key]: value } as Partial<PlayerSettings>);
+  };
+
   const updateAiSetting = <K extends keyof AISettings>(key: K, value: AISettings[K]) => {
     const currentAi = settings.aiSettings || DEFAULT_AI_SETTINGS;
     const updatedAi: AISettings = {
@@ -639,21 +655,6 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
 
   const t = getT(settings.language);
   const accent = settings.accent || 'emerald';
-
-  const latestSettingsRef = useRef(settings);
-  useEffect(() => {
-    latestSettingsRef.current = settings;
-  }, [settings]);
-
-  const updateSettings = (partial: Partial<PlayerSettings>) => {
-    const next = { ...latestSettingsRef.current, ...partial };
-    latestSettingsRef.current = next;
-    onChange(next);
-  };
-
-  const updateSetting = <K extends keyof PlayerSettings>(key: K, value: PlayerSettings[K]) => {
-    updateSettings({ [key]: value } as Partial<PlayerSettings>);
-  };
 
   const currentLang = SUPPORTED_LANGUAGES.find((l) => l.code === (settings.language || 'fr')) || SUPPORTED_LANGUAGES[0];
 

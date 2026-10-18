@@ -416,7 +416,7 @@ public partial class MainWindow : Window
                                 return await window.chrome.webview.hostObjects.nativeHost.GetAppVersion();
                             }
                         } catch {}
-                        return '1.22.8';
+                        return '1.22.9';
                     },
                     toggleFullscreen: () => {
 
