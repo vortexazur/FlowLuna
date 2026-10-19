@@ -144,6 +144,10 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
   const [tracksTab, setTracksTab] = useState<'subtitles' | 'audio'>('subtitles');
   const [subtitleToast, setSubtitleToast] = useState<string | null>(null);
   const subtitleFileInputRef = useRef<HTMLInputElement>(null);
+  const [lipSyncOffset, setLipSyncOffset] = useState<number>(0);
+  const isCorrectingDriftRef = useRef<boolean>(false);
+  const normalPlaybackRateRef = useRef<number>(playbackSpeed);
+  normalPlaybackRateRef.current = playbackSpeed;
 
   // Étape 2 & 3: Système Hybride de Détection, Skip Opening et Mode Marathon
   const {
@@ -459,7 +463,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
     // Aucune action concurrente de play() afin de préserver l'alignement lip-sync parfait d'App.tsx
   }, []);
 
-  // Synchronisation de lecture sécurisée avec vérification des buffers
+  // 1. Synchronisation de lecture sécurisée (Play/Pause) avec vérification des buffers (HAVE_FUTURE_DATA)
   useEffect(() => {
     const video = videoRef.current;
     if (!video || !isTrackVideo(currentTrack) || isHidden) return;
@@ -474,18 +478,18 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
     const syncPlayback = async () => {
       try {
         if (isPlaying && video.paused && !video.ended) {
-          // Attendre que les buffers audio et vidéo soient prêts (readyState >= 2)
-          // pour éviter tout démarrage asynchrone source de décalage labial
-          if (video.readyState >= 2) {
+          // Attendre que les buffers audio et vidéo soient amorcés (readyState >= 3)
+          // et qu'aucun seek ne soit en cours pour éviter tout démarrage asynchrone source de décalage labial
+          if (video.readyState >= 3 && !video.seeking) {
             await video.play();
           } else {
             const onReady = () => {
-              if (isSubscribed && isPlaying && video.paused && !video.ended) {
+              if (isSubscribed && isPlaying && video.paused && !video.ended && !video.seeking) {
                 video.play().catch(console.warn);
               }
             };
-            video.addEventListener('loadeddata', onReady, { once: true });
             video.addEventListener('canplay', onReady, { once: true });
+            video.addEventListener('canplaythrough', onReady, { once: true });
           }
         } else if (!isPlaying && !video.paused) {
           video.pause();
@@ -501,6 +505,88 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
       isSubscribed = false;
     };
   }, [isPlaying, isHidden, currentTrack?.id]);
+
+  // 2. Boucle de rendu et alignement temps réel Voix / Lèvres (Precision Lip-Sync Engine via rVFC)
+  useEffect(() => {
+    const video = videoRef.current;
+    if (!video || !isTrackVideo(currentTrack) || isHidden) return;
+
+    let isCancelled = false;
+    let rVfcId: number | null = null;
+    let rafId: number | null = null;
+
+    const onFrame = (_now: DOMHighResTimeStamp, metadata?: any) => {
+      if (isCancelled || !video) return;
+
+      // Uniquement pendant la lecture active et hors phase de seek
+      if (!video.paused && !video.seeking && video.readyState >= 3) {
+        // mediaTime : timestamp exact de présentation de la trame vidéo affichée à l'écran
+        // currentTime : horloge audio maîtresse (WASAPI)
+        const mediaTime = typeof metadata?.mediaTime === 'number' ? metadata.mediaTime : video.currentTime;
+        const audioTime = video.currentTime;
+
+        // Dérive effective = (Audio - Décalage souhaité) - Vidéo
+        // > 0 : Voix en avance sur les lèvres
+        // < 0 : Lèvres en avance sur la voix
+        const effectiveDrift = (audioTime - lipSyncOffset) - mediaTime;
+
+        if (effectiveDrift > 0.035 && effectiveDrift < 0.3) {
+          // Micro-accélération fluide (+4%) pour rattraper le décalage labial sans altération de tonalité
+          if (!isCorrectingDriftRef.current) {
+            isCorrectingDriftRef.current = true;
+            video.playbackRate = normalPlaybackRateRef.current * 1.04;
+          }
+        } else if (effectiveDrift < -0.035 && effectiveDrift > -0.3) {
+          // Micro-décélération fluide (-4%)
+          if (!isCorrectingDriftRef.current) {
+            isCorrectingDriftRef.current = true;
+            video.playbackRate = normalPlaybackRateRef.current * 0.96;
+          }
+        } else if (Math.abs(effectiveDrift) <= 0.015 && isCorrectingDriftRef.current) {
+          // Décalage parfaitement aligné (< 15ms) : rétablissement de la vitesse nominale
+          isCorrectingDriftRef.current = false;
+          video.playbackRate = normalPlaybackRateRef.current;
+        } else if (Math.abs(effectiveDrift) >= 0.3 && !video.seeking) {
+          // Dérive critique (> 300ms) : réalignement immédiat de l'horloge
+          try {
+            video.currentTime = Math.max(0, mediaTime + lipSyncOffset);
+          } catch {}
+          isCorrectingDriftRef.current = false;
+          video.playbackRate = normalPlaybackRateRef.current;
+        }
+      } else if (isCorrectingDriftRef.current) {
+        isCorrectingDriftRef.current = false;
+        if (video) video.playbackRate = normalPlaybackRateRef.current;
+      }
+
+      // Boucle de rendu continue au rythme du rafraîchissement d'affichage
+      if ('requestVideoFrameCallback' in video) {
+        rVfcId = (video as any).requestVideoFrameCallback(onFrame);
+      } else {
+        rafId = requestAnimationFrame((n) => onFrame(n));
+      }
+    };
+
+    if ('requestVideoFrameCallback' in video) {
+      rVfcId = (video as any).requestVideoFrameCallback(onFrame);
+    } else {
+      rafId = requestAnimationFrame((n) => onFrame(n));
+    }
+
+    return () => {
+      isCancelled = true;
+      if (rVfcId !== null && 'cancelVideoFrameCallback' in video) {
+        (video as any).cancelVideoFrameCallback(rVfcId);
+      }
+      if (rafId !== null) {
+        cancelAnimationFrame(rafId);
+      }
+      if (video && isCorrectingDriftRef.current) {
+        isCorrectingDriftRef.current = false;
+        video.playbackRate = normalPlaybackRateRef.current;
+      }
+    };
+  }, [currentTrack?.id, isHidden, lipSyncOffset, videoRef]);
 
   // Keyboard shortcuts when in theater mode
   useEffect(() => {
@@ -742,6 +828,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
 
   const handleSpeedSelect = (speed: number) => {
     setPlaybackSpeed(speed);
+    normalPlaybackRateRef.current = speed;
     if (videoRef.current) {
       videoRef.current.playbackRate = speed;
     }
@@ -793,6 +880,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
           onPause={onPause}
           onCanPlay={handleCanPlay}
           onError={onError}
+          style={{ willChange: 'transform', transform: 'translateZ(0)' }}
           className={`w-full h-full max-h-screen ${videoObjectFitClass}`}
         >
           {activeSubtitleUrl && (
@@ -1559,6 +1647,47 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
                                   <span>{t.noAudioTracksFound}</span>
                                 </div>
                               )}
+                            </div>
+
+                            {/* Lip-Sync Calibration Controls */}
+                            <div className="pt-2 border-t border-white/10 flex flex-col gap-2">
+                              <div className="flex items-center justify-between text-xs text-neutral-400">
+                                <span title={t.lipSyncTooltip}>
+                                  {t.lipSyncCalibration}
+                                </span>
+                                <div className="flex items-center gap-1">
+                                  <button
+                                    type="button"
+                                    onClick={() => setLipSyncOffset((prev) => parseFloat((prev - 0.05).toFixed(2)))}
+                                    className="px-2 py-1 rounded bg-white/5 hover:bg-white/15 text-neutral-200 text-[10px] font-mono cursor-pointer"
+                                    title="-50ms"
+                                  >
+                                    -50ms
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => setLipSyncOffset(0)}
+                                    className={`px-2 py-1 rounded text-[10px] font-mono cursor-pointer ${
+                                      lipSyncOffset === 0 ? 'text-neutral-400' : 'bg-sky-500/30 text-sky-300 font-bold'
+                                    }`}
+                                    title={t.lipSyncReset}
+                                  >
+                                    {lipSyncOffset === 0
+                                      ? '0ms (Auto)'
+                                      : lipSyncOffset > 0
+                                      ? `+${Math.round(lipSyncOffset * 1000)}ms`
+                                      : `${Math.round(lipSyncOffset * 1000)}ms`}
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => setLipSyncOffset((prev) => parseFloat((prev + 0.05).toFixed(2)))}
+                                    className="px-2 py-1 rounded bg-white/5 hover:bg-white/15 text-neutral-200 text-[10px] font-mono cursor-pointer"
+                                    title="+50ms"
+                                  >
+                                    +50ms
+                                  </button>
+                                </div>
+                              </div>
                             </div>
                           </div>
                         )}

@@ -11,6 +11,7 @@ import {
   Play,
 } from 'lucide-react';
 import { Track, AccentColor, PlayerSettings } from '../types';
+import { isTrackVideo } from '../utils/fileAudioLoader';
 import { getT } from '../i18n';
 
 interface ListeningStatsModalProps {
@@ -55,10 +56,7 @@ export const ListeningStatsModal: React.FC<ListeningStatsModalProps> = ({
 
   // STRICT FILTER: Count ONLY music audio tracks, excluding all videos and video containers
   const musicTracks = useMemo(() => {
-    const videoExts = new Set(['mp4', 'mkv', 'mov', 'webm', 'avi', 'm4v']);
-    return tracks.filter(
-      (t) => !t.isVideo && !videoExts.has((t.format || '').toLowerCase())
-    );
+    return tracks.filter((t) => !isTrackVideo(t));
   }, [tracks]);
 
   const stats = useMemo(() => {

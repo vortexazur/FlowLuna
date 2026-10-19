@@ -22,6 +22,7 @@ import {
   Film,
 } from 'lucide-react';
 import { Track, AccentColor, PlayerSettings } from '../types';
+import { isTrackVideo } from '../utils/fileAudioLoader';
 import { AudioVisualizer } from './AudioVisualizer';
 import { getT } from '../i18n';
 
@@ -199,11 +200,11 @@ export const PlayerBar: React.FC<PlayerBarProps> = ({
               />
               <button
                 type="button"
-                onClick={currentTrack.isVideo && onToggleVideo ? onToggleVideo : onToggleFullscreen}
+                onClick={isTrackVideo(currentTrack) && onToggleVideo ? onToggleVideo : onToggleFullscreen}
                 className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 flex items-center justify-center text-white transition-opacity"
-                title={currentTrack.isVideo ? "Ouvrir le lecteur vidéo" : "Plein écran & Paroles"}
+                title={isTrackVideo(currentTrack) ? "Ouvrir le lecteur vidéo" : "Plein écran & Paroles"}
               >
-                {currentTrack.isVideo ? <Film className="w-4 h-4 text-sky-400" /> : <Maximize2 className="w-4 h-4" />}
+                {isTrackVideo(currentTrack) ? <Film className="w-4 h-4 text-sky-400" /> : <Maximize2 className="w-4 h-4" />}
               </button>
             </div>
 
@@ -211,7 +212,7 @@ export const PlayerBar: React.FC<PlayerBarProps> = ({
               <div className="flex items-center gap-1.5">
                 <span
                   className="text-xs font-bold text-neutral-900 dark:text-neutral-100 truncate hover:underline cursor-pointer"
-                  onClick={currentTrack.isVideo && onToggleVideo ? onToggleVideo : onToggleFullscreen}
+                  onClick={isTrackVideo(currentTrack) && onToggleVideo ? onToggleVideo : onToggleFullscreen}
                 >
                   {currentTrack.title}
                 </span>
@@ -220,9 +221,9 @@ export const PlayerBar: React.FC<PlayerBarProps> = ({
 
               <div className="flex items-center gap-2 mt-1">
                 <span className={`text-[9px] font-mono uppercase font-bold px-1.5 py-0.2 rounded ${
-                  currentTrack.isVideo ? 'bg-sky-950 text-sky-300 border border-sky-500/30' : 'bg-slate-200/80 dark:bg-neutral-800 text-slate-700 dark:text-neutral-300'
+                  isTrackVideo(currentTrack) ? 'bg-sky-950 text-sky-300 border border-sky-500/30' : 'bg-slate-200/80 dark:bg-neutral-800 text-slate-700 dark:text-neutral-300'
                 }`}>
-                  {currentTrack.isVideo ? `🎥 ${currentTrack.format}` : currentTrack.format}
+                  {isTrackVideo(currentTrack) ? `🎥 ${currentTrack.format}` : currentTrack.format}
                 </span>
                 {isPlaying && (
                   <span className="text-[9px] text-neutral-500 dark:text-neutral-400 flex items-center gap-1 font-mono">
@@ -367,7 +368,7 @@ export const PlayerBar: React.FC<PlayerBarProps> = ({
                 title={`Spectre audio temps réel (${STYLE_LABELS[currentStyle] || 'LEDs Micro'}) • Cliquer pour changer de style`}
               >
                 <AudioVisualizer
-                  isPlaying={isPlaying && !!currentTrack && !currentTrack.isVideo}
+                  isPlaying={isPlaying && !!currentTrack && !isTrackVideo(currentTrack)}
                   style={currentStyle}
                   accent={accent}
                   barCount={22}
@@ -415,7 +416,7 @@ export const PlayerBar: React.FC<PlayerBarProps> = ({
       {/* Right: Controls, Queue, Equalizer, Mini-Players & Volume */}
       <div className="flex items-center justify-end gap-1.5 md:gap-2 w-1/4 min-w-[200px] max-w-xs">
         {/* Lecteur Vidéo */}
-        {currentTrack?.isVideo && onToggleVideo && (
+        {isTrackVideo(currentTrack) && onToggleVideo && (
           <button
             type="button"
             id="player-video-btn"

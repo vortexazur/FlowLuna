@@ -13,6 +13,7 @@ import {
   Check,
 } from 'lucide-react';
 import { Track, AccentColor, PlayerSettings } from '../types';
+import { isTrackVideo } from '../utils/fileAudioLoader';
 import { getT } from '../i18n';
 
 interface VideosViewProps {
@@ -72,7 +73,7 @@ export const VideosView: React.FC<VideosViewProps> = ({
   const [feedbackNotification, setFeedbackNotification] = useState<string | null>(null);
   const lastSelectedIndexRef = useRef<number | null>(null);
 
-  const videoTracks = tracks.filter((t) => t.isVideo);
+  const videoTracks = tracks.filter((t) => isTrackVideo(t));
   const currentVideo = videoTracks.find((t) => t.id === currentTrackId);
   const isAllSelected = videoTracks.length > 0 && selectedTrackIds.size === videoTracks.length;
 

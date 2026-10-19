@@ -37,6 +37,7 @@ import {
   FolderPlus,
 } from 'lucide-react';
 import { Track, Playlist, AccentColor, AudioFormat, PlayerSettings } from '../types';
+import { isTrackVideo } from '../utils/fileAudioLoader';
 import { saveAudioToPC } from '../utils/fileSaver';
 import { getAudioBlob } from '../services/audioDb';
 import { ExportTracksModal } from './ExportTracksModal';
@@ -210,7 +211,7 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
   const [notification, setNotification] = useState<{ message: string; type: 'success' | 'info' | 'error' } | null>(null);
 
   // Only music tracks should be visible in LibraryView (Bibliothèque de titres)
-  const musicTracks = useMemo(() => tracks.filter((t) => !t.isVideo), [tracks]);
+  const musicTracks = useMemo(() => tracks.filter((t) => !isTrackVideo(t)), [tracks]);
 
   // Export modal state
   const [isExportModalOpen, setIsExportModalOpen] = useState(false);
@@ -1053,11 +1054,11 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
                     <td className="py-2.5 px-2 sm:px-3 hidden sm:table-cell">
                       <div className="flex items-center gap-1.5">
                         <span className={`font-mono text-[10px] uppercase px-1.5 py-0.5 rounded font-semibold ${
-                          track.isVideo
+                          isTrackVideo(track)
                             ? 'bg-sky-950 text-sky-300 border border-sky-500/30'
                             : 'bg-neutral-800 text-neutral-300'
                         }`}>
-                          {track.isVideo ? `🎥 ${track.format}` : track.format}
+                          {isTrackVideo(track) ? `🎥 ${track.format}` : track.format}
                         </span>
                         {track.isCachedOffline && (
                           <span
@@ -1229,9 +1230,9 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
                   {/* Format badge on bottom left */}
                   <div className="absolute bottom-2 left-2 flex items-center gap-1 pointer-events-none">
                     <span className={`font-mono text-[9px] uppercase px-1.5 py-0.5 rounded backdrop-blur-xs font-semibold ${
-                      track.isVideo ? 'bg-sky-950/80 text-sky-300 border border-sky-500/30' : 'bg-black/70 text-neutral-200'
+                      isTrackVideo(track) ? 'bg-sky-950/80 text-sky-300 border border-sky-500/30' : 'bg-black/70 text-neutral-200'
                     }`}>
-                      {track.isVideo ? `🎥 ${track.format}` : track.format}
+                      {isTrackVideo(track) ? `🎥 ${track.format}` : track.format}
                     </span>
                     {track.isCachedOffline && (
                       <span className="p-0.5 rounded-full bg-black/70 text-emerald-400" title="Stocké dans le cache hors-ligne">

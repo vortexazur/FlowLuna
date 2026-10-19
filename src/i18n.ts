@@ -210,6 +210,9 @@ const extendedTranslations = {
     subtitleLoadedToast: 'Sous-titre chargé avec succès',
     embeddedTrack: 'Intégré',
     sidecarTrack: 'Fichier',
+    lipSyncCalibration: 'Synchronisation labiale',
+    lipSyncReset: 'Réinitialiser le décalage labial',
+    lipSyncTooltip: 'Calibrage de synchronisation entre la voix et les lèvres',
   },
   en: {
     videosTitle: 'Video Player',
@@ -347,6 +350,9 @@ const extendedTranslations = {
     subtitleLoadedToast: 'Subtitle loaded successfully',
     embeddedTrack: 'Embedded',
     sidecarTrack: 'File',
+    lipSyncCalibration: 'Lip-Sync Calibration',
+    lipSyncReset: 'Reset lip-sync offset',
+    lipSyncTooltip: 'Voice and lip animation synchronization calibration',
   },
   es: {
     videosTitle: 'Reproductor de Vídeo',
@@ -484,6 +490,9 @@ const extendedTranslations = {
     subtitleLoadedToast: 'Subtítulo cargado con éxito',
     embeddedTrack: 'Integrado',
     sidecarTrack: 'Archivo',
+    lipSyncCalibration: 'Sincronización labial',
+    lipSyncReset: 'Restablecer sincronización labial',
+    lipSyncTooltip: 'Calibración de sincronización entre voz y labios',
   },
   de: {
     videosTitle: 'Videoplayer',
@@ -621,6 +630,9 @@ const extendedTranslations = {
     subtitleLoadedToast: 'Untertitel erfolgreich geladen',
     embeddedTrack: 'Eingebettet',
     sidecarTrack: 'Datei',
+    lipSyncCalibration: 'Lippensynchronisation',
+    lipSyncReset: 'Lippensync zurücksetzen',
+    lipSyncTooltip: 'Kalibrierung der Synchronisation zwischen Sprache und Lippen',
   },
   it: {
     videosTitle: 'Lettore Video',
@@ -758,6 +770,9 @@ const extendedTranslations = {
     subtitleLoadedToast: 'Sottotitolo caricato con successo',
     embeddedTrack: 'Integrato',
     sidecarTrack: 'File',
+    lipSyncCalibration: 'Sincronizzazione labiale',
+    lipSyncReset: 'Reimposta ritardo labiale',
+    lipSyncTooltip: 'Calibrazione sincronizzazione tra voce e labbra',
   },
   pt: {
     videosTitle: 'Reprodutor de Vídeo',
@@ -895,6 +910,9 @@ const extendedTranslations = {
     subtitleLoadedToast: 'Legenda carregada com sucesso',
     embeddedTrack: 'Integrado',
     sidecarTrack: 'Ficheiro',
+    lipSyncCalibration: 'Sincronização labial',
+    lipSyncReset: 'Redefinir sincronização labial',
+    lipSyncTooltip: 'Calibração da sincronização entre voz e lábios',
   },
   ja: {
     videosTitle: '動画プレーヤー',
@@ -1032,6 +1050,9 @@ const extendedTranslations = {
     subtitleLoadedToast: '字幕を読み込みました',
     embeddedTrack: '内蔵',
     sidecarTrack: '外部ファイル',
+    lipSyncCalibration: 'リップシンク同期調整',
+    lipSyncReset: 'リップシンクをリセット',
+    lipSyncTooltip: '声と唇の動きの同期キャリブレーション',
   },
   zh: {
     videosTitle: '视频播放器',
@@ -1169,6 +1190,9 @@ const extendedTranslations = {
     subtitleLoadedToast: '字幕加载成功',
     embeddedTrack: '内置',
     sidecarTrack: '外部文件',
+    lipSyncCalibration: '音画唇形同步',
+    lipSyncReset: '重置唇形同步偏移',
+    lipSyncTooltip: '语音与唇形动画同步校准',
   },
   ru: {
     videosTitle: 'Видеоплеер',
@@ -1306,6 +1330,9 @@ const extendedTranslations = {
     subtitleLoadedToast: 'Субтитры успешно загружены',
     embeddedTrack: 'Встроенные',
     sidecarTrack: 'Файл',
+    lipSyncCalibration: 'Синхронизация речи (липсинк)',
+    lipSyncReset: 'Сбросить сдвиг синхронизации',
+    lipSyncTooltip: 'Калибровка синхронизации голоса и движения губ',
   },
 };
 

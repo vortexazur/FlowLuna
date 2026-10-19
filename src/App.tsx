@@ -607,9 +607,10 @@ export default function App() {
         }
 
         if (isVideoTrack) {
-          // Attendre que le décodeur matériel ait initialisé les timestamps audio et vidéo (PTS)
-          // pour éviter tout décalage voix/lèvres lors de la transition vers une 2e vidéo
-          if (activeMedia.readyState < 2) {
+          // 1. Latence de chargement : Attendre que le décodeur matériel ait initialisé les timestamps (PTS)
+          // et qu'au moins 2 trames et les buffers audio soient amorcés (HAVE_FUTURE_DATA = readyState >= 3)
+          // pour éviter tout décalage voix/lèvres lors du démarrage ou de la transition
+          if (activeMedia.readyState < 3) {
             await new Promise<void>((resolve) => {
               let isDone = false;
               const onReady = () => {
@@ -618,25 +619,45 @@ export default function App() {
                 cleanup();
                 resolve();
               };
-              const fallbackTimer = setTimeout(onReady, 250);
+              const fallbackTimer = setTimeout(onReady, 1500);
               const cleanup = () => {
                 clearTimeout(fallbackTimer);
-                activeMedia.removeEventListener('loadeddata', onReady);
                 activeMedia.removeEventListener('canplay', onReady);
+                activeMedia.removeEventListener('canplaythrough', onReady);
               };
-              activeMedia.addEventListener('loadeddata', onReady, { once: true });
               activeMedia.addEventListener('canplay', onReady, { once: true });
+              activeMedia.addEventListener('canplaythrough', onReady, { once: true });
             });
           }
 
           if (playRequestIdRef.current !== requestId) return;
 
-          // Verrouillage de la synchronisation labiale frame-accurate à 0s
-          if (activeMedia.currentTime > 0.01 && activeMedia.readyState >= 1) {
-            try {
-              activeMedia.currentTime = 0;
-            } catch {}
+          // 2. Gestion du currentTime & Alignement temporel frame-accurate :
+          // Si le lecteur a hérité d'une position résiduelle (> 0.25s) d'une piste précédente,
+          // on réaligne à 0s et on ATTEND impérativement l'événement 'seeked' avant tout play().
+          // Si la vidéo est déjà au début naturel (<= 0.25s), on NE DÉCLENCHE PAS de seek() superflu
+          // qui viderait le cache du décodeur Direct3D 11 et décalerait la vidéo par rapport à l'audio !
+          if (activeMedia.currentTime > 0.25 && activeMedia.readyState >= 1) {
+            await new Promise<void>((resolve) => {
+              const onSeeked = () => {
+                activeMedia.removeEventListener('seeked', onSeeked);
+                resolve();
+              };
+              activeMedia.addEventListener('seeked', onSeeked, { once: true });
+              const timer = setTimeout(() => {
+                activeMedia.removeEventListener('seeked', onSeeked);
+                resolve();
+              }, 400);
+              try {
+                activeMedia.currentTime = 0;
+              } catch {
+                clearTimeout(timer);
+                resolve();
+              }
+            });
           }
+
+          if (playRequestIdRef.current !== requestId) return;
         }
 
         const playPromise = activeMedia.play();
