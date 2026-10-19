@@ -11,6 +11,7 @@ import {
   parseAnimeTitleAndEpisode,
 } from '../services/openingDetectorService';
 import { getTrackPlayableUrl } from '../services/audioDb';
+import { isTrackVideo } from '../utils/fileAudioLoader';
 
 export interface UseMarathonControllerProps {
   track: Track | null;
@@ -159,7 +160,7 @@ export function useMarathonController({
     // Nettoyage systématique de tout préchargement antérieur pour libérer les décodeurs matériels
     cleanupPreloadedElement();
 
-    if (!track || !track.isVideo) {
+    if (!track || !isTrackVideo(track)) {
       setMarkers(null);
       setIsDetecting(false);
       setIsOpButtonVisible(false);
@@ -320,7 +321,7 @@ export function useMarathonController({
 
   // Time Progression Inspector: Handles OP auto-skip, ED transition, preloading
   useEffect(() => {
-    if (!track || !track.isVideo) return;
+    if (!track || !isTrackVideo(track)) return;
 
     // Reset guards if user rewinds back
     if (markers?.ed && currentTime < markers.ed.start - 8) {

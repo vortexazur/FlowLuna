@@ -25,7 +25,7 @@ let SERVER_URL = `http://127.0.0.1:${PORT}`;
 app.name = 'FlowLuna';
 app.setAppUserModelId('com.flowluna.player');
 app.commandLine.appendSwitch('disable-gpu-shader-disk-cache');
-app.commandLine.appendSwitch('enable-features', 'MediaFoundationD3D11VideoDecoder,HardwareMediaKeyHandling');
+app.commandLine.appendSwitch('enable-features', 'D3D11VideoDecoder,MediaFoundationVideoDecoder,HardwareMediaKeyHandling');
 app.commandLine.appendSwitch('enable-gpu-rasterization');
 app.commandLine.appendSwitch('enable-zero-copy');
 app.commandLine.appendSwitch('ignore-gpu-blocklist');

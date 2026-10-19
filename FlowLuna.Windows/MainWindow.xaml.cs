@@ -457,7 +457,7 @@ public partial class MainWindow : Window
                                 return await window.chrome.webview.hostObjects.nativeHost.GetAppVersion();
                             }
                         } catch {}
-                        return '1.23.2';
+                        return '1.23.3';
                     },
                     toggleFullscreen: () => {
 
@@ -571,7 +571,7 @@ public partial class MainWindow : Window
         return new CoreWebView2EnvironmentOptions
         {
             AdditionalBrowserArguments =
-                "--enable-features=MediaFoundationD3D11VideoDecoder,HardwareMediaKeyHandling " +
+                "--enable-features=D3D11VideoDecoder,MediaFoundationVideoDecoder,HardwareMediaKeyHandling " +
                 "--enable-gpu-rasterization " +
                 "--enable-zero-copy " +
                 "--ignore-gpu-blocklist " +

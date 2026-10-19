@@ -32,6 +32,7 @@ import {
   Check,
 } from 'lucide-react';
 import { Track, AccentColor, MarathonConfig, VideoAspectRatio, PlayerSettings, SubtitleTrack, AudioStreamTrack } from '../types';
+import { isTrackVideo } from '../utils/fileAudioLoader';
 import { SkipOpeningButton } from './SkipOpeningButton';
 import { MarathonCountdownOverlay } from './MarathonCountdownOverlay';
 import { useMarathonController } from '../hooks/useMarathonController';
@@ -188,7 +189,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
   useEffect(() => {
     let isCancelled = false;
     const loadTracks = async () => {
-      if (!currentTrack?.isVideo || !currentTrack.filePath) {
+      if (!isTrackVideo(currentTrack) || !currentTrack.filePath) {
         setSubtitles([]);
         setSelectedSubtitleId(null);
         setAudioTracks([]);
@@ -293,7 +294,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
   const lastWheelTimeRef = useRef<number>(0);
   const [isFullscreen, setIsFullscreen] = useState<boolean>(false);
 
-  const isVideo = !!currentTrack?.isVideo;
+  const isVideo = isTrackVideo(currentTrack);
   const isHidden = !currentTrack || !isVideo || videoMode === 'hidden';
 
   // Format time (mm:ss or hh:mm:ss)
@@ -461,7 +462,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
   // Synchronisation de lecture sécurisée avec vérification des buffers
   useEffect(() => {
     const video = videoRef.current;
-    if (!video || !currentTrack?.isVideo || isHidden) return;
+    if (!video || !isTrackVideo(currentTrack) || isHidden) return;
 
     if (lastTrackIdRef.current !== currentTrack?.id) {
       lastTrackIdRef.current = currentTrack?.id;

@@ -385,8 +385,14 @@ export function resolveAllowedPath(
   }
 
   const allowedDirs = getAllowedMediaDirs();
-  const isInAllowedDir = allowedDirs.some((dir) => realPath.startsWith(dir + path.sep) || realPath === dir);
-  const isExplicitlyAllowed = explicitlyAddedFiles.has(realPath);
+  const realPathLower = realPath.toLowerCase();
+  const isInAllowedDir = allowedDirs.some((dir) => {
+    const dirLower = dir.toLowerCase();
+    return realPathLower.startsWith(dirLower + path.sep) || realPathLower === dirLower;
+  });
+  const isExplicitlyAllowed = Array.from(explicitlyAddedFiles).some(
+    (f) => f.toLowerCase() === realPathLower
+  );
 
   if (!isInAllowedDir && !isExplicitlyAllowed) {
     return null;
@@ -4257,15 +4263,42 @@ export const LANGUAGE_NAMES: Record<string, string> = {
   und: 'Indéterminé',
 };
 
-export function srtToWebVtt(content: string): string {
+export function srtToWebVtt(content: string, offsetSeconds = 0): string {
   if (!content) return 'WEBVTT\n\n';
-  if (content.trim().startsWith('WEBVTT')) return content;
+
+  // Strip existing WEBVTT header case-insensitively
+  let cleanContent = content.trim();
+  if (cleanContent.toUpperCase().startsWith('WEBVTT')) {
+    cleanContent = cleanContent.replace(/^WEBVTT[^\n]*\n+/i, '').trim();
+  }
 
   // Convert SRT timestamps (00:01:23,456 --> 00:01:25,789) to WebVTT format (dots instead of commas)
-  let vtt = 'WEBVTT\n\n' + content.trim();
+  let vtt = 'WEBVTT\n\n' + cleanContent;
   vtt = vtt.replace(/(\d{2}:\d{2}:\d{2}),(\d{3})/g, '$1.$2');
   // Clean ASS/SSA overrides like {\an8}, {\b1}, {\c&Hffffff&}
   vtt = vtt.replace(/\{[^\}]*\}/g, '');
+
+  if (Math.abs(offsetSeconds) >= 0.001) {
+    const timeRegex = /(\d{2}):(\d{2}):(\d{2})\.(\d{3})\s*-->\s*(\d{2}):(\d{2}):(\d{2})\.(\d{3})/g;
+    vtt = vtt.replace(timeRegex, (_match, sh, sm, ss, sms, eh, em, es, ems) => {
+      const parseTime = (h: string, m: string, s: string, ms: string) =>
+        parseInt(h, 10) * 3600 + parseInt(m, 10) * 60 + parseInt(s, 10) + parseInt(ms, 10) / 1000;
+      const formatTime = (sec: number) => {
+        const clamped = Math.max(0, sec);
+        let totalSec = Math.floor(clamped);
+        let ms = Math.round((clamped - totalSec) * 1000);
+        if (ms >= 1000) { totalSec += 1; ms = 0; }
+        const h = Math.floor(totalSec / 3600);
+        const m = Math.floor((totalSec % 3600) / 60);
+        const s = totalSec % 60;
+        return `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}.${ms.toString().padStart(3, '0')}`;
+      };
+      const startTime = parseTime(sh, sm, ss, sms) + offsetSeconds;
+      const endTime = parseTime(eh, em, es, ems) + offsetSeconds;
+      return `${formatTime(startTime)} --> ${formatTime(endTime)}`;
+    });
+  }
+
   return vtt;
 }
 

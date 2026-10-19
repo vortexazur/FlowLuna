@@ -3,6 +3,7 @@ import path from 'node:path';
 import fs from 'node:fs';
 import os from 'node:os';
 import { srtToWebVtt as srtToWebVttService, getSubtitleWebVttUrl } from '../src/services/videoTracksService';
+import { isVideoFormat, isTrackVideo } from '../src/utils/fileAudioLoader';
 import {
   srtToWebVtt as srtToWebVttServer,
   resolveAllowedPath,
@@ -11,7 +12,7 @@ import {
   getFlowLunaDataDir,
   getDownloadDir,
 } from '../server';
-import { SubtitleTrack } from '../src/types';
+import { SubtitleTrack, Track } from '../src/types';
 
 console.log('===============================================================');
 console.log(' TESTS GESTION DES SOUS-TITRES & PISTES AUDIO (VIDÉO)         ');
@@ -139,12 +140,55 @@ function testUrlGeneration() {
   console.log('✓ Test 5 passé : Construction des URLs WebVTT validée.');
 }
 
+function testCaseSensitivityVideoAndSubtitles() {
+  console.log('\n--- Test 6 : Insensibilité à la Casse (Vidéo & Sous-titres WebVTT) ---');
+
+  // 1. Validation de l'insensibilité à la casse pour les formats vidéo
+  assert.ok(isVideoFormat('MP4'), 'MP4 majuscule doit être reconnu comme vidéo');
+  assert.ok(isVideoFormat('.MKV'), '.MKV avec point et majuscules doit être reconnu');
+  assert.ok(isVideoFormat('webm'), 'webm minuscule doit être reconnu');
+  assert.ok(isVideoFormat('WMV'), 'WMV majuscule doit être reconnu');
+  assert.ok(!isVideoFormat('MP3'), 'MP3 ne doit pas être reconnu comme vidéo');
+
+  // 2. Validation de isTrackVideo avec formats ou extensions en majuscules même si isVideo est absent
+  const upperTrack: Track = {
+    id: 'test-upper',
+    title: 'Test Clip',
+    artist: 'Artist',
+    album: 'Album',
+    duration: 120,
+    format: 'MP4' as any,
+    url: '/api/library/stream?file=test.MP4',
+    source: 'local',
+    isFavorite: false,
+    isCachedOffline: false,
+    playCount: 0,
+    addedAt: 0,
+  };
+  assert.ok(isTrackVideo(upperTrack), 'Piste avec format "MP4" sans isVideo explicite doit être reconnue comme vidéo');
+
+  // 3. Validation de srtToWebVtt avec en-têtes webvtt en minuscules et majuscules
+  const lowerVtt = `webvtt\n\n00:00:01.000 --> 00:00:03.000\nHello`;
+  const convertedLower = srtToWebVttServer(lowerVtt, 1.0);
+  assert.ok(convertedLower.startsWith('WEBVTT\n\n'), 'Doit avoir l\'en-tête WebVTT unique standard');
+  assert.strictEqual((convertedLower.match(/WEBVTT/gi) || []).length, 1, 'Ne doit pas dupliquer l\'en-tête WEBVTT');
+  assert.ok(convertedLower.includes('00:00:02.000 --> 00:00:04.000'), 'Le décalage de +1s doit être appliqué');
+
+  const upperVtt = `WEBVTT\n\n00:00:05.000 --> 00:00:08.000\nBonjour`;
+  const convertedUpper = srtToWebVttService(upperVtt, 0.5);
+  assert.strictEqual((convertedUpper.match(/WEBVTT/gi) || []).length, 1, 'Service: ne doit pas dupliquer l\'en-tête WEBVTT');
+  assert.ok(convertedUpper.includes('00:00:05.500 --> 00:00:08.500'), 'Service: décalage de +0.5s appliqué');
+
+  console.log('✓ Test 6 passé : Insensibilité à la casse complète et synchronisation WebVTT confirmée.');
+}
+
 try {
   testSrtToWebVttConversion();
   testSubtitleOffsetShifting();
   testSubtitlePathValidation();
   testLanguageMapping();
   testUrlGeneration();
+  testCaseSensitivityVideoAndSubtitles();
 
   console.log('\n===============================================================');
   console.log(' TOUS LES TESTS SOUS-TITRES & PISTES AUDIO SONT VALIDÉS !     ');

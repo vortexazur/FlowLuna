@@ -7,8 +7,13 @@ import { SubtitleTrack, AudioStreamTrack } from '../types';
 export function srtToWebVtt(content: string, offsetSeconds = 0): string {
   if (!content) return 'WEBVTT\n\n';
 
-  // Séparation en blocs
-  const rawLines = content.replace(/\r\n/g, '\n').replace(/\r/g, '\n').split('\n');
+  // Séparation en blocs après nettoyage insensible à la casse d'un en-tête WEBVTT existant
+  let cleanContent = content.replace(/\r\n/g, '\n').replace(/\r/g, '\n').trim();
+  if (cleanContent.toUpperCase().startsWith('WEBVTT')) {
+    cleanContent = cleanContent.replace(/^WEBVTT[^\n]*\n+/i, '').trim();
+  }
+
+  const rawLines = cleanContent.split('\n');
   const vttLines: string[] = ['WEBVTT\n'];
 
   const timeRegex = /(?<sh>\d{1,2}):(?<sm>\d{2}):(?<ss>\d{2})[,.](?<sms>\d{3})\s*-->\s*(?<eh>\d{1,2}):(?<em_>\d{2}):(?<es>\d{2})[,.](?<ems>\d{3})/;

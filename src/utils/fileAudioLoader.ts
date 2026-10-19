@@ -24,18 +24,43 @@ export function getAudioFormatFromFileName(name: string): MediaFormat {
   if (ext === 'mov') return 'mov';
   if (ext === 'avi') return 'avi';
   if (ext === 'm4v') return 'm4v';
+  if (ext === 'wmv') return 'wmv';
+  if (ext === 'flv') return 'flv';
+  if (ext === '3gp') return '3gp';
+  if (ext === 'ts') return 'ts';
+  if (ext === 'm2ts') return 'm2ts';
+  if (ext === 'ogv') return 'ogv';
   return 'mp3';
 }
 
+const VIDEO_EXTENSIONS_LIST = ['mp4', 'mkv', 'webm', 'mov', 'avi', 'm4v', 'wmv', 'flv', '3gp', 'ts', 'm2ts', 'ogv'];
+
 export function isVideoFormat(formatOrExt: string): boolean {
-  const f = formatOrExt.toLowerCase();
-  return ['mp4', 'mkv', 'webm', 'mov', 'avi', 'm4v'].includes(f);
+  if (!formatOrExt) return false;
+  const f = formatOrExt.trim().toLowerCase().replace(/^\./, '');
+  return VIDEO_EXTENSIONS_LIST.includes(f);
 }
 
 export function isVideoFile(file: File): boolean {
-  if (file.type && file.type.startsWith('video/')) return true;
+  if (file.type && file.type.toLowerCase().startsWith('video/')) return true;
   const ext = file.name.split('.').pop()?.toLowerCase() || '';
   return isVideoFormat(ext);
+}
+
+export function isTrackVideo(track?: Track | null): boolean {
+  if (!track) return false;
+  if (track.isVideo === true) return true;
+  if (track.format && isVideoFormat(track.format)) return true;
+  if (typeof track.filePath === 'string') {
+    const ext = track.filePath.split('.').pop() || '';
+    if (isVideoFormat(ext)) return true;
+  }
+  if (typeof track.url === 'string') {
+    const cleanUrl = track.url.split('?')[0];
+    const ext = cleanUrl.split('.').pop() || '';
+    if (isVideoFormat(ext)) return true;
+  }
+  return false;
 }
 
 export function cleanTrackNameAndArtist(filename: string): { title: string; artist: string } {

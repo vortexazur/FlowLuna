@@ -1371,7 +1371,13 @@ public class HttpServer
         if (string.IsNullOrWhiteSpace(srt)) return "WEBVTT\n\n";
         if (srt.TrimStart().StartsWith("WEBVTT", StringComparison.OrdinalIgnoreCase) && Math.Abs(offsetSeconds) < 0.001) return srt;
 
-        var vtt = "WEBVTT\n\n" + srt.Trim();
+        var cleanSrt = srt.Trim();
+        if (cleanSrt.StartsWith("WEBVTT", StringComparison.OrdinalIgnoreCase))
+        {
+            cleanSrt = System.Text.RegularExpressions.Regex.Replace(cleanSrt, @"^WEBVTT[^\n]*\r?\n+", "", System.Text.RegularExpressions.RegexOptions.IgnoreCase).Trim();
+        }
+
+        var vtt = "WEBVTT\n\n" + cleanSrt;
         vtt = System.Text.RegularExpressions.Regex.Replace(vtt, @"(\d{2}:\d{2}:\d{2}),(\d{3})", "$1.$2");
         vtt = System.Text.RegularExpressions.Regex.Replace(vtt, @"\{[^\}]*\}", "");
 

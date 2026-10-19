@@ -1,5 +1,5 @@
 declare const __APP_VERSION__: string | undefined;
-export const APP_VERSION = typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__ : '1.23.2';
+export const APP_VERSION = typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__ : '1.23.3';
 
 export type MediaFormat =
   | 'mp3'
@@ -13,7 +13,13 @@ export type MediaFormat =
   | 'mkv'
   | 'mov'
   | 'avi'
-  | 'm4v';
+  | 'm4v'
+  | 'wmv'
+  | 'flv'
+  | '3gp'
+  | 'ts'
+  | 'm2ts'
+  | 'ogv';
 
 export type AudioFormat = MediaFormat;
 

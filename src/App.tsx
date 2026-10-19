@@ -32,7 +32,7 @@ import {
 } from './services/audioDb';
 import { INITIAL_PLAYLISTS } from './data/defaultTracks';
 import { audioEngine, DEFAULT_EQ_FREQUENCIES, EQ_PRESETS } from './services/audioEngine';
-import { processLocalAudioFile } from './utils/fileAudioLoader';
+import { processLocalAudioFile, isTrackVideo, isVideoFormat } from './utils/fileAudioLoader';
 import { Sidebar } from './components/Sidebar';
 import { PlayerBar } from './components/PlayerBar';
 import { LibraryView } from './components/LibraryView';
@@ -506,7 +506,7 @@ export default function App() {
       setIsPlaying(true);
       lastTrackStartTimeRef.current = Date.now();
 
-      const isVideoTrack = !!track.isVideo;
+      const isVideoTrack = isTrackVideo(track);
       if (isVideoTrack) {
         setVideoMode('theater');
       }
@@ -657,7 +657,7 @@ export default function App() {
         if (playerSettings.gaplessPlayback && !isVideoTrack && targetQueue.length > 1) {
           const nextIdx = (index + 1) % targetQueue.length;
           const nextTrack = targetQueue[nextIdx];
-          if (nextTrack && !nextTrack.isVideo) {
+          if (nextTrack && !isTrackVideo(nextTrack)) {
             getTrackPlayableUrl(nextTrack).catch(() => {});
           }
         }
@@ -687,7 +687,7 @@ export default function App() {
       if (curQueue.length === 0) return;
 
       if (repeatMode === 'one' && isAuto) {
-        const activeMedia = currentPlayingTrackRef.current?.isVideo ? videoRef.current : audioRef.current;
+        const activeMedia = isTrackVideo(currentPlayingTrackRef.current) ? videoRef.current : audioRef.current;
         if (activeMedia) {
           try {
             activeMedia.currentTime = 0;
@@ -761,7 +761,7 @@ export default function App() {
 
     const timeSinceStart = Date.now() - lastTrackStartTimeRef.current;
     const isRapidSkipping = isTransitioningRef.current || timeSinceStart < 1500;
-    const activeMedia = currentPlayingTrackRef.current?.isVideo ? videoRef.current : audioRef.current;
+    const activeMedia = isTrackVideo(currentPlayingTrackRef.current) ? videoRef.current : audioRef.current;
 
     if (!isRapidSkipping && activeMedia) {
       try {
@@ -868,10 +868,10 @@ export default function App() {
 
   // Toggle play/pause
   const handleTogglePlay = useCallback(() => {
-    const activeMedia = currentPlayingTrackRef.current?.isVideo ? videoRef.current : audioRef.current;
+    const activeMedia = isTrackVideo(currentPlayingTrackRef.current) ? videoRef.current : audioRef.current;
     if (!activeMedia) return;
 
-    if (!currentPlayingTrackRef.current?.isVideo) {
+    if (!isTrackVideo(currentPlayingTrackRef.current)) {
       audioEngine.resume();
     }
 
@@ -940,7 +940,7 @@ export default function App() {
 
   // Seek
   const handleSeek = (newTime: number) => {
-    const activeMedia = currentPlayingTrackRef.current?.isVideo ? videoRef.current : audioRef.current;
+    const activeMedia = isTrackVideo(currentPlayingTrackRef.current) ? videoRef.current : audioRef.current;
     if (activeMedia && isFinite(newTime) && newTime >= 0) {
       try {
         const max = isFinite(activeMedia.duration) && activeMedia.duration > 0
@@ -1283,7 +1283,7 @@ export default function App() {
         currentTrackIndexRef.current = 0;
         setCurrentTrackIndex(0);
         playTrackAt(0, newQueue, true);
-        if (imported[0]?.isVideo) {
+        if (isTrackVideo(imported[0])) {
           setVideoMode('theater');
         }
       }
@@ -1318,7 +1318,7 @@ export default function App() {
         currentTrackIndexRef.current = 0;
         setCurrentTrackIndex(0);
         playTrackAt(0, newQueue, true);
-        if (newQueue[0]?.isVideo) {
+        if (isTrackVideo(newQueue[0])) {
           setVideoMode('theater');
         }
       }
@@ -1352,7 +1352,7 @@ export default function App() {
       setCurrentTrackIndex(targetIdx);
       playTrackAt(targetIdx, newQueue, true);
 
-      if (batchTracks[targetIdx]?.isVideo) {
+      if (isTrackVideo(batchTracks[targetIdx])) {
         setVideoMode('theater');
       }
     },
@@ -1413,13 +1413,13 @@ export default function App() {
         handleTogglePlay();
       } else if (e.code === 'ArrowLeft') {
         e.preventDefault();
-        const activeMedia = currentPlayingTrackRef.current?.isVideo ? videoRef.current : audioRef.current;
+        const activeMedia = isTrackVideo(currentPlayingTrackRef.current) ? videoRef.current : audioRef.current;
         if (activeMedia) {
           handleSeek(Math.max(0, activeMedia.currentTime - 5));
         }
       } else if (e.code === 'ArrowRight') {
         e.preventDefault();
-        const activeMedia = currentPlayingTrackRef.current?.isVideo ? videoRef.current : audioRef.current;
+        const activeMedia = isTrackVideo(currentPlayingTrackRef.current) ? videoRef.current : audioRef.current;
         if (activeMedia) {
           handleSeek(Math.min(duration, activeMedia.currentTime + 5));
         }
@@ -1446,7 +1446,7 @@ export default function App() {
       } else if (e.key === 'r' || e.key === 'R') {
         setRepeatMode((prev) => (prev === 'off' ? 'all' : prev === 'all' ? 'one' : 'off'));
       } else if (e.key === 'f' || e.key === 'F') {
-        if (currentPlayingTrack?.isVideo) {
+        if (isTrackVideo(currentPlayingTrack)) {
           e.preventDefault();
           setVideoMode('theater');
           const container = document.getElementById('flowluna-video-container');
@@ -1557,7 +1557,7 @@ export default function App() {
         currentTrackIndexRef.current = 0;
         setCurrentTrackIndex(0);
         playTrackAt(0, newQueue, true);
-        if (transientTracks[0]?.isVideo) {
+        if (isTrackVideo(transientTracks[0])) {
           setVideoMode('theater');
         }
       }
@@ -1681,7 +1681,7 @@ export default function App() {
 
       const handleTimeUpdate = () => {
         const curTrack = currentPlayingTrackRef.current;
-        const isCurrentVideo = !!curTrack?.isVideo;
+        const isCurrentVideo = isTrackVideo(curTrack);
         if (isForVideo !== isCurrentVideo) return;
 
         const target = getTarget();
@@ -1712,7 +1712,7 @@ export default function App() {
 
       const handleLoadedMetadata = () => {
         const curTrack = currentPlayingTrackRef.current;
-        const isCurrentVideo = !!curTrack?.isVideo;
+        const isCurrentVideo = isTrackVideo(curTrack);
         if (isForVideo !== isCurrentVideo) return;
 
         const target = getTarget();
@@ -1736,7 +1736,7 @@ export default function App() {
 
       const handleEnded = () => {
         const curTrack = currentPlayingTrackRef.current;
-        const isCurrentVideo = !!curTrack?.isVideo;
+        const isCurrentVideo = isTrackVideo(curTrack);
         if (isForVideo !== isCurrentVideo) return;
 
         handleNextRef.current(true);
@@ -1798,7 +1798,7 @@ export default function App() {
 
       if ('setPositionState' in navigator.mediaSession && duration > 0) {
         try {
-          const activeMedia = currentPlayingTrackRef.current?.isVideo ? videoRef.current : audioRef.current;
+          const activeMedia = isTrackVideo(currentPlayingTrackRef.current) ? videoRef.current : audioRef.current;
           navigator.mediaSession.setPositionState({
             duration: Math.max(0, duration),
             playbackRate: playerSettings.playbackSpeed ?? 1.0,
@@ -1848,14 +1848,14 @@ export default function App() {
       });
       navigator.mediaSession.setActionHandler('seekbackward', (details) => {
         const offset = details.seekOffset || 10;
-        const activeMedia = currentPlayingTrackRef.current?.isVideo ? videoRef.current : audioRef.current;
+        const activeMedia = isTrackVideo(currentPlayingTrackRef.current) ? videoRef.current : audioRef.current;
         if (activeMedia) {
           handleSeek(Math.max(0, activeMedia.currentTime - offset));
         }
       });
       navigator.mediaSession.setActionHandler('seekforward', (details) => {
         const offset = details.seekOffset || 10;
-        const activeMedia = currentPlayingTrackRef.current?.isVideo ? videoRef.current : audioRef.current;
+        const activeMedia = isTrackVideo(currentPlayingTrackRef.current) ? videoRef.current : audioRef.current;
         if (activeMedia) {
           handleSeek(Math.min(activeMedia.duration || 0, activeMedia.currentTime + offset));
         }
@@ -2060,7 +2060,7 @@ export default function App() {
             queueRef.current = updatedQueue;
             setCurrentTrackIndex(0);
             currentTrackIndexRef.current = 0;
-            if (track.isVideo) {
+            if (isTrackVideo(track)) {
               setVideoMode('theater');
             }
             playTrackAt(0, updatedQueue);
@@ -2070,7 +2070,7 @@ export default function App() {
     }
 
     // Default: Library View (music tracks only)
-    const musicTracks = tracks.filter((t) => !t.isVideo);
+    const musicTracks = tracks.filter((t) => !isTrackVideo(t));
     return (
       <LibraryView
         tracks={musicTracks}
@@ -2271,9 +2271,9 @@ export default function App() {
   // Check if fullscreen video or UI is active to prevent any foreground toast popup
   const isFullscreenActive = useMemo(() => {
     const isDocFs = typeof document !== 'undefined' && Boolean(document.fullscreenElement);
-    const isVideoTheater = videoMode === 'theater' && Boolean(currentPlayingTrack?.isVideo);
+    const isVideoTheater = videoMode === 'theater' && isTrackVideo(currentPlayingTrack);
     return isFullscreenOpen || isDocFs || isVideoTheater;
-  }, [isFullscreenOpen, videoMode, currentPlayingTrack?.isVideo]);
+  }, [isFullscreenOpen, videoMode, currentPlayingTrack]);
 
   return (
     <div
@@ -2537,7 +2537,7 @@ export default function App() {
               onNavigate={handleNavigate}
               playlists={playlists}
               favoritesCount={tracks.filter((t) => t.isFavorite).length}
-              videosCount={tracks.filter((t) => t.isVideo).length}
+              videosCount={tracks.filter((t) => isTrackVideo(t)).length}
               onCreatePlaylist={() => setIsCreatePlaylistModalOpen(true)}
               onOpenSettings={() => {
                 setSettingsInitialTab('appearance');

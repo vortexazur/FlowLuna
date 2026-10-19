@@ -38,7 +38,7 @@ public static class LibraryScanner
     private static readonly HashSet<string> AudioExtensions = new(StringComparer.OrdinalIgnoreCase)
     {
         ".mp3", ".flac", ".wav", ".ogg", ".m4a", ".aac", ".webm", ".opus", ".wma", ".alac",
-        ".mp4", ".mkv", ".mov", ".avi", ".m4v"
+        ".mp4", ".mkv", ".mov", ".avi", ".m4v", ".wmv", ".flv", ".3gp", ".ts", ".m2ts", ".ogv"
     };
 
     private static readonly HashSet<string> IgnoredDirs = new(StringComparer.OrdinalIgnoreCase)
@@ -575,7 +575,7 @@ public static class LibraryScanner
             var trackId = $"scanned-{Convert.ToBase64String(System.Text.Encoding.UTF8.GetBytes(filePath)).Replace('+', '-').Replace('/', '_').TrimEnd('=')}";
 
             var mtime = new DateTimeOffset(fileInfo.LastWriteTimeUtc).ToUnixTimeMilliseconds();
-            var isVideo = ext is "mp4" or "mkv" or "webm" or "avi" or "mov" or "wmv" or "flv";
+            var isVideo = ext is "mp4" or "mkv" or "webm" or "avi" or "mov" or "m4v" or "wmv" or "flv" or "3gp" or "ts" or "m2ts" or "ogv";
 
             return new ScannedAudioTrack(
                 Id: trackId,
