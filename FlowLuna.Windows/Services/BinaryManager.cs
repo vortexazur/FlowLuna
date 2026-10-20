@@ -315,7 +315,7 @@ public static class BinaryManager
         return 0;
     }
 
-    public static string CurrentAppVersion => typeof(BinaryManager).Assembly.GetName().Version?.ToString(3) ?? "1.23.4";
+    public static string CurrentAppVersion => typeof(BinaryManager).Assembly.GetName().Version?.ToString(3) ?? "1.23.5";
 
     public static async Task<AppUpdateStatus> CheckAppUpdateAsync()
     {
@@ -390,16 +390,42 @@ public static class BinaryManager
     public static bool IsAllowedUpdateUrl(Uri? uri)
     {
         if (uri == null || uri.Scheme != Uri.UriSchemeHttps) return false;
-        if (uri.Host.Equals("github.com", StringComparison.OrdinalIgnoreCase) &&
+
+        var host = uri.Host;
+
+        // 1. URL initiale officielle GitHub Releases pour FlowLuna
+        if (host.Equals("github.com", StringComparison.OrdinalIgnoreCase) &&
             uri.AbsolutePath.StartsWith("/vortexazur/FlowLuna/releases/download/", StringComparison.OrdinalIgnoreCase))
         {
             return true;
         }
-        if (uri.Host.Equals("objects.githubusercontent.com", StringComparison.OrdinalIgnoreCase) &&
-            uri.AbsolutePath.StartsWith("/github-production-release-asset-", StringComparison.OrdinalIgnoreCase))
+
+        // 2. CDN officiel de distribution d'assets GitHub (redirections release assets)
+        if (host.Equals("objects.githubusercontent.com", StringComparison.OrdinalIgnoreCase) ||
+            host.EndsWith(".objects.githubusercontent.com", StringComparison.OrdinalIgnoreCase) ||
+            host.Equals("github-cloud.githubusercontent.com", StringComparison.OrdinalIgnoreCase) ||
+            host.Equals("release-assets.githubusercontent.com", StringComparison.OrdinalIgnoreCase) ||
+            (host.EndsWith(".githubusercontent.com", StringComparison.OrdinalIgnoreCase) &&
+             (host.StartsWith("objects", StringComparison.OrdinalIgnoreCase) ||
+              host.StartsWith("github-cloud", StringComparison.OrdinalIgnoreCase) ||
+              host.StartsWith("github-production", StringComparison.OrdinalIgnoreCase))))
         {
             return true;
         }
+
+        // 3. Stockage Amazon S3 officiel de GitHub pour les release assets
+        // Exemples : github-cloud.s3.amazonaws.com, github-production-release-asset-*.s3.amazonaws.com
+        if (host.EndsWith(".amazonaws.com", StringComparison.OrdinalIgnoreCase))
+        {
+            if (host.StartsWith("github-production-release-asset-", StringComparison.OrdinalIgnoreCase) ||
+                host.StartsWith("github-production-", StringComparison.OrdinalIgnoreCase) ||
+                host.StartsWith("github-cloud.", StringComparison.OrdinalIgnoreCase) ||
+                host.StartsWith("github-cloud.s3", StringComparison.OrdinalIgnoreCase))
+            {
+                return true;
+            }
+        }
+
         return false;
     }
 
@@ -615,3 +641,4 @@ public record AppUpdateProgressReport(
     [property: JsonPropertyName("message")] string? Message,
     [property: JsonPropertyName("installerPath")] string? InstallerPath
 );
+

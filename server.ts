@@ -741,18 +741,44 @@ export function isAllowedUpdateUrl(urlStr: string): boolean {
   try {
     const parsed = new URL(urlStr);
     if (parsed.protocol !== 'https:') return false;
+
+    const hostname = parsed.hostname.toLowerCase();
+
+    // 1. URL initiale officielle GitHub Releases pour FlowLuna
     if (
-      parsed.hostname === 'github.com' &&
+      hostname === 'github.com' &&
       parsed.pathname.startsWith('/vortexazur/FlowLuna/releases/download/')
     ) {
       return true;
     }
+
+    // 2. CDN officiel de distribution d'assets GitHub (redirections release assets)
     if (
-      parsed.hostname === 'objects.githubusercontent.com' &&
-      parsed.pathname.startsWith('/github-production-release-asset-')
+      hostname === 'objects.githubusercontent.com' ||
+      hostname.endsWith('.objects.githubusercontent.com') ||
+      hostname === 'github-cloud.githubusercontent.com' ||
+      hostname === 'release-assets.githubusercontent.com' ||
+      (hostname.endsWith('.githubusercontent.com') &&
+        (hostname.startsWith('objects') ||
+          hostname.startsWith('github-cloud') ||
+          hostname.startsWith('github-production')))
     ) {
       return true;
     }
+
+    // 3. Stockage Amazon S3 officiel de GitHub pour les release assets
+    // Exemples : github-cloud.s3.amazonaws.com, github-production-release-asset-*.s3.amazonaws.com
+    if (hostname.endsWith('.amazonaws.com')) {
+      if (
+        hostname.startsWith('github-production-release-asset-') ||
+        hostname.startsWith('github-production-') ||
+        hostname.startsWith('github-cloud.') ||
+        hostname.startsWith('github-cloud.s3')
+      ) {
+        return true;
+      }
+    }
+
     return false;
   } catch {
     return false;
@@ -2146,29 +2172,70 @@ export function isSafeDestinationPath(destPath?: string): boolean {
   try {
     const resolved = path.resolve(destPath);
     const ext = path.extname(resolved).toLowerCase();
-    if (DANGEROUS_EXTENSIONS.has(ext)) return false;
+    if (ext && DANGEROUS_EXTENSIONS.has(ext)) return false;
 
-    const userHome = os.homedir();
-    const allowedRoots = [
-      path.join(userHome, 'Music'),
-      path.join(userHome, 'Musique'),
-      path.join(userHome, 'Videos'),
-      path.join(userHome, 'Vidéos'),
-      path.join(userHome, 'Downloads'),
-      path.join(userHome, 'Téléchargements'),
-      path.join(userHome, 'Desktop'),
-      path.join(userHome, 'Bureau'),
-      path.join(userHome, 'Documents'),
-      getFlowLunaDataDir(),
-    ];
+    // Protection stricte contre l'écrasement ou l'écriture dans les répertoires système Windows
+    const winDir = process.env.SystemRoot || process.env.windir || 'C:\\Windows';
+    const normalizedWinDir = path.resolve(winDir).toLowerCase() + path.sep;
+    const progFiles = process.env.ProgramFiles || 'C:\\Program Files';
+    const normalizedProgFiles = path.resolve(progFiles).toLowerCase() + path.sep;
+    const progFilesX86 = process.env['ProgramFiles(x86)'] || 'C:\\Program Files (x86)';
+    const normalizedProgFilesX86 = path.resolve(progFilesX86).toLowerCase() + path.sep;
 
-    return allowedRoots.some((root) => {
-      const normalizedRoot = path.resolve(root) + path.sep;
-      return resolved.startsWith(normalizedRoot);
-    });
+    const lowerResolved = resolved.toLowerCase();
+    if (
+      lowerResolved.startsWith(normalizedWinDir) ||
+      lowerResolved === path.resolve(winDir).toLowerCase() ||
+      lowerResolved.startsWith(normalizedProgFiles) ||
+      lowerResolved === path.resolve(progFiles).toLowerCase() ||
+      lowerResolved.startsWith(normalizedProgFilesX86) ||
+      lowerResolved === path.resolve(progFilesX86).toLowerCase()
+    ) {
+      return false;
+    }
+
+    const parsed = path.parse(resolved);
+    if (!parsed.root) return false;
+
+    return true;
   } catch {
     return false;
   }
+}
+
+export function saveMediaFileToDestination(sourceFile: string, destinationPath: string, finalFileName: string): { success: boolean; savedPath?: string; error?: string } {
+  if (!isSafeDestinationPath(destinationPath)) {
+    return { success: false, error: 'Emplacement de destination non autorisé pour des raisons de sécurité.' };
+  }
+
+  let targetFilePath = destinationPath;
+  try {
+    if (fs.existsSync(destinationPath) && fs.statSync(destinationPath).isDirectory()) {
+      targetFilePath = path.join(destinationPath, finalFileName);
+    } else if (!path.extname(destinationPath)) {
+      targetFilePath = path.join(destinationPath, finalFileName);
+    } else {
+      const dir = path.dirname(destinationPath);
+      const rawName = path.basename(destinationPath);
+      const safeName = sanitizeFileName(rawName);
+      targetFilePath = path.join(dir, safeName || finalFileName);
+    }
+  } catch {
+    targetFilePath = destinationPath;
+  }
+
+  const destDir = path.dirname(targetFilePath);
+  if (!fs.existsSync(destDir)) {
+    fs.mkdirSync(destDir, { recursive: true });
+  }
+
+  fs.copyFileSync(sourceFile, targetFilePath);
+
+  if (!fs.existsSync(targetFilePath) || fs.statSync(targetFilePath).size === 0) {
+    throw new Error(`Le fichier cible est manquant ou vide après écriture : ${targetFilePath}`);
+  }
+
+  return { success: true, savedPath: targetFilePath };
 }
 
 // 2. Download Media (Audio or Video) to PC with User Choices
@@ -2405,15 +2472,37 @@ app.get(['/api/downloader/download', '/api/downloader/stream-file'], async (req,
                   const downloadName = sanitizeFileName(cleanMeta.fileName || `${cleanMeta.artist} - ${cleanMeta.title}`);
                   const finalFileName = `${downloadName}.${chosenFormatExt}`;
 
-                  if (destinationPath && isSafeDestinationPath(destinationPath)) {
+                  if (destinationPath) {
                     try {
-                      const destDir = path.dirname(destinationPath);
-                      if (!fs.existsSync(destDir)) {
-                        fs.mkdirSync(destDir, { recursive: true });
+                      const saveRes = saveMediaFileToDestination(dlAlt.generatedFile, destinationPath, finalFileName);
+                      if (!saveRes.success) {
+                        try { if (fs.existsSync(dlAlt.generatedFile)) fs.unlinkSync(dlAlt.generatedFile); } catch {}
+                        return res.status(400).json({ error: saveRes.error });
                       }
-                      fs.copyFileSync(dlAlt.generatedFile, destinationPath);
-                    } catch (copyErr) {
-                      console.error('[Downloader] Failed to copy alternative to destinationPath:', copyErr);
+                      try { if (fs.existsSync(dlAlt.generatedFile)) fs.unlinkSync(dlAlt.generatedFile); } catch {}
+                      if (jobId) {
+                        broadcastJobProgress(jobId, {
+                          status: 'finished',
+                          percent: 100,
+                          message: 'Téléchargement et enregistrement terminés avec succès !',
+                        });
+                      }
+                      return res.json({
+                        success: true,
+                        savedPath: saveRes.savedPath,
+                        fileName: path.basename(saveRes.savedPath!),
+                      });
+                    } catch (saveErr: any) {
+                      console.error('[Downloader] Failed to save alternative media:', saveErr);
+                      try { if (fs.existsSync(dlAlt.generatedFile)) fs.unlinkSync(dlAlt.generatedFile); } catch {}
+                      if (jobId) {
+                        broadcastJobProgress(jobId, {
+                          status: 'error',
+                          percent: 0,
+                          message: `Erreur d'écriture : ${saveErr.message}`,
+                        });
+                      }
+                      return res.status(500).json({ error: `Échec de l'écriture sur le disque : ${saveErr.message}` });
                     }
                   }
 
@@ -2473,15 +2562,40 @@ app.get(['/api/downloader/download', '/api/downloader/stream-file'], async (req,
       const downloadName = sanitizeFileName(cleanMeta.fileName || `${cleanMeta.artist} - ${cleanMeta.title}`);
       const finalFileName = `${downloadName}.${finalExt}`;
 
-      if (destinationPath && isSafeDestinationPath(destinationPath)) {
+      if (destinationPath) {
         try {
-          const destDir = path.dirname(destinationPath);
-          if (!fs.existsSync(destDir)) {
-            fs.mkdirSync(destDir, { recursive: true });
+          const saveRes = saveMediaFileToDestination(generatedFilePath, destinationPath, finalFileName);
+          if (!saveRes.success) {
+            try { if (fs.existsSync(generatedFilePath)) fs.unlinkSync(generatedFilePath); } catch {}
+            return res.status(400).json({ error: saveRes.error });
           }
-          fs.copyFileSync(generatedFilePath, destinationPath);
-        } catch (copyErr) {
-          console.error('[Downloader] Failed to copy to destinationPath:', copyErr);
+          // Nettoyage après confirmation d'écriture
+          try { if (fs.existsSync(generatedFilePath)) fs.unlinkSync(generatedFilePath); } catch {}
+
+          if (jobId) {
+            broadcastJobProgress(jobId, {
+              status: 'finished',
+              percent: 100,
+              message: 'Téléchargement et enregistrement terminés avec succès !',
+            });
+          }
+
+          return res.json({
+            success: true,
+            savedPath: saveRes.savedPath,
+            fileName: path.basename(saveRes.savedPath!),
+          });
+        } catch (saveErr: any) {
+          console.error('[Downloader] Failed to save media to destinationPath:', saveErr);
+          try { if (fs.existsSync(generatedFilePath)) fs.unlinkSync(generatedFilePath); } catch {}
+          if (jobId) {
+            broadcastJobProgress(jobId, {
+              status: 'error',
+              percent: 0,
+              message: `Erreur d'écriture : ${saveErr.message}`,
+            });
+          }
+          return res.status(500).json({ error: `Échec de l'écriture sur le disque : ${saveErr.message}` });
         }
       }
 

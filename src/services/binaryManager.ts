@@ -412,12 +412,14 @@ export function parseYtdlpProgress(line: string): YtDlpProgressUpdate | null {
   const downloadMatch = clean.match(/\[download\]\s+(\d+(?:\.\d+)?)%(?:\s+of\s+~?\s*([\d\.]+\s*\w+))?(?:\s+at\s+([\d\.]+\s*\w+\/s))?(?:\s+ETA\s+([\d:]+))?/i);
   if (downloadMatch) {
     const percent = parseFloat(downloadMatch[1]);
+    const isStreamDone = !isNaN(percent) && percent >= 100;
     return {
-      status: percent >= 100 ? 'finished' : 'downloading',
-      percent: isNaN(percent) ? 0 : percent,
+      status: isStreamDone ? 'processing' : 'downloading',
+      percent: isNaN(percent) ? 0 : (isStreamDone ? 99 : percent),
       totalSize: downloadMatch[2] || undefined,
       speed: downloadMatch[3] || undefined,
       eta: downloadMatch[4] || undefined,
+      message: isStreamDone ? 'Finalisation du flux et conversion...' : undefined,
       raw: clean,
     };
   }

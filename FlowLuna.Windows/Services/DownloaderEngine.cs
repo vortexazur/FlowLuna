@@ -254,8 +254,8 @@ public static class DownloaderEngine
                     var eta = match.Groups[4].Success ? match.Groups[4].Value : null;
 
                     onProgress?.Invoke(new YtDlpProgressUpdate(
-                        p >= 100 ? "finished" : "downloading",
-                        p,
+                        p >= 100 ? "processing" : "downloading",
+                        p >= 100 ? 99 : p,
                         TotalSize: size,
                         Speed: speed,
                         Eta: eta,

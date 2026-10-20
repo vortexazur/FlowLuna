@@ -1000,13 +1000,48 @@ public class HttpServer
                 var finalFileName = $"{DownloaderEngine.SanitizeFileName(baseName)}{ext}";
 
                 // Security: if destinationPath was chosen via Save Dialog, validate it strictly to prevent arbitrary file overwrite
-                if (!string.IsNullOrWhiteSpace(destinationPath) && IsSafeDestinationPath(destinationPath))
+                if (!string.IsNullOrWhiteSpace(destinationPath))
                 {
-                    var destDir = Path.GetDirectoryName(destinationPath);
+                    if (!IsSafeDestinationPath(destinationPath))
+                    {
+                        try { File.Delete(filePath); } catch {}
+                        return Results.BadRequest(new { error = "Emplacement de destination non autorisé pour des raisons de sécurité." });
+                    }
+
+                    string targetFilePath = destinationPath;
+                    if (Directory.Exists(destinationPath) || (!Path.HasExtension(destinationPath) && !destinationPath.EndsWith(ext, StringComparison.OrdinalIgnoreCase)))
+                    {
+                        targetFilePath = Path.Combine(destinationPath, finalFileName);
+                    }
+                    else
+                    {
+                        var dir = Path.GetDirectoryName(destinationPath);
+                        var rawName = Path.GetFileName(destinationPath);
+                        var safeName = DownloaderEngine.SanitizeFileName(rawName);
+                        targetFilePath = string.IsNullOrWhiteSpace(dir) ? safeName : Path.Combine(dir, string.IsNullOrWhiteSpace(safeName) ? finalFileName : safeName);
+                    }
+
+                    var destDir = Path.GetDirectoryName(targetFilePath);
                     if (!string.IsNullOrWhiteSpace(destDir)) Directory.CreateDirectory(destDir);
-                    File.Copy(filePath, destinationPath, true);
+
+                    // Copie vers l'emplacement cible
+                    File.Copy(filePath, targetFilePath, true);
+
+                    // Vérification de la persistance réelle du fichier sur le disque
+                    if (!File.Exists(targetFilePath) || new FileInfo(targetFilePath).Length == 0)
+                    {
+                        throw new IOException($"L'écriture du fichier à l'emplacement cible a échoué ou a produit un fichier vide : {targetFilePath}");
+                    }
+
+                    // Nettoyage du fichier temporaire après confirmation
                     try { File.Delete(filePath); } catch {}
-                    return Results.Ok(new { success = true, savedPath = destinationPath, fileName = Path.GetFileName(destinationPath) });
+
+                    if (!string.IsNullOrWhiteSpace(jobId))
+                    {
+                        ActiveJobs[jobId] = new YtDlpProgressUpdate("finished", 100, Message: "Téléchargement et enregistrement terminés avec succès !");
+                    }
+
+                    return Results.Ok(new { success = true, savedPath = targetFilePath, fileName = Path.GetFileName(targetFilePath) });
                 }
 
                 var mime = ext.ToLowerInvariant() switch
@@ -1275,21 +1310,38 @@ public class HttpServer
         {
             var fullPath = Path.GetFullPath(destPath);
             var ext = Path.GetExtension(fullPath);
-            if (DangerousExtensions.Contains(ext)) return false;
+            if (!string.IsNullOrEmpty(ext) && DangerousExtensions.Contains(ext)) return false;
 
-            var userHome = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
-            var allowedRoots = new List<string>
+            // Protection stricte contre l'écrasement ou l'écriture dans les répertoires système Windows
+            var winDir = Environment.GetFolderPath(Environment.SpecialFolder.Windows);
+            if (!string.IsNullOrEmpty(winDir) && (fullPath.Equals(winDir, StringComparison.OrdinalIgnoreCase) || fullPath.StartsWith(Path.GetFullPath(winDir) + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase)))
             {
-                Environment.GetFolderPath(Environment.SpecialFolder.MyMusic),
-                Environment.GetFolderPath(Environment.SpecialFolder.MyVideos),
-                Path.Combine(userHome, "Downloads"),
-                Path.Combine(userHome, "Téléchargements"),
-                Environment.GetFolderPath(Environment.SpecialFolder.Desktop),
-                Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments),
-                BinaryManager.FlowLunaDataDir
-            };
+                return false;
+            }
 
-            return allowedRoots.Any(root => !string.IsNullOrEmpty(root) && fullPath.StartsWith(Path.GetFullPath(root) + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase));
+            var sysDir = Environment.GetFolderPath(Environment.SpecialFolder.System);
+            if (!string.IsNullOrEmpty(sysDir) && (fullPath.Equals(sysDir, StringComparison.OrdinalIgnoreCase) || fullPath.StartsWith(Path.GetFullPath(sysDir) + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase)))
+            {
+                return false;
+            }
+
+            var progFiles = Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles);
+            if (!string.IsNullOrEmpty(progFiles) && (fullPath.Equals(progFiles, StringComparison.OrdinalIgnoreCase) || fullPath.StartsWith(Path.GetFullPath(progFiles) + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase)))
+            {
+                return false;
+            }
+
+            var progFilesX86 = Environment.GetFolderPath(Environment.SpecialFolder.ProgramFilesX86);
+            if (!string.IsNullOrEmpty(progFilesX86) && (fullPath.Equals(progFilesX86, StringComparison.OrdinalIgnoreCase) || fullPath.StartsWith(Path.GetFullPath(progFilesX86) + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase)))
+            {
+                return false;
+            }
+
+            // Ancrage sur une racine de volume valide (ex: C:\, D:\, F:\)
+            var root = Path.GetPathRoot(fullPath);
+            if (string.IsNullOrEmpty(root)) return false;
+
+            return true;
         }
         catch
         {

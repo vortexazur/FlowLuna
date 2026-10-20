@@ -383,17 +383,11 @@ export const DownloaderView: React.FC<DownloaderViewProps> = ({
         const update = JSON.parse(e.data);
         setDownloadProgressData(update);
         if (update.message) setDownloadProgressStep(update.message);
-        if (update.status === 'finished' || update.percent >= 100) {
+        if (update.status === 'error') {
           eventSource.close();
-          setDownloadProgressData({ percent: 100, message: t.downloadComplete });
-          setDownloadProgressStep(t.downloadComplete);
-          setDownloadSuccessMessage(
-            `"${suggestedFileName}" a été téléchargé avec succès sur votre PC !`
-          );
-          setTimeout(() => {
-            setIsDownloading(false);
-            setDownloadProgressStep('');
-          }, 4500);
+          setIsDownloading(false);
+          setDownloadProgressStep('');
+          setDownloadError(update.message || 'Erreur lors du traitement du flux multimédia.');
         }
       } catch {}
     };
@@ -425,21 +419,32 @@ export const DownloaderView: React.FC<DownloaderViewProps> = ({
         // Stream directly to the user-selected file handle
         const response = await fetch(downloadUrl);
         if (!response.ok) {
-          throw new Error(`Erreur réseau (${response.status})`);
+          const errData = await response.json().catch(() => ({}));
+          throw new Error(errData?.error || `Erreur réseau (${response.status})`);
         }
         const writable = await fileHandle.createWritable();
-        if (response.body) {
-          await response.body.pipeTo(writable);
-        } else {
-          const blob = await response.blob();
-          await writable.write(blob);
-          await writable.close();
+        try {
+          if (response.body) {
+            await response.body.pipeTo(writable);
+          } else {
+            const blob = await response.blob();
+            await writable.write(blob);
+            await writable.close();
+          }
+        } catch (streamErr: any) {
+          try { await writable.abort(); } catch {}
+          throw new Error(`Échec de l'écriture sur le disque : ${streamErr?.message || 'Erreur d\'écriture'}`);
         }
       } else if (chosenPath) {
         // Backend handles copying directly to destinationPath
         const response = await fetch(downloadUrl);
         if (!response.ok) {
-          throw new Error(`Erreur réseau (${response.status})`);
+          const errData = await response.json().catch(() => ({}));
+          throw new Error(errData?.error || `Erreur réseau (${response.status})`);
+        }
+        const resJson = await response.json().catch(() => ({}));
+        if (resJson && resJson.success === false) {
+          throw new Error(resJson.error || resJson.message || 'Échec de l\'écriture du fichier cible sur le disque.');
         }
       } else {
         // Browser fallback: Anchor click with explicit suggestedFileName
@@ -450,6 +455,18 @@ export const DownloaderView: React.FC<DownloaderViewProps> = ({
         link.click();
         document.body.removeChild(link);
       }
+
+      // Confirmation définitive après succès réel de l'écriture
+      eventSource.close();
+      setDownloadProgressData({ percent: 100, message: t.downloadComplete });
+      setDownloadProgressStep(t.downloadComplete);
+      setDownloadSuccessMessage(
+        `"${suggestedFileName}" a été téléchargé avec succès sur votre PC !`
+      );
+      setTimeout(() => {
+        setIsDownloading(false);
+        setDownloadProgressStep('');
+      }, 4500);
 
       // Save to history
       saveHistoryItem({
@@ -469,6 +486,8 @@ export const DownloaderView: React.FC<DownloaderViewProps> = ({
       console.error('[Downloader] Download execution error:', dlErr);
       eventSource.close();
       setIsDownloading(false);
+      setDownloadProgressStep('');
+      setDownloadSuccessMessage(null);
       setDownloadError(dlErr?.message || 'Erreur lors du téléchargement.');
     }
   };
