@@ -478,9 +478,9 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
     const syncPlayback = async () => {
       try {
         if (isPlaying && video.paused && !video.ended) {
-          // Attendre que les buffers audio et vidéo soient amorcés (readyState >= 3)
+          // Attendre que les buffers audio et vidéo soient amorcés (readyState >= 2)
           // et qu'aucun seek ne soit en cours pour éviter tout démarrage asynchrone source de décalage labial
-          if (video.readyState >= 3 && !video.seeking) {
+          if (video.readyState >= 2 && !video.seeking) {
             await video.play();
           } else {
             const onReady = () => {
@@ -488,6 +488,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
                 video.play().catch(console.warn);
               }
             };
+            video.addEventListener('loadeddata', onReady, { once: true });
             video.addEventListener('canplay', onReady, { once: true });
             video.addEventListener('canplaythrough', onReady, { once: true });
           }

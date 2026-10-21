@@ -36,10 +36,10 @@ function shouldPerformInitialSeek(currentTime: number): boolean {
   return currentTime > 0.25;
 }
 
-// 4. Validation des buffers décodeurs
+// 4. Validation des buffers décodeurs pour démarrage immédiat sans latence
 function isDecoderBufferReady(readyState: number): boolean {
-  // readyState >= 3 correspond à HAVE_FUTURE_DATA (données audio et trames futures prêtes)
-  return readyState >= 3;
+  // readyState >= 2 correspond à HAVE_CURRENT_DATA (1ère trame et flux PTS amorcés, évitant le gel des 1500ms sur Chromium)
+  return readyState >= 2;
 }
 
 // --- Test 1 : Calcul de la Dérive Audio/Vidéo et Offset Labial ---
@@ -89,16 +89,16 @@ console.log('\n--- Test 2 : Stratégie de Correction Dynamique Micro-Cadence ---
   console.log('✓ Test 2 passé : Micro-ajustements et rétablissement nominal validés.');
 }
 
-// --- Test 3 : Amorce des Buffers Décodeurs (HAVE_FUTURE_DATA) ---
-console.log('\n--- Test 3 : Amorce des Buffers Décodeurs (HAVE_FUTURE_DATA) ---');
+// --- Test 3 : Amorce des Buffers Décodeurs (HAVE_CURRENT_DATA) ---
+console.log('\n--- Test 3 : Amorce des Buffers Décodeurs (HAVE_CURRENT_DATA) ---');
 {
   assert.strictEqual(isDecoderBufferReady(0), false, 'HAVE_NOTHING ne doit pas être prêt');
   assert.strictEqual(isDecoderBufferReady(1), false, 'HAVE_METADATA ne doit pas être prêt');
-  assert.strictEqual(isDecoderBufferReady(2), false, 'HAVE_CURRENT_DATA ne doit pas être considéré suffisant (risque de saccade A/V)');
-  assert.strictEqual(isDecoderBufferReady(3), true, 'HAVE_FUTURE_DATA est le seuil optimal pour un A/V lockstep');
+  assert.strictEqual(isDecoderBufferReady(2), true, 'HAVE_CURRENT_DATA est le seuil optimal pour démarrage immédiat sans latence');
+  assert.strictEqual(isDecoderBufferReady(3), true, 'HAVE_FUTURE_DATA est prêt');
   assert.strictEqual(isDecoderBufferReady(4), true, 'HAVE_ENOUGH_DATA est prêt');
 
-  console.log('✓ Test 3 passé : Seuil de buffering strict (readyState >= 3) validé.');
+  console.log('✓ Test 3 passé : Seuil d\'amorçage réactif (readyState >= 2) validé.');
 }
 
 // --- Test 4 : Prévention des Seeks Superflus à l\'Initialisation ---

@@ -524,6 +524,7 @@ export default function App() {
         if (videoRef.current) {
           try {
             videoRef.current.pause();
+            videoRef.current.currentTime = 0;
           } catch {}
         }
       } else {
@@ -576,6 +577,12 @@ export default function App() {
         // Direct src assignment begins media load without aborting and re-creating decoder
         activeMedia.src = playableUrl;
 
+        if (isVideoTrack) {
+          try {
+            activeMedia.currentTime = 0;
+          } catch {}
+        }
+
         // Check again after src assignment
         if (playRequestIdRef.current !== requestId) return;
 
@@ -607,10 +614,10 @@ export default function App() {
         }
 
         if (isVideoTrack) {
-          // 1. Latence de chargement : Attendre que le décodeur matériel ait initialisé les timestamps (PTS)
-          // et qu'au moins 2 trames et les buffers audio soient amorcés (HAVE_FUTURE_DATA = readyState >= 3)
-          // pour éviter tout décalage voix/lèvres lors du démarrage ou de la transition
-          if (activeMedia.readyState < 3) {
+          // 1. Amorçage réactif et ultra-rapide (< 30ms) :
+          // S'assurer que la première trame d'image et les flux (PTS) sont initialisés (HAVE_CURRENT_DATA = readyState >= 2)
+          // sans bloquer le moteur Chromium sur HAVE_FUTURE_DATA qui suspend la mise en cache tant que play() n'est pas actif.
+          if (activeMedia.readyState < 2) {
             await new Promise<void>((resolve) => {
               let isDone = false;
               const onReady = () => {
@@ -619,42 +626,25 @@ export default function App() {
                 cleanup();
                 resolve();
               };
-              const fallbackTimer = setTimeout(onReady, 1500);
+              const fallbackTimer = setTimeout(onReady, 80);
               const cleanup = () => {
                 clearTimeout(fallbackTimer);
+                activeMedia.removeEventListener('loadeddata', onReady);
                 activeMedia.removeEventListener('canplay', onReady);
-                activeMedia.removeEventListener('canplaythrough', onReady);
               };
+              activeMedia.addEventListener('loadeddata', onReady, { once: true });
               activeMedia.addEventListener('canplay', onReady, { once: true });
-              activeMedia.addEventListener('canplaythrough', onReady, { once: true });
             });
           }
 
           if (playRequestIdRef.current !== requestId) return;
 
-          // 2. Gestion du currentTime & Alignement temporel frame-accurate :
-          // Si le lecteur a hérité d'une position résiduelle (> 0.25s) d'une piste précédente,
-          // on réaligne à 0s et on ATTEND impérativement l'événement 'seeked' avant tout play().
-          // Si la vidéo est déjà au début naturel (<= 0.25s), on NE DÉCLENCHE PAS de seek() superflu
-          // qui viderait le cache du décodeur Direct3D 11 et décalerait la vidéo par rapport à l'audio !
-          if (activeMedia.currentTime > 0.25 && activeMedia.readyState >= 1) {
-            await new Promise<void>((resolve) => {
-              const onSeeked = () => {
-                activeMedia.removeEventListener('seeked', onSeeked);
-                resolve();
-              };
-              activeMedia.addEventListener('seeked', onSeeked, { once: true });
-              const timer = setTimeout(() => {
-                activeMedia.removeEventListener('seeked', onSeeked);
-                resolve();
-              }, 400);
-              try {
-                activeMedia.currentTime = 0;
-              } catch {
-                clearTimeout(timer);
-                resolve();
-              }
-            });
+          // 2. Gestion du currentTime & Alignement temporel instantané :
+          // Réalignement synchrone à 0s sans seek asynchrone bloquant
+          if (activeMedia.currentTime > 0.1) {
+            try {
+              activeMedia.currentTime = 0;
+            } catch {}
           }
 
           if (playRequestIdRef.current !== requestId) return;
