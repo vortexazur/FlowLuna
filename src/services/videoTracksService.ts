@@ -58,12 +58,40 @@ export function srtToWebVtt(content: string, offsetSeconds = 0): string {
   return vttLines.join('\n');
 }
 
+const activeSubtitleBlobUrls = new Set<string>();
+
 /**
- * Crée une URL Blob pour un contenu WebVTT
+ * Crée une URL Blob pour un contenu WebVTT et l'enregistre pour libération ultérieure
  */
 export function createBlobVttUrl(vttContent: string): string {
   const blob = new Blob([vttContent], { type: 'text/vtt; charset=utf-8' });
-  return URL.createObjectURL(blob);
+  const url = URL.createObjectURL(blob);
+  activeSubtitleBlobUrls.add(url);
+  return url;
+}
+
+/**
+ * Révoque une URL Blob de sous-titres spécifique et libère la mémoire allouée
+ */
+export function revokeSubtitleBlobUrl(url: string | null | undefined): void {
+  if (url && activeSubtitleBlobUrls.has(url)) {
+    try {
+      URL.revokeObjectURL(url);
+    } catch {}
+    activeSubtitleBlobUrls.delete(url);
+  }
+}
+
+/**
+ * Révoque l'intégralité des URLs Blobs de sous-titres actives
+ */
+export function revokeAllSubtitleBlobUrls(): void {
+  activeSubtitleBlobUrls.forEach((url) => {
+    try {
+      URL.revokeObjectURL(url);
+    } catch {}
+  });
+  activeSubtitleBlobUrls.clear();
 }
 
 /**

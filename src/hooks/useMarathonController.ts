@@ -155,7 +155,7 @@ export function useMarathonController({
     };
   }, [cleanupPreloadedElement]);
 
-  // 1. Resolve markers and episode info when a new track is loaded
+  // 1. Resolve markers and episode info (différé de 1000ms après l'événement playing pour garantir la fluidité d'amorce)
   useEffect(() => {
     // Nettoyage systématique de tout préchargement antérieur pour libérer les décodeurs matériels
     cleanupPreloadedElement();
@@ -169,7 +169,8 @@ export function useMarathonController({
     }
 
     let isMounted = true;
-    setIsDetecting(true);
+    let timer: NodeJS.Timeout | null = null;
+    setIsDetecting(false);
     setIsOpButtonVisible(false);
     setIsCountdownActive(false);
 
@@ -188,25 +189,51 @@ export function useMarathonController({
     const { episodeNumber: epNum } = parseAnimeTitleAndEpisode(track.title || track.album || '');
     setEpisodeNumber(epNum);
 
-    resolveVideoMarkersCascade(videoRef.current, track, duration || track.duration || 0, enableSilenceSnapping)
-      .then((resolved) => {
-        if (isMounted) {
-          setMarkers(resolved);
-          setIsDetecting(false);
-        }
-      })
-      .catch((err) => {
-        if (isMounted) {
-          console.warn('[Marathon] Erreur cascade marqueurs :', err);
-          setMarkers(null);
-          setIsDetecting(false);
-        }
-      });
+    const executeCascade = () => {
+      if (!isMounted) return;
+      setIsDetecting(true);
+      resolveVideoMarkersCascade(videoRef.current, track, duration || track.duration || 0, enableSilenceSnapping)
+        .then((resolved) => {
+          if (isMounted) {
+            setMarkers(resolved);
+            setIsDetecting(false);
+          }
+        })
+        .catch((err) => {
+          if (isMounted) {
+            console.warn('[Marathon] Erreur cascade marqueurs :', err);
+            setMarkers(null);
+            setIsDetecting(false);
+          }
+        });
+    };
+
+    const scheduleCascade = () => {
+      if (timer) clearTimeout(timer);
+      timer = setTimeout(() => {
+        executeCascade();
+      }, 1000);
+    };
+
+    const video = videoRef.current;
+    if (video) {
+      if (!video.paused && !video.ended && video.readyState >= 2) {
+        scheduleCascade();
+      } else {
+        video.addEventListener('playing', scheduleCascade, { once: true });
+      }
+    } else {
+      scheduleCascade();
+    }
 
     return () => {
       isMounted = false;
+      if (timer) clearTimeout(timer);
+      if (video) {
+        video.removeEventListener('playing', scheduleCascade);
+      }
     };
-  }, [track?.id, track?.title, videoRef, duration, currentTrackIndex]);
+  }, [track?.id, track?.title, videoRef, duration, currentTrackIndex, enableSilenceSnapping]);
 
   // Start transition towards next episode (either immediate or with countdown overlay)
   const startTransition = useCallback(() => {

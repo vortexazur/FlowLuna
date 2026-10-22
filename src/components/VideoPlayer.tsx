@@ -37,7 +37,7 @@ import { SkipOpeningButton } from './SkipOpeningButton';
 import { MarathonCountdownOverlay } from './MarathonCountdownOverlay';
 import { useMarathonController } from '../hooks/useMarathonController';
 import { getT } from '../i18n';
-import { fetchVideoTracks, getSubtitleWebVttUrl, loadSubtitleFromFile } from '../services/videoTracksService';
+import { fetchVideoTracks, getSubtitleWebVttUrl, loadSubtitleFromFile, revokeSubtitleBlobUrl, revokeAllSubtitleBlobUrls } from '../services/videoTracksService';
 
 export type VideoDisplayMode = 'theater' | 'pip' | 'hidden';
 export type { VideoAspectRatio };
@@ -189,18 +189,37 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
   const fileInputRef = useRef<HTMLInputElement>(null);
   const lastTrackIdRef = useRef<string | undefined>(currentTrack?.id);
 
-  // Load subtitles and audio tracks whenever the playing track changes
+  // Nettoyage complet des Blob URLs de sous-titres lors du démontage du lecteur
+  useEffect(() => {
+    return () => {
+      revokeAllSubtitleBlobUrls();
+    };
+  }, []);
+
+  // Load subtitles and audio tracks 1000ms after playback starts (playing event) to preserve initial video fluidity
   useEffect(() => {
     let isCancelled = false;
-    const loadTracks = async () => {
-      if (!isTrackVideo(currentTrack) || !currentTrack.filePath) {
-        setSubtitles([]);
-        setSelectedSubtitleId(null);
-        setAudioTracks([]);
-        setSelectedAudioTrackIndex(null);
-        return;
-      }
+    let timer: NodeJS.Timeout | null = null;
 
+    // Révoquer les anciens sous-titres Blob personnalisés lors du changement de piste
+    setSubtitles((prev) => {
+      prev.forEach((s) => {
+        if (s.type === 'custom' && s.url) {
+          revokeSubtitleBlobUrl(s.url);
+        }
+      });
+      return [];
+    });
+    setSelectedSubtitleId(null);
+    setAudioTracks([]);
+    setSelectedAudioTrackIndex(null);
+
+    if (!isTrackVideo(currentTrack) || !currentTrack.filePath) {
+      return;
+    }
+
+    const loadTracks = async () => {
+      if (isCancelled || !currentTrack?.filePath) return;
       const { subtitles: fetchedSubs, audioTracks: fetchedAudio } = await fetchVideoTracks(currentTrack.filePath);
       if (isCancelled) return;
 
@@ -222,11 +241,32 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
       }
     };
 
-    loadTracks();
+    const scheduleLoad = () => {
+      if (timer) clearTimeout(timer);
+      timer = setTimeout(() => {
+        loadTracks();
+      }, 1000);
+    };
+
+    const video = videoRef.current;
+    if (video) {
+      if (!video.paused && !video.ended && video.readyState >= 2) {
+        scheduleLoad();
+      } else {
+        video.addEventListener('playing', scheduleLoad, { once: true });
+      }
+    } else {
+      scheduleLoad();
+    }
+
     return () => {
       isCancelled = true;
+      if (timer) clearTimeout(timer);
+      if (video) {
+        video.removeEventListener('playing', scheduleLoad);
+      }
     };
-  }, [currentTrack?.filePath, currentTrack?.id]);
+  }, [currentTrack?.filePath, currentTrack?.id, videoRef]);
 
   const handleSubtitleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;

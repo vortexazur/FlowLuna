@@ -520,11 +520,12 @@ export default function App() {
             audioRef.current.load();
           } catch {}
         }
-        // Clean reset of video element to prevent clock/timestamp drift from previous video
+        // Clean eviction and reset of video element before loading the next video
         if (videoRef.current) {
           try {
             videoRef.current.pause();
-            videoRef.current.currentTime = 0;
+            videoRef.current.removeAttribute('src');
+            videoRef.current.load();
           } catch {}
         }
       } else {
@@ -578,9 +579,7 @@ export default function App() {
         activeMedia.src = playableUrl;
 
         if (isVideoTrack) {
-          try {
-            activeMedia.currentTime = 0;
-          } catch {}
+          activeMedia.playbackRate = playerSettings.playbackSpeed ?? 1.0;
         }
 
         // Check again after src assignment
@@ -611,43 +610,6 @@ export default function App() {
           crossfadeAnimRef.current = requestAnimationFrame(rampUp);
         } else {
           activeMedia.volume = targetVolume;
-        }
-
-        if (isVideoTrack) {
-          // 1. Amorçage réactif et ultra-rapide (< 30ms) :
-          // S'assurer que la première trame d'image et les flux (PTS) sont initialisés (HAVE_CURRENT_DATA = readyState >= 2)
-          // sans bloquer le moteur Chromium sur HAVE_FUTURE_DATA qui suspend la mise en cache tant que play() n'est pas actif.
-          if (activeMedia.readyState < 2) {
-            await new Promise<void>((resolve) => {
-              let isDone = false;
-              const onReady = () => {
-                if (isDone) return;
-                isDone = true;
-                cleanup();
-                resolve();
-              };
-              const fallbackTimer = setTimeout(onReady, 80);
-              const cleanup = () => {
-                clearTimeout(fallbackTimer);
-                activeMedia.removeEventListener('loadeddata', onReady);
-                activeMedia.removeEventListener('canplay', onReady);
-              };
-              activeMedia.addEventListener('loadeddata', onReady, { once: true });
-              activeMedia.addEventListener('canplay', onReady, { once: true });
-            });
-          }
-
-          if (playRequestIdRef.current !== requestId) return;
-
-          // 2. Gestion du currentTime & Alignement temporel instantané :
-          // Réalignement synchrone à 0s sans seek asynchrone bloquant
-          if (activeMedia.currentTime > 0.1) {
-            try {
-              activeMedia.currentTime = 0;
-            } catch {}
-          }
-
-          if (playRequestIdRef.current !== requestId) return;
         }
 
         const playPromise = activeMedia.play();
@@ -1749,6 +1711,18 @@ export default function App() {
         const curTrack = currentPlayingTrackRef.current;
         const isCurrentVideo = isTrackVideo(curTrack);
         if (isForVideo !== isCurrentVideo) return;
+
+        // Si c'est une piste vidéo et que le mode Marathon est actif avec une suite dans la file,
+        // céder la main à useMarathonController pour éviter un double enchaînement concurrent
+        if (isCurrentVideo) {
+          const mConfig = playerSettingsRef.current?.marathonConfig;
+          const curQueue = queueRef.current;
+          const curIdx = currentTrackIndexRef.current;
+          const hasNextVideo = (mConfig?.enabled ?? true) && curIdx >= 0 && curIdx + 1 < curQueue.length;
+          if (hasNextVideo) {
+            return;
+          }
+        }
 
         handleNextRef.current(true);
       };

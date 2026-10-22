@@ -401,6 +401,59 @@ export function resolveAllowedPath(
   return realPath;
 }
 
+export async function resolveAllowedPathAsync(
+  rawPath: string,
+  requireMediaExtension = true,
+  allowSubtitles = false
+): Promise<string | null> {
+  if (!rawPath || typeof rawPath !== 'string') return null;
+  let realPath: string;
+  try {
+    const resolved = path.resolve(rawPath);
+    try {
+      await fs.promises.access(resolved, fs.constants.F_OK);
+    } catch {
+      return null;
+    }
+    realPath = await fs.promises.realpath(resolved);
+  } catch {
+    return null;
+  }
+
+  // Prevent path traversal targeting Windows/system directories
+  const lower = realPath.toLowerCase();
+  const winDir = (process.env.WINDIR || 'C:\\Windows').toLowerCase();
+  const progFiles = (process.env.ProgramFiles || 'C:\\Program Files').toLowerCase();
+  const progFilesX86 = (process.env['ProgramFiles(x86)'] || 'C:\\Program Files (x86)').toLowerCase();
+  if (lower.startsWith(winDir) || lower.startsWith(progFiles) || lower.startsWith(progFilesX86)) {
+    return null;
+  }
+
+  if (requireMediaExtension) {
+    const ext = path.extname(realPath).toLowerCase();
+    const isAllowed = ALL_MEDIA_EXTENSIONS.has(ext) || (allowSubtitles && SUBTITLE_EXTENSIONS.has(ext));
+    if (!isAllowed) {
+      return null;
+    }
+  }
+
+  const allowedDirs = getAllowedMediaDirs();
+  const realPathLower = realPath.toLowerCase();
+  const isInAllowedDir = allowedDirs.some((dir) => {
+    const dirLower = dir.toLowerCase();
+    return realPathLower.startsWith(dirLower + path.sep) || realPathLower === dirLower;
+  });
+  const isExplicitlyAllowed = Array.from(explicitlyAddedFiles).some(
+    (f) => f.toLowerCase() === realPathLower
+  );
+
+  if (!isInAllowedDir && !isExplicitlyAllowed) {
+    return null;
+  }
+
+  return realPath;
+}
+
 export function isHostSafe(hostHeader?: string): boolean {
   if (!hostHeader || typeof hostHeader !== 'string') return false;
   const host = hostHeader.trim().split(':')[0].toLowerCase();
@@ -4182,13 +4235,13 @@ app.get('/api/library/folders', (_req, res) => {
 });
 
 // Secure Local Audio Streamer for non-public directories
-app.get('/api/library/stream', (req, res) => {
+app.get('/api/library/stream', async (req, res) => {
   const reqFile = req.query.file as string;
   if (!reqFile) {
     return res.status(400).send('Fichier manquant');
   }
 
-  const realPath = resolveAllowedPath(reqFile, true);
+  const realPath = await resolveAllowedPathAsync(reqFile, true);
   if (!realPath) {
     return res.status(403).send('Accès au fichier non autorisé ou format invalide');
   }
@@ -4225,7 +4278,12 @@ app.get('/api/library/stream', (req, res) => {
     '.ogv': 'video/ogg',
   };
 
-  const stat = fs.statSync(realPath);
+  let stat: fs.Stats;
+  try {
+    stat = await fs.promises.stat(realPath);
+  } catch {
+    return res.status(500).send('Erreur lecture fichier');
+  }
   const range = req.headers.range;
 
   if (range) {
@@ -4241,7 +4299,17 @@ app.get('/api/library/stream', (req, res) => {
 
     const safeEnd = Math.min(end, stat.size - 1);
     const chunksize = safeEnd - start + 1;
-    const file = fs.createReadStream(realPath, { start, end: safeEnd });
+    const file = fs.createReadStream(realPath, { start, end: safeEnd, highWaterMark: 512 * 1024 });
+
+    const cleanStream = () => {
+      try {
+        file.destroy();
+      } catch {}
+    };
+    res.on('close', cleanStream);
+    req.on('aborted', cleanStream);
+    file.on('error', cleanStream);
+
     res.writeHead(206, {
       'Content-Range': `bytes ${start}-${safeEnd}/${stat.size}`,
       'Accept-Ranges': 'bytes',
@@ -4251,13 +4319,24 @@ app.get('/api/library/stream', (req, res) => {
     });
     file.pipe(res);
   } else {
+    const file = fs.createReadStream(realPath, { highWaterMark: 512 * 1024 });
+
+    const cleanStream = () => {
+      try {
+        file.destroy();
+      } catch {}
+    };
+    res.on('close', cleanStream);
+    req.on('aborted', cleanStream);
+    file.on('error', cleanStream);
+
     res.writeHead(200, {
       'Content-Length': stat.size,
       'Content-Type': mimeMap[ext] || 'audio/mpeg',
       'Accept-Ranges': 'bytes',
       'Cache-Control': 'private, max-age=3600',
     });
-    fs.createReadStream(realPath).pipe(res);
+    file.pipe(res);
   }
 });
 
