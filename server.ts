@@ -454,23 +454,45 @@ export async function resolveAllowedPathAsync(
   return realPath;
 }
 
-export function isHostSafe(hostHeader?: string): boolean {
-  if (!hostHeader || typeof hostHeader !== 'string') return false;
-  const host = hostHeader.trim().split(':')[0].toLowerCase();
-  return host === 'localhost' || host === '127.0.0.1';
+export function isPrivateLanIp(ipOrHost?: string): boolean {
+  if (!ipOrHost || typeof ipOrHost !== 'string') return false;
+  const h = ipOrHost.trim().split(':')[0].toLowerCase();
+  if (h === 'localhost' || h === '127.0.0.1' || h === '::1') return true;
+  if (/^192\.168\.\d{1,3}\.\d{1,3}$/.test(h)) return true;
+  if (/^10\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(h)) return true;
+  if (/^172\.(1[6-9]|2\d|3[0-1])\.\d{1,3}\.\d{1,3}$/.test(h)) return true;
+  return false;
 }
 
-export function isOriginSafe(origin: string): boolean {
+export function isHostSafe(hostHeader?: string, reqPath?: string): boolean {
+  if (!hostHeader || typeof hostHeader !== 'string') return false;
+  const host = hostHeader.trim().split(':')[0].toLowerCase();
+  if (host === 'localhost' || host === '127.0.0.1') return true;
+  // Allow LAN access specifically for FlowLuna Remote endpoints
+  if (reqPath && (reqPath === '/remote' || reqPath.startsWith('/remote') || reqPath.startsWith('/api/remote/'))) {
+    return isPrivateLanIp(host);
+  }
+  return false;
+}
+
+export function isOriginSafe(origin: string, reqPath?: string): boolean {
   if (!origin) return true; // Direct local calls or same-origin top-level navigation
   try {
     const url = new URL(origin);
     const hostname = url.hostname.toLowerCase();
-    return (
+    if (
       hostname === 'localhost' ||
       hostname === '127.0.0.1' ||
       url.protocol === 'file:' ||
       url.protocol === 'vscode-webview:'
-    );
+    ) {
+      return true;
+    }
+    // Allow LAN origins for Remote endpoints
+    if (reqPath && (reqPath === '/remote' || reqPath.startsWith('/remote') || reqPath.startsWith('/api/remote/'))) {
+      return isPrivateLanIp(hostname);
+    }
+    return false;
   } catch {
     return false;
   }
@@ -511,17 +533,18 @@ export function requireInternalToken(req: express.Request, res: express.Response
 // 1. Anti-DNS Rebinding guard & CORS (must execute BEFORE body parsers)
 app.use((req, res, next) => {
   // 1. Anti-DNS Rebinding guard: reject absent or unauthorized host
-  if (!isHostSafe(req.headers.host)) {
+  if (!isHostSafe(req.headers.host, req.path)) {
     return res.status(403).send('Forbidden: Host not allowed');
   }
 
-  // 2. Cross-site request blocking
-  if (req.headers['sec-fetch-site'] === 'cross-site') {
+  // 2. Cross-site request blocking (allow remote routes on local LAN)
+  const isRemoteRoute = req.path === '/remote' || req.path.startsWith('/remote') || req.path.startsWith('/api/remote/');
+  if (!isRemoteRoute && req.headers['sec-fetch-site'] === 'cross-site') {
     return res.status(403).send('Forbidden: Cross-site requests rejected');
   }
 
   const origin = req.headers.origin || '';
-  const isAllowed = isOriginSafe(origin);
+  const isAllowed = isOriginSafe(origin, req.path);
   if (origin && isAllowed) {
     res.setHeader('Access-Control-Allow-Origin', origin);
   }
@@ -535,7 +558,7 @@ app.use((req, res, next) => {
   // If origin is missing on non-safe HTTP methods, verify referer if present
   if (!origin && req.method !== 'GET' && req.method !== 'HEAD' && req.method !== 'OPTIONS') {
     const referer = req.headers.referer || '';
-    if (referer && !isOriginSafe(referer)) {
+    if (referer && !isOriginSafe(referer, req.path)) {
       return res.status(403).send('Forbidden: Referer not allowed');
     }
   }
@@ -5266,6 +5289,118 @@ app.post('/api/lyrics/cache', requireInternalToken, express.json(), (req, res) =
   return res.status(400).json({ error: 'Bad request' });
 });
 
+// ==========================================
+// 📱 FlowLuna Remote Control Web & API Routes
+// ==========================================
+
+export function getLocalLanIp(): string {
+  try {
+    const nets = os.networkInterfaces();
+    for (const name of Object.keys(nets)) {
+      for (const net of nets[name] || []) {
+        if (net.family === 'IPv4' && !net.internal && !net.address.startsWith('127.')) {
+          return net.address;
+        }
+      }
+    }
+  } catch {}
+  return '127.0.0.1';
+}
+
+let currentRemoteState: any = {
+  currentTrack: null,
+  isPlaying: false,
+  currentTime: 0,
+  duration: 0,
+  volume: 0.85,
+  isMuted: false,
+  shuffle: false,
+  repeatMode: 'all',
+  queue: [],
+  currentTrackIndex: -1,
+  isOpButtonVisible: false,
+  opInterval: null,
+  lastUpdated: Date.now(),
+};
+
+let remoteCommandsQueue: any[] = [];
+const remotePairingPin = '4242';
+
+// 1. Informations de connexion de la télécommande (IP, QR URL, Token, PIN)
+app.get('/api/remote/info', (req, res) => {
+  const localIp = getLocalLanIp();
+  const token = getInternalToken() || 'flowluna_remote';
+  res.json({
+    enabled: true,
+    port: PORT,
+    localIp,
+    pin: remotePairingPin,
+    token,
+    url: `http://${localIp}:${PORT}/remote?token=${encodeURIComponent(token)}`,
+  });
+});
+
+// 2. Application Web mobile Pure Glass de télécommande
+app.get('/remote', (req, res) => {
+  const candidates = [
+    path.join(process.cwd(), 'public', 'remote.html'),
+    path.join(__dirname, 'public', 'remote.html'),
+    path.join(process.cwd(), 'dist', 'remote.html'),
+  ];
+  const file = candidates.find((p) => fs.existsSync(p));
+  if (file) {
+    return res.sendFile(file);
+  }
+  res.status(404).send('FlowLuna Remote client not found');
+});
+
+// 3. Récupération de l'état en direct par le smartphone
+app.get('/api/remote/state', (req, res) => {
+  res.json(currentRemoteState);
+});
+
+// 4. Synchronisation de l'état par le lecteur desktop
+app.post('/api/remote/state', express.json(), (req, res) => {
+  if (req.body && typeof req.body === 'object') {
+    currentRemoteState = { ...currentRemoteState, ...req.body, lastUpdated: Date.now() };
+  }
+  res.json({ success: true });
+});
+
+// 5. Envoi d'une commande d'action depuis le smartphone (Play, Pause, Volume, Seek, Skip OP, etc.)
+app.post('/api/remote/command', express.json(), (req, res) => {
+  const { type, value, token } = req.body || {};
+  if (!type) {
+    return res.status(400).json({ success: false, error: 'Type de commande manquant' });
+  }
+
+  const validToken = getInternalToken() || 'flowluna_remote';
+  if (token && token !== validToken && token !== remotePairingPin) {
+    return res.status(403).json({ success: false, error: 'Jeton de télécommande invalide' });
+  }
+
+  const cmd = {
+    id: `cmd-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
+    type,
+    value,
+    timestamp: Date.now(),
+  };
+
+  remoteCommandsQueue.push(cmd);
+  if (remoteCommandsQueue.length > 50) {
+    remoteCommandsQueue = remoteCommandsQueue.slice(-50);
+  }
+
+  res.json({ success: true, commandId: cmd.id });
+});
+
+// 6. Dépilement des commandes en attente par l'application desktop
+app.get('/api/remote/commands', (req, res) => {
+  const commands = [...remoteCommandsQueue];
+  remoteCommandsQueue = [];
+  res.json({ commands });
+});
+
 // Vite middleware & Static Serving
 export async function startServer(port: number = PORT): Promise<{ app: express.Express; server: http.Server; port?: number }> {
   initRuntimeToken();
@@ -5310,8 +5445,8 @@ export async function startServer(port: number = PORT): Promise<{ app: express.E
 
   return new Promise((resolve, reject) => {
     const tryPort = (p: number, maxRetries: number) => {
-      const server = app.listen(p, '127.0.0.1', () => {
-        console.log(`[FlowLuna Server] Running on http://127.0.0.1:${p}`);
+      const server = app.listen(p, '0.0.0.0', () => {
+        console.log(`[FlowLuna Server] Running on http://127.0.0.1:${p} (LAN: http://${getLocalLanIp()}:${p})`);
         resolve({ app, server, port: p });
       });
 

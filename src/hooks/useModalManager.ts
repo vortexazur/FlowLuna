@@ -96,6 +96,13 @@ export interface ModalManager {
   closeCommandPalette: () => void;
   toggleCommandPalette: () => void;
 
+  // Remote Control Modal (FlowLuna Remote)
+  isRemoteModalOpen: boolean;
+  setIsRemoteModalOpen: React.Dispatch<React.SetStateAction<boolean>>;
+  openRemoteModal: () => void;
+  closeRemoteModal: () => void;
+  toggleRemoteModal: () => void;
+
   // Global Actions
   closeAllModals: () => void;
 }
@@ -123,6 +130,7 @@ export function useModalManager(): ModalManager {
   const [isCommandPaletteOpen, setIsCommandPaletteOpen] = useState<boolean>(false);
   const [isStatsOpen, setIsStatsOpen] = useState<boolean>(false);
   const [isMergerOpen, setIsMergerOpen] = useState<boolean>(false);
+  const [isRemoteModalOpen, setIsRemoteModalOpen] = useState<boolean>(false);
 
   const pipTimerRef = useRef<NodeJS.Timeout | number | null>(null);
 
@@ -229,6 +237,11 @@ export function useModalManager(): ModalManager {
   const closeCommandPalette = useCallback(() => setIsCommandPaletteOpen(false), []);
   const toggleCommandPalette = useCallback(() => setIsCommandPaletteOpen((prev) => !prev), []);
 
+  // Remote Control Modal
+  const openRemoteModal = useCallback(() => setIsRemoteModalOpen(true), []);
+  const closeRemoteModal = useCallback(() => setIsRemoteModalOpen(false), []);
+  const toggleRemoteModal = useCallback(() => setIsRemoteModalOpen((prev) => !prev), []);
+
   // Close All Modals
   const closeAllModals = useCallback(() => {
     setIsEqualizerOpen(false);
@@ -243,6 +256,7 @@ export function useModalManager(): ModalManager {
     setIsCommandPaletteOpen(false);
     setIsStatsOpen(false);
     setIsMergerOpen(false);
+    setIsRemoteModalOpen(false);
   }, []);
 
   return {
@@ -329,6 +343,12 @@ export function useModalManager(): ModalManager {
     openCommandPalette,
     closeCommandPalette,
     toggleCommandPalette,
+
+    isRemoteModalOpen,
+    setIsRemoteModalOpen,
+    openRemoteModal,
+    closeRemoteModal,
+    toggleRemoteModal,
 
     closeAllModals,
   };

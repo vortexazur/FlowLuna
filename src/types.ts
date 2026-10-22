@@ -1,5 +1,5 @@
 declare const __APP_VERSION__: string | undefined;
-export const APP_VERSION = typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__ : '1.23.6';
+export const APP_VERSION = typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__ : '1.23.7';
 
 export type MediaFormat =
   | 'mp3'
@@ -141,6 +141,56 @@ export interface PlaylistState {
   hasNext: boolean;
 }
 
+export type SmartType =
+  | 'favorites'
+  | 'offline'
+  | 'recent'
+  | 'youtube'
+  | 'most_played'
+  | 'forgotten'
+  | 'hires'
+  | 'video_collection'
+  | 'custom';
+
+export type SmartRuleField =
+  | 'title'
+  | 'artist'
+  | 'album'
+  | 'genre'
+  | 'format'
+  | 'playCount'
+  | 'addedAt'
+  | 'duration'
+  | 'isFavorite'
+  | 'isVideo';
+
+export type SmartRuleOperator =
+  | 'equals'
+  | 'notEquals'
+  | 'contains'
+  | 'notContains'
+  | 'startsWith'
+  | 'greaterThan'
+  | 'lessThan'
+  | 'isTrue'
+  | 'isFalse';
+
+export interface SmartPlaylistRule {
+  id: string;
+  field: SmartRuleField;
+  operator: SmartRuleOperator;
+  value: string | number | boolean;
+}
+
+export interface SmartPlaylistConfig {
+  type: SmartType;
+  matchType?: 'all' | 'any';
+  rules?: SmartPlaylistRule[];
+  limit?: number; // e.g. 50
+  sortBy?: 'playCount' | 'addedAt' | 'title' | 'artist' | 'duration';
+  sortOrder?: 'asc' | 'desc';
+}
+
 export interface Playlist {
   id: string;
   title: string;
@@ -153,7 +203,8 @@ export interface Playlist {
   createdAt: number;
   updatedAt: number;
   isSmart?: boolean;
-  smartType?: 'favorites' | 'offline' | 'recent' | 'youtube' | 'most_played';
+  smartType?: SmartType;
+  smartConfig?: SmartPlaylistConfig;
   isPinned?: boolean; // If true, displayed in the sidebar playlist list. If false, only accessible in 'Toutes les Playlists'
 }
 
@@ -265,6 +316,63 @@ export interface PlayerSettings {
   skipOpAiEndpoint?: string; // Endpoint personnalisé ou local (Ollama, LM Studio, etc.)
   skipOpAiModel?: string; // Modèle spécifique (ex: llama3.2, gpt-4o-mini, etc.)
   aiSettings?: AISettings; // Configuration globale unifiée des modèles d'IA (Cloud et Local)
+  remoteControl?: RemoteControlSettings; // Télécommande Web Mobile Locale
+}
+
+export interface RemoteControlSettings {
+  enabled: boolean;
+  port: number;
+  pin: string;
+  allowLan: boolean;
+}
+
+export const DEFAULT_REMOTE_SETTINGS: RemoteControlSettings = {
+  enabled: true,
+  port: 3000,
+  pin: '4242',
+  allowLan: true,
+};
+
+export interface RemotePlaybackState {
+  track: {
+    id: string;
+    title: string;
+    artist: string;
+    album?: string;
+    duration: number;
+    coverUrl?: string;
+    isFavorite?: boolean;
+  } | null;
+  isPlaying: boolean;
+  currentTime: number;
+  duration: number;
+  volume: number;
+  isMuted: boolean;
+  shuffle: boolean;
+  repeatMode: 'off' | 'all' | 'one';
+  queueLength: number;
+  hasOpening?: boolean;
+  openingSkipped?: boolean;
+  openingStart?: number;
+  openingEnd?: number;
+  lastUpdated: number;
+}
+
+export interface RemoteCommand {
+  id: string;
+  action:
+    | 'play'
+    | 'pause'
+    | 'togglePlay'
+    | 'prev'
+    | 'next'
+    | 'seek'
+    | 'setVolume'
+    | 'toggleMute'
+    | 'toggleFavorite'
+    | 'skipOpening';
+  payload?: any;
+  timestamp: number;
 }
 
 export type AIProviderId =
@@ -380,4 +488,5 @@ export const DEFAULT_PLAYER_SETTINGS: PlayerSettings = {
   skipOpAiProvider: 'gemini',
   skipOpAiApiKey: '',
   aiSettings: DEFAULT_AI_SETTINGS,
+  remoteControl: DEFAULT_REMOTE_SETTINGS,
 };

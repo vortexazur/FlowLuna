@@ -1,0 +1,544 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <meta name="theme-color" content="#0a0a0f">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <title>FlowLuna Remote</title>
+  <style>
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      -webkit-tap-highlight-color: transparent;
+      user-select: none;
+    }
+    body {
+      background: radial-gradient(circle at 50% 20%, #151522 0%, #0a0a0f 100%);
+      color: #f3f4f6;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      overflow-x: hidden;
+      padding: env(safe-area-inset-top, 16px) 16px env(safe-area-inset-bottom, 20px) 16px;
+    }
+    .glass-card {
+      background: rgba(22, 22, 34, 0.65);
+      backdrop-filter: blur(24px);
+      -webkit-backdrop-filter: blur(24px);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      border-radius: 24px;
+      box-shadow: 0 16px 40px rgba(0, 0, 0, 0.4);
+    }
+    /* Header */
+    header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 12px 6px;
+      margin-bottom: 8px;
+    }
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .brand-logo {
+      width: 32px;
+      height: 32px;
+      border-radius: 10px;
+      background: linear-space-between;
+      object-fit: cover;
+      box-shadow: 0 0 12px rgba(16, 185, 129, 0.3);
+    }
+    .brand-title {
+      font-size: 17px;
+      font-weight: 700;
+      letter-spacing: -0.3px;
+      background: linear-gradient(135deg, #ffffff 40%, #a7f3d0 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+    .status-badge {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 11px;
+      font-weight: 600;
+      padding: 5px 10px;
+      border-radius: 12px;
+      background: rgba(16, 185, 129, 0.12);
+      border: 1px solid rgba(16, 185, 129, 0.25);
+      color: #34d399;
+    }
+    .status-dot {
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: #10b981;
+      animation: pulse 2s infinite;
+    }
+    @keyframes pulse {
+      0%, 100% { opacity: 1; transform: scale(1); }
+      50% { opacity: 0.4; transform: scale(0.85); }
+    }
+
+    /* Main Player Section */
+    .player-container {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+      padding: 20px;
+      margin-bottom: 12px;
+    }
+    .artwork-wrap {
+      width: min(72vw, 260px);
+      height: min(72vw, 260px);
+      border-radius: 24px;
+      overflow: hidden;
+      margin-bottom: 24px;
+      position: relative;
+      box-shadow: 0 20px 48px -12px rgba(0, 0, 0, 0.7);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      transition: transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+    }
+    .artwork-wrap.playing {
+      box-shadow: 0 20px 48px -8px rgba(16, 185, 129, 0.25);
+    }
+    .artwork {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      display: block;
+    }
+
+    .track-meta {
+      width: 100%;
+      text-align: center;
+      margin-bottom: 20px;
+    }
+    .track-title {
+      font-size: 20px;
+      font-weight: 800;
+      color: #ffffff;
+      margin-bottom: 4px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      letter-spacing: -0.4px;
+    }
+    .track-artist {
+      font-size: 14px;
+      font-weight: 500;
+      color: #9ca3af;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    /* Progress & Scrubber */
+    .timeline {
+      width: 100%;
+      margin-bottom: 24px;
+    }
+    .progress-bar-bg {
+      width: 100%;
+      height: 6px;
+      background: rgba(255, 255, 255, 0.1);
+      border-radius: 4px;
+      overflow: hidden;
+      position: relative;
+      cursor: pointer;
+    }
+    .progress-bar-fill {
+      height: 100%;
+      width: 0%;
+      background: linear-gradient(90deg, #10b981 0%, #34d399 100%);
+      border-radius: 4px;
+      transition: width 0.15s linear;
+    }
+    .time-labels {
+      display: flex;
+      justify-content: space-between;
+      font-size: 11px;
+      font-weight: 600;
+      color: #6b7280;
+      margin-top: 6px;
+    }
+
+    /* Controls */
+    .controls {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 16px;
+      width: 100%;
+      margin-bottom: 20px;
+    }
+    .btn-action {
+      background: rgba(255, 255, 255, 0.05);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      color: #e5e7eb;
+      width: 48px;
+      height: 48px;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      transition: all 0.15s ease;
+    }
+    .btn-action:active {
+      transform: scale(0.92);
+      background: rgba(255, 255, 255, 0.12);
+    }
+    .btn-play {
+      width: 68px;
+      height: 68px;
+      background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+      border: none;
+      color: #051b11;
+      box-shadow: 0 8px 24px rgba(16, 185, 129, 0.4);
+    }
+    .btn-play:active {
+      transform: scale(0.94);
+      box-shadow: 0 4px 16px rgba(16, 185, 129, 0.6);
+    }
+    .btn-secondary {
+      width: 40px;
+      height: 40px;
+      color: #9ca3af;
+      background: transparent;
+      border: none;
+    }
+    .btn-secondary.active {
+      color: #10b981;
+    }
+
+    /* Volume Slider */
+    .volume-row {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      width: 100%;
+      max-width: 280px;
+      margin-bottom: 12px;
+    }
+    .volume-slider {
+      flex: 1;
+      -webkit-appearance: none;
+      height: 5px;
+      border-radius: 4px;
+      background: rgba(255, 255, 255, 0.12);
+      outline: none;
+    }
+    .volume-slider::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      width: 16px;
+      height: 16px;
+      border-radius: 50%;
+      background: #10b981;
+      cursor: pointer;
+      box-shadow: 0 0 8px rgba(16, 185, 129, 0.6);
+    }
+
+    /* Dynamic Skip Opening Banner (Anime / Video Cinema) */
+    .skip-banner {
+      display: none;
+      width: 100%;
+      max-width: 320px;
+      margin-bottom: 14px;
+      padding: 12px 16px;
+      background: linear-gradient(135deg, rgba(245, 158, 11, 0.25) 0%, rgba(217, 119, 6, 0.15) 100%);
+      border: 1px solid rgba(245, 158, 11, 0.4);
+      border-radius: 16px;
+      color: #fef3c7;
+      font-size: 13px;
+      font-weight: 700;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      cursor: pointer;
+      box-shadow: 0 8px 24px rgba(245, 158, 11, 0.2);
+      animation: pulse-amber 1.8s infinite;
+    }
+    @keyframes pulse-amber {
+      0%, 100% { border-color: rgba(245, 158, 11, 0.4); box-shadow: 0 8px 24px rgba(245, 158, 11, 0.2); }
+      50% { border-color: rgba(245, 158, 11, 0.8); box-shadow: 0 8px 32px rgba(245, 158, 11, 0.45); }
+    }
+
+    /* Queue Drawer Bottom Bar */
+    .queue-toggle-btn {
+      width: 100%;
+      padding: 14px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      font-size: 13px;
+      font-weight: 700;
+      color: #d1d5db;
+      background: rgba(255, 255, 255, 0.04);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      border-radius: 18px;
+      cursor: pointer;
+    }
+    .queue-drawer {
+      display: none;
+      margin-top: 10px;
+      max-height: 240px;
+      overflow-y: auto;
+      padding: 8px;
+    }
+    .queue-drawer.open {
+      display: block;
+    }
+    .queue-item {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 10px 12px;
+      border-radius: 12px;
+      font-size: 13px;
+      cursor: pointer;
+      margin-bottom: 4px;
+      background: rgba(255, 255, 255, 0.02);
+    }
+    .queue-item.active {
+      background: rgba(16, 185, 129, 0.15);
+      color: #34d399;
+      font-weight: 700;
+    }
+
+    svg {
+      display: block;
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="brand">
+      <img src="/logo.jpg" alt="Logo" class="brand-logo" onerror="this.style.display='none'">
+      <span class="brand-title">FlowLuna Remote</span>
+    </div>
+    <div class="status-badge" id="status-badge">
+      <span class="status-dot"></span>
+      <span id="status-text">Connecté</span>
+    </div>
+  </header>
+
+  <!-- Skip Opening Dynamic Action (Video Cinema) -->
+  <div id="skip-btn" class="skip-banner" style="display:none;" onclick="triggerCommand('skip_opening')">
+    <div style="display:flex;align-items:center;gap:8px;">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#f59e0b" stroke-width="2.5"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon></svg>
+      <span id="skip-label">Passer l'opening</span>
+    </div>
+    <span style="background:rgba(245,158,11,0.25);padding:3px 8px;border-radius:8px;font-size:11px;">Passer ⏭️</span>
+  </div>
+
+  <div class="glass-card player-container">
+    <div class="artwork-wrap" id="art-wrap">
+      <img id="track-cover" class="artwork" src="/logo.jpg" alt="Artwork" onerror="this.src='/logo.jpg'">
+    </div>
+
+    <div class="track-meta">
+      <div id="track-title" class="track-title">Aucune lecture</div>
+      <div id="track-artist" class="track-artist">FlowLuna Player</div>
+    </div>
+
+    <div class="timeline">
+      <div class="progress-bar-bg" id="progress-bar" onclick="handleSeekClick(event)">
+        <div class="progress-bar-fill" id="progress-fill"></div>
+      </div>
+      <div class="time-labels">
+        <span id="current-time">0:00</span>
+        <span id="duration-time">0:00</span>
+      </div>
+    </div>
+
+    <div class="controls">
+      <button class="btn-action btn-secondary" id="fav-btn" onclick="triggerCommand('toggle_favorite')" title="Favori">
+        <svg id="fav-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"></path></svg>
+      </button>
+
+      <button class="btn-action" onclick="triggerCommand('prev')" title="Précédent">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor"><polygon points="19 20 9 12 19 4 19 20"></polygon><line x1="5" y1="19" x2="5" y2="5" stroke="currentColor" stroke-width="2.5"></line></svg>
+      </button>
+
+      <button class="btn-action btn-play" id="play-btn" onclick="triggerCommand('toggle_play')" title="Lecture/Pause">
+        <svg id="play-icon" width="30" height="30" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>
+      </button>
+
+      <button class="btn-action" onclick="triggerCommand('next')" title="Suivant">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 4 15 12 5 20 5 4"></polygon><line x1="19" y1="5" x2="19" y2="19" stroke="currentColor" stroke-width="2.5"></line></svg>
+      </button>
+
+      <button class="btn-action btn-secondary" id="shuffle-btn" onclick="triggerCommand('toggle_shuffle')" title="Aléatoire">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="16 3 21 3 21 8"></polyline><line x1="4" y1="20" x2="21" y2="3"></line><polyline points="21 16 21 21 16 21"></polyline><line x1="15" y1="15" x2="21" y2="21"></line><line x1="4" y1="4" x2="9" y2="9"></line></svg>
+      </button>
+    </div>
+
+    <!-- Volume -->
+    <div class="volume-row">
+      <button class="btn-action btn-secondary" onclick="triggerCommand('toggle_mute')" style="width:32px;height:32px;">
+        <svg id="vol-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon><path d="M19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07"></path></svg>
+      </button>
+      <input type="range" class="volume-slider" id="vol-slider" min="0" max="1" step="0.01" value="0.85" oninput="handleVolumeInput(this.value)">
+    </div>
+  </div>
+
+  <!-- Queue Drawer -->
+  <button class="queue-toggle-btn" onclick="toggleQueue()">
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="8" y1="6" x2="21" y2="6"></line><line x1="8" y1="12" x2="21" y2="12"></line><line x1="8" y1="18" x2="21" y2="18"></line><line x1="3" y1="6" x2="3.01" y2="6"></line><line x1="3" y1="12" x2="3.01" y2="12"></line><line x1="3" y1="18" x2="3.01" y2="18"></line></svg>
+    <span>File d'attente (<span id="queue-count">0</span>)</span>
+  </button>
+  <div class="glass-card queue-drawer" id="queue-drawer">
+    <div id="queue-items"></div>
+  </div>
+
+  <script>
+    // Extract token from query params or localStorage
+    const urlParams = new URLSearchParams(window.location.search);
+    const token = urlParams.get('token') || localStorage.getItem('flowluna_remote_token') || '';
+    if (token) localStorage.setItem('flowluna_remote_token', token);
+
+    let currentState = null;
+    let isSeeking = false;
+
+    function formatTime(sec) {
+      if (!sec || isNaN(sec) || sec < 0) return '0:00';
+      const m = Math.floor(sec / 60);
+      const s = Math.floor(sec % 60);
+      return `${m}:${s < 10 ? '0' : ''}${s}`;
+    }
+
+    async function triggerCommand(type, value) {
+      if (navigator.vibrate) navigator.vibrate(12);
+      try {
+        await fetch('/api/remote/command', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ type, value, token })
+        });
+        fetchState();
+      } catch (err) {
+        console.warn('Failed to send remote command:', err);
+      }
+    }
+
+    function handleSeekClick(e) {
+      if (!currentState || !currentState.duration) return;
+      const rect = e.currentTarget.getBoundingClientRect();
+      const clickX = e.clientX - rect.left;
+      const pct = Math.max(0, Math.min(1, clickX / rect.width));
+      const targetTime = pct * currentState.duration;
+      triggerCommand('seek', targetTime);
+    }
+
+    function handleVolumeInput(val) {
+      triggerCommand('volume', parseFloat(val));
+    }
+
+    function toggleQueue() {
+      const q = document.getElementById('queue-drawer');
+      q.classList.toggle('open');
+    }
+
+    async function fetchState() {
+      try {
+        const res = await fetch('/api/remote/state?token=' + encodeURIComponent(token));
+        if (!res.ok) {
+          document.getElementById('status-text').textContent = 'Hors ligne';
+          document.getElementById('status-badge').style.color = '#ef4444';
+          return;
+        }
+        const state = await res.json();
+        currentState = state;
+        updateUI(state);
+      } catch (err) {
+        document.getElementById('status-text').textContent = 'Connexion...';
+      }
+    }
+
+    function updateUI(s) {
+      document.getElementById('status-text').textContent = 'En ligne';
+      document.getElementById('status-badge').style.color = '#34d399';
+
+      if (s.currentTrack) {
+        document.getElementById('track-title').textContent = s.currentTrack.title || 'Sans titre';
+        document.getElementById('track-artist').textContent = (s.currentTrack.artist || 'Artiste inconnu') + (s.currentTrack.album ? ' • ' + s.currentTrack.album : '');
+        if (s.currentTrack.coverUrl) {
+          document.getElementById('track-cover').src = s.currentTrack.coverUrl;
+        }
+        document.getElementById('fav-btn').classList.toggle('active', !!s.currentTrack.isFavorite);
+        document.getElementById('fav-icon').setAttribute('fill', s.currentTrack.isFavorite ? '#f43f5e' : 'none');
+        document.getElementById('fav-icon').setAttribute('stroke', s.currentTrack.isFavorite ? '#f43f5e' : 'currentColor');
+      } else {
+        document.getElementById('track-title').textContent = 'Aucune lecture';
+        document.getElementById('track-artist').textContent = 'FlowLuna';
+      }
+
+      // Play/Pause icon
+      const playIcon = document.getElementById('play-icon');
+      const artWrap = document.getElementById('art-wrap');
+      if (s.isPlaying) {
+        playIcon.innerHTML = '<rect x="6" y="4" width="4" height="16"></rect><rect x="14" y="4" width="4" height="16"></rect>';
+        artWrap.classList.add('playing');
+      } else {
+        playIcon.innerHTML = '<polygon points="5 3 19 12 5 21 5 3"></polygon>';
+        artWrap.classList.remove('playing');
+      }
+
+      // Timeline
+      const cur = s.currentTime || 0;
+      const dur = s.duration || 0;
+      document.getElementById('current-time').textContent = formatTime(cur);
+      document.getElementById('duration-time').textContent = formatTime(dur);
+      const pct = dur > 0 ? (cur / dur) * 100 : 0;
+      document.getElementById('progress-fill').style.width = pct + '%';
+
+      // Volume
+      document.getElementById('vol-slider').value = s.volume !== undefined ? s.volume : 0.85;
+
+      // Shuffle & Repeat
+      document.getElementById('shuffle-btn').classList.toggle('active', !!s.shuffle);
+
+      // Skip Opening banner
+      const skipBtn = document.getElementById('skip-btn');
+      if (s.isOpButtonVisible) {
+        skipBtn.style.display = 'flex';
+        if (s.opInterval && s.opInterval.title) {
+          document.getElementById('skip-label').textContent = s.opInterval.title;
+        } else {
+          document.getElementById('skip-label').textContent = "Passer l'opening";
+        }
+      } else {
+        skipBtn.style.display = 'none';
+      }
+
+      // Queue
+      const queueList = s.queue || [];
+      document.getElementById('queue-count').textContent = queueList.length;
+      const qContainer = document.getElementById('queue-items');
+      qContainer.innerHTML = queueList.map((item, idx) => `
+        <div class="queue-item ${idx === s.currentTrackIndex ? 'active' : ''}" onclick="triggerCommand('play_queue_index', ${idx})">
+          <div style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;margin-right:8px;">
+            <div>${item.title || 'Sans titre'}</div>
+            <div style="font-size:11px;color:#9ca3af;">${item.artist || 'Artiste'}</div>
+          </div>
+          <span style="font-size:11px;color:#6b7280;">${formatTime(item.duration)}</span>
+        </div>
+      `).join('');
+    }
+
+    // Polling loop
+    fetchState();
+    setInterval(fetchState, 750);
+  </script>
+</body>
+</html>

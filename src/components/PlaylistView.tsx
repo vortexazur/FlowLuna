@@ -22,6 +22,7 @@ import {
   ListPlus,
   Tag,
   FolderPlus,
+  Zap,
 } from 'lucide-react';
 import { Playlist, Track, AccentColor, PlayerSettings } from '../types';
 import { getT } from '../i18n';
@@ -258,9 +259,15 @@ export const PlaylistView: React.FC<PlaylistViewProps> = ({
               {playlist.id === 'playlist-favorites'
                 ? 'Playlist'
                 : playlist.isSmart
-                ? 'Playlist Intelligente'
+                ? 'Playlist Intelligente ⚡'
                 : 'Playlist Personnalisée'}
             </span>
+            {playlist.isSmart && (
+              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-amber-500/15 border border-amber-500/30 text-amber-300 text-[10px] font-semibold">
+                <Zap className="w-2.5 h-2.5 text-amber-400" />
+                Auto-actualisée
+              </span>
+            )}
           </div>
 
           {isEditingTitle ? (
@@ -284,7 +291,7 @@ export const PlaylistView: React.FC<PlaylistViewProps> = ({
               <h1 className="text-2xl md:text-4xl font-extrabold text-white tracking-tight truncate">
                 {playlist.title}
               </h1>
-              {!playlist.isSmart && onUpdatePlaylistTitle && (
+              {playlist.id !== 'playlist-favorites' && onUpdatePlaylistTitle && (
                 <button
                   type="button"
                   onClick={() => {
@@ -434,7 +441,7 @@ export const PlaylistView: React.FC<PlaylistViewProps> = ({
                 <span>Exporter en playlist (.m3u)</span>
               </button>
 
-              {!playlist.isSmart && onDeletePlaylist && (
+              {playlist.id !== 'playlist-favorites' && onDeletePlaylist && (
                 <>
                   <div className="h-px bg-neutral-800 my-0.5" />
                   <button

@@ -25,6 +25,61 @@ public class HttpServer
     public string BaseUrl => $"http://127.0.0.1:{Port}";
     public static string? InternalToken { get; set; } = Environment.GetEnvironmentVariable("FLOWLUNA_INTERNAL_TOKEN");
 
+    private static object _currentRemoteState = new
+    {
+        currentTrack = (object?)null,
+        isPlaying = false,
+        currentTime = 0.0,
+        duration = 0.0,
+        volume = 0.85,
+        isMuted = false,
+        shuffle = false,
+        repeatMode = "all",
+        queue = Array.Empty<object>(),
+        currentTrackIndex = -1,
+        isOpButtonVisible = false,
+        opInterval = (object?)null,
+        lastUpdated = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()
+    };
+
+    private static readonly ConcurrentQueue<object> _remoteCommandsQueue = new();
+    private static readonly string RemotePairingPin = "4242";
+
+    public static bool IsPrivateLanIp(string? host)
+    {
+        if (string.IsNullOrWhiteSpace(host)) return false;
+        host = host.Split(':')[0].Trim().ToLowerInvariant();
+        if (host == "localhost" || host == "127.0.0.1" || host == "::1") return true;
+        if (System.Text.RegularExpressions.Regex.IsMatch(host, @"^192\.168\.\d{1,3}\.\d{1,3}$")) return true;
+        if (System.Text.RegularExpressions.Regex.IsMatch(host, @"^10\.\d{1,3}\.\d{1,3}\.\d{1,3}$")) return true;
+        if (System.Text.RegularExpressions.Regex.IsMatch(host, @"^172\.(1[6-9]|2\d|3[0-1])\.\d{1,3}\.\d{1,3}$")) return true;
+        return false;
+    }
+
+    public static string GetLocalIpAddress()
+    {
+        try
+        {
+            foreach (var ni in System.Net.NetworkInformation.NetworkInterface.GetAllNetworkInterfaces())
+            {
+                if (ni.OperationalStatus != System.Net.NetworkInformation.OperationalStatus.Up ||
+                    ni.NetworkInterfaceType == System.Net.NetworkInformation.NetworkInterfaceType.Loopback)
+                    continue;
+
+                var ipProps = ni.GetIPProperties();
+                foreach (var addr in ipProps.UnicastAddresses)
+                {
+                    if (addr.Address.AddressFamily == System.Net.Sockets.AddressFamily.InterNetwork && !IPAddress.IsLoopback(addr.Address))
+                    {
+                        return addr.Address.ToString();
+                    }
+                }
+            }
+        }
+        catch { }
+        return "127.0.0.1";
+    }
+
     public static void BroadcastJobProgress(string jobId, YtDlpProgressUpdate update)
     {
         ActiveJobs[jobId] = update;
@@ -75,7 +130,7 @@ public class HttpServer
 
         builder.WebHost.UseKestrel(options =>
         {
-            options.Listen(IPAddress.Loopback, port);
+            options.Listen(IPAddress.Any, port);
         });
 
         builder.Services.AddCors(options =>
@@ -88,7 +143,7 @@ public class HttpServer
                     if (Uri.TryCreate(origin, UriKind.Absolute, out var uri))
                     {
                         var host = uri.Host.ToLowerInvariant();
-                        return host == "localhost" || host == "127.0.0.1" || uri.Scheme == "file" || uri.Scheme == "vscode-webview";
+                        return host == "localhost" || host == "127.0.0.1" || IsPrivateLanIp(host) || uri.Scheme == "file" || uri.Scheme == "vscode-webview";
                     }
                     return false;
                 })
@@ -104,14 +159,19 @@ public class HttpServer
         app.Use(async (context, next) =>
         {
             var host = context.Request.Host.Host.ToLowerInvariant();
-            if (host != "localhost" && host != "127.0.0.1")
+            var path = context.Request.Path.Value ?? string.Empty;
+            bool isRemoteRoute = path.Equals("/remote", StringComparison.OrdinalIgnoreCase) ||
+                                 path.StartsWith("/remote/", StringComparison.OrdinalIgnoreCase) ||
+                                 path.StartsWith("/api/remote/", StringComparison.OrdinalIgnoreCase);
+
+            if (host != "localhost" && host != "127.0.0.1" && !(isRemoteRoute && IsPrivateLanIp(host)))
             {
                 context.Response.StatusCode = 403;
                 await context.Response.WriteAsync("Forbidden: Host not allowed");
                 return;
             }
 
-            if (context.Request.Headers.TryGetValue("Sec-Fetch-Site", out var secSite) && secSite == "cross-site")
+            if (!isRemoteRoute && context.Request.Headers.TryGetValue("Sec-Fetch-Site", out var secSite) && secSite == "cross-site")
             {
                 context.Response.StatusCode = 403;
                 await context.Response.WriteAsync("Forbidden: Cross-site requests rejected");
@@ -120,7 +180,6 @@ public class HttpServer
 
             if (!string.IsNullOrEmpty(InternalToken))
             {
-                var path = context.Request.Path.Value ?? string.Empty;
                 if (path.StartsWith("/api/video/", StringComparison.OrdinalIgnoreCase) ||
                     path.StartsWith("/api/lyrics", StringComparison.OrdinalIgnoreCase) ||
                     path.StartsWith("/api/downloader/", StringComparison.OrdinalIgnoreCase))
@@ -1251,6 +1310,117 @@ public class HttpServer
 
             var models = await AiProxyService.FetchAvailableModelsAsync(provider, endpoint, ctx.RequestAborted);
             return Results.Ok(new { success = true, models });
+        });
+
+        // ==========================================
+        // 📱 FlowLuna Remote Control Web & API Routes
+        // ==========================================
+
+        app.MapGet("/api/remote/info", () =>
+        {
+            var localIp = GetLocalIpAddress();
+            var token = InternalToken ?? "flowluna_remote";
+            return Results.Json(new
+            {
+                enabled = true,
+                port = Port,
+                localIp,
+                pin = RemotePairingPin,
+                token,
+                url = $"http://{localIp}:{Port}/remote?token={Uri.EscapeDataString(token)}"
+            });
+        });
+
+        app.MapGet("/remote", async (HttpContext ctx) =>
+        {
+            var candidates = new[]
+            {
+                Path.Combine(wwwroot ?? "", "remote.html"),
+                Path.Combine(Directory.GetCurrentDirectory(), "public", "remote.html"),
+                Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "wwwroot", "remote.html")
+            };
+            var file = candidates.FirstOrDefault(File.Exists);
+            if (file != null)
+            {
+                ctx.Response.ContentType = "text/html; charset=utf-8";
+                await ctx.Response.SendFileAsync(file);
+            }
+            else
+            {
+                ctx.Response.StatusCode = 404;
+                await ctx.Response.WriteAsync("FlowLuna Remote client not found");
+            }
+        });
+
+        app.MapGet("/api/remote/state", () => Results.Json(_currentRemoteState));
+
+        app.MapPost("/api/remote/state", async (HttpContext ctx) =>
+        {
+            try
+            {
+                using var reader = new StreamReader(ctx.Request.Body);
+                var json = await reader.ReadToEndAsync();
+                if (!string.IsNullOrWhiteSpace(json))
+                {
+                    var parsed = System.Text.Json.JsonSerializer.Deserialize<object>(json);
+                    if (parsed != null) _currentRemoteState = parsed;
+                }
+            }
+            catch { }
+            return Results.Json(new { success = true });
+        });
+
+        app.MapPost("/api/remote/command", async (HttpContext ctx) =>
+        {
+            try
+            {
+                using var reader = new StreamReader(ctx.Request.Body);
+                var json = await reader.ReadToEndAsync();
+                if (!string.IsNullOrWhiteSpace(json))
+                {
+                    using var doc = System.Text.Json.JsonDocument.Parse(json);
+                    var root = doc.RootElement;
+                    if (root.TryGetProperty("type", out var typeEl))
+                    {
+                        var type = typeEl.GetString();
+                        var token = root.TryGetProperty("token", out var tokEl) ? tokEl.GetString() : null;
+                        var validToken = InternalToken ?? "flowluna_remote";
+                        if (!string.IsNullOrEmpty(token) && token != validToken && token != RemotePairingPin)
+                        {
+                            ctx.Response.StatusCode = 403;
+                            return Results.Json(new { success = false, error = "Invalid remote token" });
+                        }
+
+                        object? val = null;
+                        if (root.TryGetProperty("value", out var valEl))
+                        {
+                            val = valEl.Clone();
+                        }
+
+                        var cmd = new
+                        {
+                            id = $"cmd-{DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()}",
+                            type,
+                            value = val,
+                            timestamp = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()
+                        };
+                        _remoteCommandsQueue.Enqueue(cmd);
+                        return Results.Json(new { success = true, commandId = cmd.id });
+                    }
+                }
+            }
+            catch { }
+            return Results.Json(new { success = false, error = "Bad request" });
+        });
+
+        app.MapGet("/api/remote/commands", () =>
+        {
+            var list = new System.Collections.Generic.List<object>();
+            while (_remoteCommandsQueue.TryDequeue(out var cmd))
+            {
+                list.Add(cmd);
+            }
+            return Results.Json(new { commands = list });
         });
 
         // 6. Static React SPA files serving

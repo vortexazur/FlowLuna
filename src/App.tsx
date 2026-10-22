@@ -12,6 +12,10 @@ import {
   DEFAULT_PLAYER_SETTINGS,
   DEFAULT_AI_SETTINGS,
   APP_VERSION,
+  SmartType,
+  SmartPlaylistConfig,
+  RemotePlaybackState,
+  RemoteCommand,
 } from './types';
 import { compareSemVer } from './utils/semver';
 import { fisherYatesShuffle } from './utils/shuffle';
@@ -45,6 +49,8 @@ import { MiniPlayer } from './components/MiniPlayer';
 import { DetachedMiniPlayerPortal } from './components/DetachedMiniPlayer';
 import { useModalManager } from './hooks/useModalManager';
 import { CreatePlaylistModal } from './components/CreatePlaylistModal';
+import { RemoteControlModal } from './components/RemoteControlModal';
+import { computeSmartPlaylistTracks } from './services/smartPlaylistService';
 import { ManageSidebarPlaylistsModal } from './components/ManageSidebarPlaylistsModal';
 import { AllPlaylistsView } from './components/AllPlaylistsView';
 import { AudioTrimmerModal } from './components/AudioTrimmerModal';
@@ -158,6 +164,9 @@ export default function App() {
     isCommandPaletteOpen,
     setIsCommandPaletteOpen,
     openCommandPalette,
+    isRemoteModalOpen,
+    openRemoteModal,
+    closeRemoteModal,
   } = useModalManager();
 
   // Settings
@@ -1037,7 +1046,10 @@ export default function App() {
     coverUrl?: string,
     icon?: string,
     iconColor?: string,
-    isPinned: boolean = true
+    isPinned: boolean = true,
+    isSmart: boolean = false,
+    smartType?: SmartType,
+    smartConfig?: SmartPlaylistConfig
   ) => {
     const newPl: Playlist = {
       id: `playlist-${Date.now()}`,
@@ -1050,7 +1062,9 @@ export default function App() {
       trackIds: [],
       createdAt: Date.now(),
       updatedAt: Date.now(),
-      isSmart: false,
+      isSmart: isSmart,
+      smartType: smartType,
+      smartConfig: smartConfig,
     };
 
     await savePlaylist(newPl);
@@ -1917,6 +1931,122 @@ export default function App() {
   };
 
   // Render current view
+
+  // FlowLuna Remote: Synchronisation temps réel de l'état de lecture et écoute des commandes
+  useEffect(() => {
+    const isRemoteActive = playerSettings.remoteControl?.enabled ?? true;
+    if (!isRemoteActive) return;
+
+    // A. Envoyer l'état de lecture au serveur local
+    const syncRemoteState = async () => {
+      try {
+        const cur = currentPlayingTrackRef.current;
+        const payload: RemotePlaybackState = {
+          track: cur
+            ? {
+                id: cur.id,
+                title: cur.title,
+                artist: cur.artist,
+                album: cur.album,
+                duration: cur.duration || duration || 0,
+                coverUrl: cur.coverUrl,
+                isFavorite: !!cur.isFavorite,
+              }
+            : null,
+          isPlaying: isPlayingRef.current,
+          currentTime,
+          duration: duration || cur?.duration || 0,
+          volume,
+          isMuted,
+          shuffle,
+          repeatMode,
+          queueLength: queueRef.current.length,
+          lastUpdated: Date.now(),
+        };
+
+        await fetch('/api/remote/state', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+        });
+      } catch {
+        // En mode hors-ligne sans serveur Express/Kestrel
+      }
+    };
+
+    // B. Récupérer et exécuter les commandes du mobile
+    const pollRemoteCommands = async () => {
+      try {
+        const res = await fetch('/api/remote/commands');
+        if (!res.ok) return;
+        const commands: RemoteCommand[] = await res.json();
+        if (Array.isArray(commands) && commands.length > 0) {
+          for (const cmd of commands) {
+            switch (cmd.action) {
+              case 'play':
+                if (!isPlayingRef.current) handleTogglePlay();
+                break;
+              case 'pause':
+                if (isPlayingRef.current) handleTogglePlay();
+                break;
+              case 'togglePlay':
+                handleTogglePlay();
+                break;
+              case 'prev':
+                handlePrev();
+                break;
+              case 'next':
+                handleNext();
+                break;
+              case 'seek':
+                if (typeof cmd.payload === 'number') handleSeek(cmd.payload);
+                break;
+              case 'setVolume':
+                if (typeof cmd.payload === 'number') handleVolumeChange(cmd.payload);
+                break;
+              case 'toggleMute':
+                handleToggleMute();
+                break;
+              case 'toggleFavorite':
+                if (currentPlayingTrackRef.current) {
+                  handleToggleFavorite(currentPlayingTrackRef.current.id);
+                }
+                break;
+            }
+          }
+        }
+      } catch {
+        // Ignorer si pas de serveur actif
+      }
+    };
+
+    syncRemoteState();
+    const interval = setInterval(() => {
+      syncRemoteState();
+      pollRemoteCommands();
+    }, 1000);
+
+    return () => clearInterval(interval);
+  }, [
+    currentPlayingTrack,
+    isPlaying,
+    currentTime,
+    duration,
+    volume,
+    isMuted,
+    shuffle,
+    repeatMode,
+    queue.length,
+    playerSettings.remoteControl?.enabled,
+    handleTogglePlay,
+    handlePrev,
+    handleNext,
+    handleSeek,
+    handleVolumeChange,
+    handleToggleMute,
+    handleToggleFavorite,
+  ]);
+
   const renderMainContent = () => {
     if (currentView.startsWith('playlist-')) {
       const plId = activePlaylistId || currentView.replace('playlist-', '');
@@ -1929,6 +2059,8 @@ export default function App() {
           playlistTracks = tracks.filter((t) => t.isCachedOffline);
         } else if (playlist.smartType === 'youtube') {
           playlistTracks = tracks.filter((t) => t.source === 'youtube');
+        } else if (playlist.isSmart) {
+          playlistTracks = computeSmartPlaylistTracks(playlist, tracks);
         } else {
           playlistTracks = playlist.trackIds
             .map((tid) => tracks.find((t) => t.id === tid))
@@ -1975,10 +2107,12 @@ export default function App() {
             const pl = playlists.find((p) => p.id === plId);
             if (!pl) return;
             let plTracks: Track[] = [];
-            if (pl.id === 'playlist-favorites') {
+            if (pl.id === 'playlist-favorites' || pl.smartType === 'favorites') {
               plTracks = tracks.filter((t) => t.isFavorite);
-            } else if (pl.id === 'playlist-offline') {
+            } else if (pl.id === 'playlist-offline' || pl.smartType === 'offline') {
               plTracks = tracks.filter((t) => t.isCachedOffline);
+            } else if (pl.isSmart) {
+              plTracks = computeSmartPlaylistTracks(pl, tracks);
             } else {
               const set = new Set(pl.trackIds);
               plTracks = tracks.filter((t) => set.has(t.id));
@@ -2521,6 +2655,7 @@ export default function App() {
               currentView={currentView}
               onNavigate={handleNavigate}
               playlists={playlists}
+              tracks={tracks}
               favoritesCount={tracks.filter((t) => t.isFavorite).length}
               videosCount={tracks.filter((t) => isTrackVideo(t)).length}
               onCreatePlaylist={() => setIsCreatePlaylistModalOpen(true)}
@@ -2589,6 +2724,7 @@ export default function App() {
             settings={playerSettings}
             onUpdateSettings={handleUpdatePlayerSettings}
             onOpenTrimmer={handleOpenTrimmer}
+            onOpenRemote={openRemoteModal}
           />
         </>
       )}
@@ -2751,6 +2887,14 @@ export default function App() {
         isOpen={isCreatePlaylistModalOpen}
         onClose={() => setIsCreatePlaylistModalOpen(false)}
         onCreate={handleSaveNewPlaylist}
+        accent={playerSettings.accent}
+        tracks={tracks}
+      />
+
+      {/* FlowLuna Remote Control Modal */}
+      <RemoteControlModal
+        isOpen={isRemoteModalOpen}
+        onClose={closeRemoteModal}
         accent={playerSettings.accent}
       />
 

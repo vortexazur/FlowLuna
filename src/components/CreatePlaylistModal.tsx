@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useMemo } from 'react';
 import {
   ListMusic,
   X,
@@ -9,14 +9,24 @@ import {
   Check,
   Upload,
   Pin,
+  Zap,
+  Flame,
+  Disc,
+  Compass,
+  Film,
 } from 'lucide-react';
-import { AccentColor } from '../types';
+import { AccentColor, Track, SmartType, SmartPlaylistConfig } from '../types';
 import {
   PLAYLIST_ICON_PRESETS,
   PLAYLIST_EMOJI_PRESETS,
   PLAYLIST_COLOR_PRESETS,
 } from '../utils/playlistIcons';
 import { PlaylistIcon } from './PlaylistIcon';
+import {
+  SMART_PLAYLIST_PRESETS,
+  computeSmartPlaylistTracks,
+  SmartPlaylistPreset,
+} from '../services/smartPlaylistService';
 
 interface CreatePlaylistModalProps {
   isOpen: boolean;
@@ -27,9 +37,13 @@ interface CreatePlaylistModalProps {
     coverUrl?: string,
     icon?: string,
     iconColor?: string,
-    isPinned?: boolean
+    isPinned?: boolean,
+    isSmart?: boolean,
+    smartType?: SmartType,
+    smartConfig?: SmartPlaylistConfig
   ) => void;
   accent: AccentColor;
+  tracks?: Track[];
 }
 
 const PRESET_COVERS = [
@@ -55,7 +69,10 @@ export const CreatePlaylistModal: React.FC<CreatePlaylistModalProps> = ({
   onClose,
   onCreate,
   accent,
+  tracks = [],
 }) => {
+  const [playlistMode, setPlaylistMode] = useState<'standard' | 'smart'>('standard');
+  const [selectedSmartPreset, setSelectedSmartPreset] = useState<SmartType>('most_played');
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [activeTab, setActiveTab] = useState<'icons' | 'emojis' | 'covers'>('icons');
@@ -66,6 +83,35 @@ export const CreatePlaylistModal: React.FC<CreatePlaylistModalProps> = ({
   const [customCoverUrl, setCustomCoverUrl] = useState('');
   const [isPinned, setIsPinned] = useState(true);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+
+  // Compute track count for each smart preset
+  const presetCounts = useMemo(() => {
+    const counts: Record<string, number> = {};
+    if (!tracks || tracks.length === 0) return counts;
+    for (const preset of SMART_PLAYLIST_PRESETS) {
+      const dummyPlaylist: any = {
+        id: 'preview',
+        title: preset.title,
+        trackIds: [],
+        smartType: preset.id,
+        smartConfig: preset.config,
+      };
+      counts[preset.id] = computeSmartPlaylistTracks(dummyPlaylist, tracks).length;
+    }
+    return counts;
+  }, [tracks]);
+
+  // Handle switching smart preset
+  const handleSelectSmartPreset = (preset: SmartPlaylistPreset) => {
+    setSelectedSmartPreset(preset.id);
+    setTitle(preset.title);
+    setDescription(preset.description);
+    setSelectedIcon(preset.icon);
+    setSelectedColor(preset.iconColor);
+    setSelectedCover(preset.coverUrl);
+    setCustomCoverUrl('');
+    setCustomEmoji('');
+  };
 
   if (!isOpen) return null;
 
@@ -92,13 +138,38 @@ export const CreatePlaylistModal: React.FC<CreatePlaylistModalProps> = ({
     const finalCover = customCoverUrl.trim() || selectedCover;
     const finalIcon = customEmoji.trim() || selectedIcon;
 
-    onCreate(finalTitle, description.trim(), finalCover, finalIcon, selectedColor, isPinned);
+    if (playlistMode === 'smart') {
+      const preset = SMART_PLAYLIST_PRESETS.find((p) => p.id === selectedSmartPreset) || SMART_PLAYLIST_PRESETS[0];
+      onCreate(
+        finalTitle,
+        description.trim() || preset.description,
+        finalCover,
+        finalIcon,
+        selectedColor,
+        isPinned,
+        true,
+        preset.id,
+        preset.config
+      );
+    } else {
+      onCreate(
+        finalTitle,
+        description.trim(),
+        finalCover,
+        finalIcon,
+        selectedColor,
+        isPinned,
+        false
+      );
+    }
+
     setTitle('');
     setDescription('');
     setCustomCoverUrl('');
     setCustomEmoji('');
     setSelectedIcon('music');
     setIsPinned(true);
+    setPlaylistMode('standard');
     onClose();
   };
 
@@ -157,6 +228,81 @@ export const CreatePlaylistModal: React.FC<CreatePlaylistModalProps> = ({
 
         {/* Form */}
         <form onSubmit={handleSubmit} className="p-6 overflow-y-auto flex flex-col gap-4 max-h-[calc(90vh-190px)]">
+          {/* Mode Switcher: Standard vs Smart */}
+          <div className="flex p-1 bg-neutral-950 rounded-xl border border-neutral-800 gap-1">
+            <button
+              type="button"
+              onClick={() => setPlaylistMode('standard')}
+              className={`flex-1 py-1.5 px-3 rounded-lg text-xs font-semibold flex items-center justify-center gap-1.5 transition-all ${
+                playlistMode === 'standard'
+                  ? 'bg-neutral-800 text-white shadow-sm border border-neutral-700/60'
+                  : 'text-neutral-400 hover:text-white'
+              }`}
+            >
+              <ListMusic className="w-3.5 h-3.5" />
+              Playlist Standard
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setPlaylistMode('smart');
+                const preset = SMART_PLAYLIST_PRESETS.find((p) => p.id === selectedSmartPreset) || SMART_PLAYLIST_PRESETS[0];
+                handleSelectSmartPreset(preset);
+              }}
+              className={`flex-1 py-1.5 px-3 rounded-lg text-xs font-semibold flex items-center justify-center gap-1.5 transition-all ${
+                playlistMode === 'smart'
+                  ? 'bg-amber-500/20 text-amber-300 border border-amber-500/40 shadow-sm'
+                  : 'text-neutral-400 hover:text-amber-300'
+              }`}
+            >
+              <Zap className="w-3.5 h-3.5 text-amber-400" />
+              Playlist Intelligente ⚡
+            </button>
+          </div>
+
+          {/* Smart Presets Selection Grid */}
+          {playlistMode === 'smart' && (
+            <div className="flex flex-col gap-2">
+              <label className="text-xs font-semibold text-neutral-300 flex items-center justify-between">
+                <span>Modèle dynamique sélectionné</span>
+                <span className="text-[10px] text-neutral-500">Auto-actualisé en continu</span>
+              </label>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                {SMART_PLAYLIST_PRESETS.map((preset) => {
+                  const isSelected = selectedSmartPreset === preset.id;
+                  const count = presetCounts[preset.id] ?? 0;
+                  return (
+                    <button
+                      key={preset.id}
+                      type="button"
+                      onClick={() => handleSelectSmartPreset(preset)}
+                      className={`p-2.5 rounded-xl border text-left flex items-start gap-2.5 transition-all ${
+                        isSelected
+                          ? 'bg-amber-500/10 border-amber-500/50 shadow-md ring-1 ring-amber-500/30'
+                          : 'bg-neutral-950/80 border-neutral-800 hover:border-neutral-700'
+                      }`}
+                    >
+                      <div className="p-1.5 rounded-lg bg-neutral-900 border border-neutral-800 text-amber-400 shrink-0 mt-0.5">
+                        <PlaylistIcon icon={preset.icon} iconColor={preset.iconColor} size="sm" />
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center justify-between gap-1">
+                          <span className="text-xs font-bold text-white truncate">{preset.title}</span>
+                          <span className="text-[10px] px-1.5 py-0.2 rounded-full bg-neutral-800 text-neutral-300 border border-neutral-700 font-mono shrink-0">
+                            {count} titres
+                          </span>
+                        </div>
+                        <p className="text-[11px] text-neutral-400 line-clamp-2 mt-0.5 leading-snug">
+                          {preset.description}
+                        </p>
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
           {/* Title input */}
           <div className="flex flex-col gap-1.5">
             <label htmlFor="playlist-title-input" className="text-xs font-semibold text-neutral-300">
@@ -408,7 +554,7 @@ export const CreatePlaylistModal: React.FC<CreatePlaylistModalProps> = ({
               disabled={!title.trim()}
               className={`px-5 py-2 rounded-xl text-xs font-bold transition-all shadow-md disabled:opacity-50 disabled:cursor-not-allowed ${ACCENT_BTN[accent]}`}
             >
-              Créer la playlist
+              {playlistMode === 'smart' ? 'Créer la playlist intelligente ⚡' : 'Créer la playlist'}
             </button>
           </div>
         </form>

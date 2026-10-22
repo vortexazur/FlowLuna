@@ -12,10 +12,11 @@ import {
   Film,
   Download,
 } from 'lucide-react';
-import { Playlist, AccentColor, ThemeMode, PlayerSettings } from '../types';
+import { Playlist, AccentColor, ThemeMode, PlayerSettings, Track } from '../types';
 import { PlaylistIcon } from './PlaylistIcon';
 import { ManageSidebarPlaylistsModal } from './ManageSidebarPlaylistsModal';
 import { OpenFileDropdown } from './OpenFileDropdown';
+import { computeSmartPlaylistTracks } from '../services/smartPlaylistService';
 import { getT } from '../i18n';
 import flowLunaLogo from '../assets/logo.jpg';
 
@@ -43,6 +44,7 @@ interface SidebarProps {
   onOpenQueue?: () => void;
   queueLength?: number;
   isQueueOpen?: boolean;
+  tracks?: Track[];
 }
 
 const ACCENT_ACTIVE: Record<AccentColor, string> = {
@@ -87,6 +89,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
   onOpenQueue,
   queueLength,
   isQueueOpen,
+  tracks = [],
 }) => {
   const [isManageSidebarOpen, setIsManageSidebarOpen] = React.useState(false);
   const t = getT(settings?.language);
@@ -107,12 +110,21 @@ export const Sidebar: React.FC<SidebarProps> = ({
       : favPlaylist
       ? favPlaylist.trackIds.length
       : 0;
-  // Custom playlists (exclude smart & favorites so favorites isn't duplicated)
-  const customPlaylists = playlists.filter(
-    (p) => !p.isSmart && p.id !== 'playlist-favorites' && p.id !== 'playlist-offline'
+
+  // Track count helper (supports dynamic smart playlists)
+  const getTrackCount = (pl: Playlist) => {
+    if (pl.isSmart && tracks && tracks.length > 0) {
+      return computeSmartPlaylistTracks(pl, tracks).length;
+    }
+    return pl.trackIds?.length || 0;
+  };
+
+  // User playlists pinned to sidebar (exclude built-in singletons favorites/offline)
+  const userPlaylists = playlists.filter(
+    (p) => p.id !== 'playlist-favorites' && p.id !== 'playlist-offline'
   );
-  // Visible / Pinned playlists only: strictly limited to max 3 custom playlists + Favoris
-  const visiblePlaylists = customPlaylists
+  // Visible / Pinned playlists only: strictly limited to max 3 playlists + Favoris
+  const visiblePlaylists = userPlaylists
     .filter((p) => p.isPinned !== false)
     .slice(0, 3);
 
@@ -302,7 +314,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
               </span>
             </button>
 
-            {visiblePlaylists.length === 0 && customPlaylists.length > 0 ? (
+            {visiblePlaylists.length === 0 && userPlaylists.length > 0 ? (
               <div className="px-3 py-2 text-center text-neutral-700 dark:text-neutral-400 text-[11px] bg-white/40 dark:bg-neutral-900/40 rounded-lg border border-neutral-300/60 dark:border-neutral-800/40 flex flex-col items-center gap-1.5 my-1">
                 <span>Aucune playlist personnalisée épinglée</span>
                 <button
@@ -336,7 +348,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                       </span>
                     </div>
                     <span className="text-[10px] font-mono text-neutral-600 dark:text-neutral-400 font-semibold flex-shrink-0">
-                      {pl.trackIds.length}
+                      {getTrackCount(pl)}
                     </span>
                   </button>
                 );

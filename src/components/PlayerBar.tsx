@@ -20,6 +20,7 @@ import {
   SlidersHorizontal,
   Scissors,
   Film,
+  Smartphone,
 } from 'lucide-react';
 import { Track, AccentColor, PlayerSettings } from '../types';
 import { isTrackVideo } from '../utils/fileAudioLoader';
@@ -59,6 +60,7 @@ interface PlayerBarProps {
   settings: PlayerSettings;
   onUpdateSettings?: (newSettings: PlayerSettings) => void;
   onOpenTrimmer?: (track: Track) => void;
+  onOpenRemote?: () => void;
 }
 
 const ACCENT_BG: Record<AccentColor, string> = {
@@ -130,6 +132,7 @@ export const PlayerBar: React.FC<PlayerBarProps> = ({
   settings,
   onUpdateSettings,
   onOpenTrimmer,
+  onOpenRemote,
 }) => {
   const t = getT(settings?.language);
   const [isScrubbing, setIsScrubbing] = useState(false);
@@ -431,8 +434,18 @@ export const PlayerBar: React.FC<PlayerBarProps> = ({
             <Film className="w-4 h-4" />
           </button>
         )}
-
-
+        {/* Télécommande Mobile QR Code */}
+        {onOpenRemote && (
+          <button
+            type="button"
+            id="player-remote-btn"
+            onClick={onOpenRemote}
+            className="p-2 rounded-lg text-neutral-400 hover:text-white hover:bg-neutral-800 transition-colors"
+            title="Télécommande mobile locale par QR Code (FlowLuna Remote)"
+          >
+            <Smartphone className="w-4 h-4" />
+          </button>
+        )}
 
         {/* Paroles & Plein écran */}
         <button

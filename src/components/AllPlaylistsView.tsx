@@ -21,6 +21,7 @@ import {
 import { Playlist, Track, AccentColor, PlayerSettings } from '../types';
 import { getT } from '../i18n';
 import { PlaylistIcon } from './PlaylistIcon';
+import { computeSmartPlaylistTracks } from '../services/smartPlaylistService';
 import { EditPlaylistModal } from './EditPlaylistModal';
 import { ManageSidebarPlaylistsModal } from './ManageSidebarPlaylistsModal';
 import { PLAYLIST_COLOR_PRESETS } from '../utils/playlistIcons';
@@ -160,11 +161,14 @@ export const AllPlaylistsView: React.FC<AllPlaylistsViewProps> = ({
   const filteredSmart = smartPlaylists.filter(filterFn);
 
   const getPlaylistTracks = (pl: Playlist): Track[] => {
-    if (pl.id === 'playlist-favorites') {
+    if (pl.id === 'playlist-favorites' || pl.smartType === 'favorites') {
       return tracks.filter((t) => t.isFavorite);
     }
-    if (pl.id === 'playlist-offline') {
+    if (pl.id === 'playlist-offline' || pl.smartType === 'offline') {
       return tracks.filter((t) => t.isCachedOffline);
+    }
+    if (pl.isSmart) {
+      return computeSmartPlaylistTracks(pl, tracks);
     }
     const set = new Set(pl.trackIds);
     return tracks.filter((t) => set.has(t.id));
