@@ -1,5 +1,5 @@
 declare const __APP_VERSION__: string | undefined;
-export const APP_VERSION = typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__ : '1.23.9';
+export const APP_VERSION = typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__ : '1.24.0';
 
 export type MediaFormat =
   | 'mp3'
@@ -225,6 +225,7 @@ export type EqualizerPresetName =
   | 'Classical'
   | 'Jazz'
   | 'Acoustic'
+  | 'AutoEq'
   | 'Custom';
 
 export interface EqualizerSettings {
@@ -237,6 +238,9 @@ export interface EqualizerSettings {
   surroundEffect: boolean;
   stereoWidth?: number; // 0 (mono) to 1.0 (normal) to 2.0 (ultra-wide 3D spatial)
   playbackSpeed?: number; // 0.5 to 2.0
+  autoEqProfileId?: string;
+  autoEqProfileName?: string;
+  autoEqBrand?: string;
 }
 
 export type ThemeMode = 'dark' | 'light' | 'transparent';

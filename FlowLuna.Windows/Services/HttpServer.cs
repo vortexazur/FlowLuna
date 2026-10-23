@@ -5,6 +5,8 @@ using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Net;
+using System.Net.Http;
+using System.Net.Http.Headers;
 using System.Text.Json;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Builder;
@@ -20,6 +22,7 @@ public class HttpServer
 {
     private WebApplication? _app;
     private static readonly ConcurrentDictionary<string, YtDlpProgressUpdate> ActiveJobs = new();
+    private static readonly HttpClient SharedHttpClient = new();
 
     public int Port { get; private set; } = 3000;
     public string BaseUrl => $"http://127.0.0.1:{Port}";
@@ -565,6 +568,116 @@ public class HttpServer
             return Results.BadRequest();
         });
 
+        // Whisper audio transcription route
+        app.MapPost("/api/lyrics/transcribe", async (HttpContext ctx) =>
+        {
+            try
+            {
+                using var reader = new StreamReader(ctx.Request.Body);
+                var body = await reader.ReadToEndAsync();
+                using var doc = JsonDocument.Parse(body);
+                var root = doc.RootElement;
+                var rawPath = root.TryGetProperty("filePath", out var fpEl) ? fpEl.GetString() : null;
+                var endpoint = root.TryGetProperty("endpoint", out var epEl) ? epEl.GetString() : null;
+                var apiKey = root.TryGetProperty("apiKey", out var keyEl) ? keyEl.GetString() : null;
+                var model = root.TryGetProperty("model", out var mEl) ? mEl.GetString() : "whisper-1";
+
+                if (string.IsNullOrWhiteSpace(rawPath) || !IsSafeMediaPath(rawPath) || !File.Exists(rawPath))
+                {
+                    return Results.Json(new { error = "Fichier audio introuvable ou chemin non autorisé." }, statusCode: 400);
+                }
+
+                var ffmpeg = BinaryManager.GetFfmpegPath();
+                if (string.IsNullOrWhiteSpace(ffmpeg) || !File.Exists(ffmpeg))
+                {
+                    return Results.Json(new { error = "FFmpeg non disponible." }, statusCode: 500);
+                }
+
+                var tmpOut = Path.Combine(Path.GetTempPath(), $"flowluna_whisper_{DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()}_{Guid.NewGuid():N}.mp3");
+
+                try
+                {
+                    var psi = new ProcessStartInfo
+                    {
+                        FileName = ffmpeg,
+                        Arguments = $"-y -i \"{rawPath}\" -vn -ac 1 -ar 16000 -b:a 64k \"{tmpOut}\"",
+                        UseShellExecute = false,
+                        CreateNoWindow = true
+                    };
+                    using var p = Process.Start(psi);
+                    if (p != null) await p.WaitForExitAsync();
+
+                    if (!File.Exists(tmpOut))
+                    {
+                        return Results.Json(new { error = "Échec de l'extraction audio." }, statusCode: 500);
+                    }
+
+                    var whisperUrl = endpoint ?? "https://api.openai.com/v1/audio/transcriptions";
+                    if (!whisperUrl.Contains("/audio/transcriptions", StringComparison.OrdinalIgnoreCase))
+                    {
+                        whisperUrl = whisperUrl.TrimEnd('/') + "/audio/transcriptions";
+                    }
+
+                    using var request = new HttpRequestMessage(HttpMethod.Post, whisperUrl);
+                    if (!string.IsNullOrWhiteSpace(apiKey))
+                    {
+                        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", apiKey);
+                    }
+
+                    using var form = new MultipartFormDataContent();
+                    var fileBytes = await File.ReadAllBytesAsync(tmpOut);
+                    var fileContent = new ByteArrayContent(fileBytes);
+                    fileContent.Headers.ContentType = new MediaTypeHeaderValue("audio/mpeg");
+                    form.Add(fileContent, "file", "audio.mp3");
+                    form.Add(new StringContent(model ?? "whisper-1"), "model");
+                    form.Add(new StringContent("verbose_json"), "response_format");
+                    request.Content = form;
+
+                    using var response = await SharedHttpClient.SendAsync(request);
+                    if (!response.IsSuccessStatusCode)
+                    {
+                        var errText = await response.Content.ReadAsStringAsync();
+                        return Results.Json(new { error = $"Erreur Whisper ({response.StatusCode}): {errText}" }, statusCode: 500);
+                    }
+
+                    var respJson = await response.Content.ReadAsStringAsync();
+                    using var respDoc = JsonDocument.Parse(respJson);
+                    var syncedLyrics = "";
+
+                    if (respDoc.RootElement.TryGetProperty("segments", out var segmentsEl) && segmentsEl.ValueKind == JsonValueKind.Array)
+                    {
+                        var lines = new System.Collections.Generic.List<string>();
+                        foreach (var seg in segmentsEl.EnumerateArray())
+                        {
+                            var text = seg.TryGetProperty("text", out var tEl) ? tEl.GetString()?.Trim() : null;
+                            if (string.IsNullOrWhiteSpace(text)) continue;
+                            var startSec = seg.TryGetProperty("start", out var sEl) ? sEl.GetDouble() : 0;
+                            var m = (int)(startSec / 60);
+                            var s = (int)(startSec % 60);
+                            var xx = (int)((startSec - Math.Truncate(startSec)) * 100);
+                            lines.Add($"[{m:D2}:{s:D2}.{xx:D2}] {text}");
+                        }
+                        syncedLyrics = string.Join("\n", lines);
+                    }
+                    else if (respDoc.RootElement.TryGetProperty("text", out var fullTextEl))
+                    {
+                        syncedLyrics = $"[00:00.00] {fullTextEl.GetString()}";
+                    }
+
+                    var isLocal = whisperUrl.Contains("localhost", StringComparison.OrdinalIgnoreCase) || whisperUrl.Contains("127.0.0.1", StringComparison.OrdinalIgnoreCase);
+                    return Results.Json(new { success = true, syncedLyrics, isLocal, model });
+                }
+                finally
+                {
+                    try { if (File.Exists(tmpOut)) File.Delete(tmpOut); } catch { }
+                }
+            }
+            catch (Exception ex)
+            {
+                return Results.Json(new { error = ex.Message }, statusCode: 500);
+            }
+        });
+
         // Video container chapters parser route (ffprobe)
         app.MapGet("/api/video/chapters", async (HttpContext ctx) =>
         {
@@ -961,6 +1074,7 @@ public class HttpServer
             var startStr = ctx.Request.Query["start"].ToString();
             var endStr = ctx.Request.Query["end"].ToString();
             var windowStr = ctx.Request.Query["window"].ToString();
+            var dlgStr = ctx.Request.Query["firstDialogueAfter"].ToString();
 
             if (string.IsNullOrWhiteSpace(filePath) ||
                 !IsSafeMediaPath(filePath) ||
@@ -971,7 +1085,8 @@ public class HttpServer
             }
 
             double window = double.TryParse(windowStr, NumberStyles.Any, CultureInfo.InvariantCulture, out var w) ? w : 3.5;
-            var res = await IntroSkipperService.FineTuneIntervalAsync(filePath, start, end, window, ctx.RequestAborted);
+            double? firstDialogueAfter = double.TryParse(dlgStr, NumberStyles.Any, CultureInfo.InvariantCulture, out var dlg) ? dlg : null;
+            var res = await IntroSkipperService.FineTuneIntervalAsync(filePath, start, end, window, ctx.RequestAborted, firstDialogueAfter);
             return Results.Json(res);
         });
 

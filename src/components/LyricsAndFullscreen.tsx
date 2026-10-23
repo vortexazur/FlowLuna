@@ -24,6 +24,7 @@ import {
 import { Track, AccentColor, PlayerSettings } from '../types';
 import { AudioVisualizer } from './AudioVisualizer';
 import { fetchLyricsForTrack, parseLrc, LyricLine } from '../services/lyricsService';
+import { generateSyncedLyricsMaster } from '../services/whisperLyricsService';
 import { saveTrack } from '../services/audioDb';
 
 interface LyricsAndFullscreenProps {
@@ -148,6 +149,9 @@ export const LyricsAndFullscreen: React.FC<LyricsAndFullscreenProps> = ({
   const [customSearchTerm, setCustomSearchTerm] = useState('');
   const [fontSize, setFontSize] = useState<'sm' | 'md' | 'lg'>('md');
   const [syncOffset, setSyncOffset] = useState<number>(currentTrack?.lyricsOffset ?? 0);
+  const [isGeneratingAi, setIsGeneratingAi] = useState(false);
+  const [aiGenerationStatus, setAiGenerationStatus] = useState<string>('');
+  const [aiError, setAiError] = useState<string | null>(null);
 
   useEffect(() => {
     setSyncOffset(currentTrack?.lyricsOffset ?? 0);
@@ -462,6 +466,58 @@ export const LyricsAndFullscreen: React.FC<LyricsAndFullscreenProps> = ({
     reader.readAsText(file);
   };
 
+  // Generate / align lyrics using local Whisper or Cloud LLM
+  const handleGenerateWithWhisper = async () => {
+    if (!currentTrack || isGeneratingAi) return;
+
+    setIsGeneratingAi(true);
+    setAiError(null);
+    setAiGenerationStatus('Analyse audio et synchronisation Whisper IA en cours...');
+
+    try {
+      let plainText = '';
+      if (lyricsLines.length > 0 && !isSynced) {
+        plainText = lyricsLines.map((l) => l.text).join('\n');
+      }
+
+      const res = await generateSyncedLyricsMaster(
+        currentTrack,
+        settings.aiSettings,
+        plainText
+      );
+
+      if (res.success && res.lines && res.lines.length > 0) {
+        setLyricsLines(res.lines);
+        setIsSynced(res.isSynced);
+        setIsInstrumental(!!res.isInstrumental);
+        setLyricsSource(res.source);
+
+        if (res.syncedLyrics) {
+          const updated: Track = {
+            ...currentTrack,
+            lyrics: res.syncedLyrics.split(/\r?\n/).filter(Boolean),
+          };
+          saveTrack(updated).catch(() => {});
+          const filePath = (currentTrack as any).filePath;
+          if (filePath) {
+            fetch('/api/lyrics/cache', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ filePath, lrc: res.syncedLyrics }),
+            }).catch(() => {});
+          }
+        }
+      } else {
+        setAiError(res.error || 'Impossible de synchroniser les paroles avec l\'IA.');
+      }
+    } catch (err: any) {
+      setAiError(err?.message || 'Erreur lors de la génération des paroles.');
+    } finally {
+      setIsGeneratingAi(false);
+      setAiGenerationStatus('');
+    }
+  };
+
   if (!isOpen || !currentTrack) return null;
 
   const formatTime = (secs: number) => {
@@ -589,6 +645,26 @@ export const LyricsAndFullscreen: React.FC<LyricsAndFullscreenProps> = ({
               A+
             </button>
           </div>
+
+          {/* Whisper & AI Lyrics Button */}
+          <button
+            type="button"
+            onClick={handleGenerateWithWhisper}
+            disabled={isGeneratingAi || isLoading}
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold border transition-all cursor-pointer ${
+              isGeneratingAi
+                ? 'bg-purple-500/20 text-purple-300 border-purple-500/40 animate-pulse'
+                : 'bg-white/5 hover:bg-white/15 text-neutral-300 hover:text-white border-white/10'
+            }`}
+            title="Générer ou synchroniser les paroles avec Whisper / IA"
+          >
+            {isGeneratingAi ? (
+              <Loader2 className="w-3.5 h-3.5 animate-spin text-purple-400" />
+            ) : (
+              <Sparkles className="w-3.5 h-3.5 text-purple-400" />
+            )}
+            <span className="hidden sm:inline">{isGeneratingAi ? 'Génération...' : 'Whisper IA'}</span>
+          </button>
 
           {/* Search Lyrics Button */}
           <button
@@ -753,8 +829,48 @@ export const LyricsAndFullscreen: React.FC<LyricsAndFullscreenProps> = ({
               </div>
             )}
 
+            {/* AI Whisper Generating state */}
+            {isGeneratingAi && (
+              <div className="flex flex-col items-center justify-center my-auto gap-4 text-center py-16 px-6 rounded-3xl bg-purple-950/30 border border-purple-500/30 backdrop-blur-md max-w-md mx-auto animate-pulse">
+                <div className="p-4 rounded-2xl bg-purple-500/20 text-purple-300">
+                  <Sparkles className="w-8 h-8 text-purple-400 animate-spin" />
+                </div>
+                <div>
+                  <h3 className="text-base font-bold text-white mb-1">Whisper & IA en action</h3>
+                  <p className="text-xs text-neutral-300">
+                    {aiGenerationStatus || 'Transcription audio Whisper et synchronisation temporelle en cours...'}
+                  </p>
+                </div>
+              </div>
+            )}
+
+            {/* AI Error Notification */}
+            {aiError && (
+              <div className="px-4 py-2.5 rounded-2xl bg-rose-950/60 border border-rose-800 text-rose-300 text-xs mb-3 text-center max-w-md mx-auto">
+                {aiError}
+              </div>
+            )}
+
+            {/* Banner: Plain lyrics to Synced conversion */}
+            {!isLoading && !isGeneratingAi && lyricsLines.length > 0 && !isSynced && (
+              <div className="flex items-center justify-between gap-3 px-4 py-2.5 rounded-2xl bg-purple-950/50 border border-purple-800/60 text-purple-200 text-xs mb-4 shadow-lg max-w-xl mx-auto">
+                <div className="flex items-center gap-2 min-w-0">
+                  <Sparkles className="w-4 h-4 text-purple-400 shrink-0" />
+                  <span className="truncate">Paroles non synchronisées. Calez-les sur le tempo avec l'IA.</span>
+                </div>
+                <button
+                  type="button"
+                  onClick={handleGenerateWithWhisper}
+                  className="px-3 py-1 rounded-xl text-xs font-bold bg-purple-500 hover:bg-purple-400 text-neutral-950 transition-all flex items-center gap-1.5 shrink-0 cursor-pointer"
+                >
+                  <Sparkles className="w-3.5 h-3.5" />
+                  <span>Synchroniser</span>
+                </button>
+              </div>
+            )}
+
             {/* Empty state when no lyrics found */}
-            {!isLoading && lyricsLines.length === 0 && (
+            {!isLoading && !isGeneratingAi && lyricsLines.length === 0 && (
               <div className="flex flex-col items-center justify-center my-auto gap-4 text-center py-16 px-6 rounded-3xl bg-white/5 border border-white/10 backdrop-blur-md max-w-md mx-auto">
                 <div className="p-4 rounded-2xl bg-white/10 text-neutral-300">
                   <Music className="w-8 h-8 opacity-60" />
@@ -768,11 +884,19 @@ export const LyricsAndFullscreen: React.FC<LyricsAndFullscreenProps> = ({
                 <div className="flex flex-wrap items-center justify-center gap-2">
                   <button
                     type="button"
+                    onClick={handleGenerateWithWhisper}
+                    className={`px-4 py-2 rounded-xl text-xs font-bold transition-all shadow-lg flex items-center gap-1.5 cursor-pointer ${ACCENT_BG[accent]}`}
+                  >
+                    <Sparkles className="w-4 h-4" />
+                    <span>Générer avec Whisper IA</span>
+                  </button>
+                  <button
+                    type="button"
                     onClick={() => {
                       setCustomSearchTerm(`${currentTrack.artist || ''} ${currentTrack.title || ''}`.trim());
                       setIsSearchOpen(true);
                     }}
-                    className={`px-4 py-2 rounded-xl text-xs font-bold transition-all shadow-lg cursor-pointer ${ACCENT_BG[accent]}`}
+                    className="px-4 py-2 rounded-xl text-xs font-bold bg-white/10 hover:bg-white/20 text-neutral-200 transition-colors border border-white/10 cursor-pointer"
                   >
                     Recherche manuelle
                   </button>

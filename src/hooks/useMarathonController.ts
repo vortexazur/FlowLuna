@@ -9,6 +9,7 @@ import {
 import {
   resolveVideoMarkersCascade,
   parseAnimeTitleAndEpisode,
+  getCachedMarkersForTrack,
 } from '../services/openingDetectorService';
 import { getTrackPlayableUrl } from '../services/audioDb';
 import { isTrackVideo } from '../utils/fileAudioLoader';
@@ -197,6 +198,17 @@ export function useMarathonController({
     const { episodeNumber: epNum } = parseAnimeTitleAndEpisode(track.title || track.album || '');
     setEpisodeNumber(epNum);
 
+    // Si les marqueurs ont déjà été pré-calculés en mémoire par preloadNextTrack (0 ms, aucun I/O),
+    // les injecter immédiatement pour détecter même un OP démarrant à 0:00 sans aucune latence.
+    const cachedSync = getCachedMarkersForTrack(track, duration || track.duration || 0);
+    if (cachedSync) {
+      setMarkers(cachedSync);
+      setIsDetecting(false);
+      return () => {
+        isMounted = false;
+      };
+    }
+
     const executeCascade = () => {
       if (!isMounted) return;
       setIsDetecting(true);
@@ -225,7 +237,7 @@ export function useMarathonController({
 
     const video = videoRef.current;
     if (video) {
-      if (!video.paused && !video.ended && video.readyState >= 2) {
+      if (!video.paused && !video.ended && video.readyState >= 2 && video.currentTime < 5) {
         scheduleCascade();
       } else {
         video.addEventListener('playing', scheduleCascade, { once: true });

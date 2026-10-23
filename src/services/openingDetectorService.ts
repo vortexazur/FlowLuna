@@ -160,7 +160,8 @@ export function parseAnimeTitleAndEpisode(rawTitle: string): AnimeParseResult {
 }
 
 /**
- * Cache local enrichi : stocke les marqueurs, la durée du fichier et un horodatage
+ * Cache local enrichi (RAM + localStorage) : stocke les marqueurs, la durée du fichier et un horodatage.
+ * Fonctionne également pour les pistes éphémères (isTransient) afin que preloadNextTrack serve en 0 ms.
  */
 export interface CachedMarkersData {
   markers: VideoSkipMarkers;
@@ -168,23 +169,55 @@ export interface CachedMarkersData {
   timestamp: number;
 }
 
+const memoryMarkersCache = new Map<string, CachedMarkersData>();
+const MAX_MEMORY_MARKERS_CACHE = 100;
+
+export function getTrackMarkersCacheKey(track: Track | null): string {
+  if (!track) return '';
+  if (track.filePath && track.filePath.trim()) {
+    return track.filePath.trim().toLowerCase();
+  }
+  return (track.id || track.title || '').trim();
+}
+
+export function clearMarkersCache(): void {
+  memoryMarkersCache.clear();
+}
+
+function isDurationCompatible(cachedDuration: number | undefined, currentDuration: number | undefined): boolean {
+  if (
+    typeof currentDuration === 'number' &&
+    currentDuration > 0 &&
+    typeof cachedDuration === 'number' &&
+    cachedDuration > 0
+  ) {
+    return Math.abs(cachedDuration - currentDuration) <= 2;
+  }
+  return true;
+}
+
 export function getCachedMarkers(cacheKey: string, currentDuration?: number): VideoSkipMarkers | null {
+  if (!cacheKey) return null;
+
+  // 1. Lecture ultra-rapide en RAM (couvre aussi les pistes isTransient préchargées)
+  const mem = memoryMarkersCache.get(cacheKey);
+  if (mem && mem.markers) {
+    if (isDurationCompatible(mem.duration, currentDuration)) {
+      return mem.markers;
+    }
+    memoryMarkersCache.delete(cacheKey);
+  }
+
+  // 2. Lecture persistante dans localStorage
   try {
     const raw = localStorage.getItem(`flowluna_markers_${cacheKey}`);
     if (raw) {
       const parsed = JSON.parse(raw);
       if (parsed && parsed.markers) {
-        // Validation de la durée du fichier pour invalider si le fichier a changé
-        if (
-          typeof currentDuration === 'number' &&
-          currentDuration > 0 &&
-          typeof parsed.duration === 'number' &&
-          parsed.duration > 0
-        ) {
-          if (Math.abs(parsed.duration - currentDuration) > 2) {
-            return null; // Durée incohérente -> invalidation du cache
-          }
+        if (!isDurationCompatible(parsed.duration, currentDuration)) {
+          return null; // Durée incohérente -> invalidation du cache
         }
+        memoryMarkersCache.set(cacheKey, parsed);
         return parsed.markers;
       }
       // Rétro-compatibilité avec l'ancien format direct
@@ -196,24 +229,95 @@ export function getCachedMarkers(cacheKey: string, currentDuration?: number): Vi
   return null;
 }
 
-function setCachedMarkers(cacheKey: string, markers: VideoSkipMarkers, duration: number): void {
-  try {
-    const data: CachedMarkersData = {
-      markers,
-      duration: Math.round(duration * 10) / 10,
-      timestamp: Date.now(),
-    };
-    localStorage.setItem(`flowluna_markers_${cacheKey}`, JSON.stringify(data));
-  } catch {}
+export function getCachedMarkersForTrack(track: Track | null, currentDuration?: number): VideoSkipMarkers | null {
+  if (!track) return null;
+  const primaryKey = getTrackMarkersCacheKey(track);
+  const fromPrimary = getCachedMarkers(primaryKey, currentDuration);
+  if (fromPrimary) return fromPrimary;
+
+  if (track.id && track.id !== primaryKey) {
+    const fromId = getCachedMarkers(track.id, currentDuration);
+    if (fromId) return fromId;
+  }
+  return null;
 }
 
-const OP_REGEX = /(?:^|\b)(?:op\b|opening|intro|ncop|crédits?\s+d['’]?ouverture|générique\s+d['’]?ouverture)/i;
-const ED_REGEX = /(?:^|\b)(?:ed\b|ending|outro|nced|crédits?\s+de\s+fin|générique\s+de\s+fin)/i;
-const POST_CREDITS_REGEX = /(?:^|\b)(?:preview|teaser|post-credit[s]?|scène\s+post-générique|épisode\s+suivant|prochain\s+épisode|à\s+suivre)\b/i;
-const RECAP_REGEX = /(?:^|\b)(?:recap|previously|précédemment|résumé)\b/i;
+function setCachedMarkers(cacheKey: string, markers: VideoSkipMarkers, duration: number, persistToStorage: boolean = true): void {
+  if (!cacheKey) return;
+  const data: CachedMarkersData = {
+    markers,
+    duration: Math.round(duration * 10) / 10,
+    timestamp: Date.now(),
+  };
+
+  if (memoryMarkersCache.size >= MAX_MEMORY_MARKERS_CACHE) {
+    const oldest = memoryMarkersCache.keys().next().value;
+    if (oldest) memoryMarkersCache.delete(oldest);
+  }
+  memoryMarkersCache.set(cacheKey, data);
+
+  if (persistToStorage) {
+    try {
+      localStorage.setItem(`flowluna_markers_${cacheKey}`, JSON.stringify(data));
+    } catch {}
+  }
+}
 
 /**
- * Niveau 1 : Inspection des chapitres intégrés (OP, ED, Recap, Preview)
+ * Calcule un score de confiance multi-critères [0..100] pour départager ou valider un candidat OP/ED.
+ * Favorise la durée canonique de l'animation japonaise (~89.5s ± 1.5s) et rejette les durées aberrantes (> 130s).
+ */
+export function scoreIntervalCandidate(interval: SkipInterval | null, episodeDuration: number = 0): number {
+  if (!interval) return -1;
+  const len = interval.end - interval.start;
+  if (len < 20 || len > 130) return -100;
+
+  const sourceWeights: Record<SkipSource, number> = {
+    chapter: 92,
+    acoustic: 88,
+    subtitle: 86,
+    api: 80,
+    ai: 55,
+    heuristic: 25,
+  };
+
+  let score = sourceWeights[interval.source] ?? 50;
+
+  // Bonus de durée canonique (standard ~88.0s - 91.0s ou format court ~58.5s - 61.5s)
+  if (len >= 88.0 && len <= 91.0) {
+    score += 8;
+  } else if (len >= 85.0 && len <= 93.5) {
+    score += 5;
+  } else if (len >= 58.0 && len <= 62.0) {
+    score += 3;
+  } else if (len > 110 || len < 45) {
+    score -= 10;
+  }
+
+  // Bonus de position temporelle plausible
+  if (interval.type === 'op' && interval.start >= 0 && interval.start <= 300) {
+    score += 4;
+  } else if (interval.type === 'ed' && episodeDuration >= 600 && interval.start >= episodeDuration - 330) {
+    score += 4;
+  }
+
+  if (interval.drift) {
+    score -= 25;
+  }
+
+  return Math.max(0, Math.min(100, score));
+}
+
+const OP_REGEX = /(?:^|[\s_\-\(\[])(?:op(?:\s*\d+[a-z]?)?|opening(?:\s*\d+)?|intro(?:duction)?|ncop|vorspann|générique\s+d['’]?ouverture|crédits?\s+d['’]?ouverture|générique\s+début|theme\s+song|opening\s+theme|オープニング|ＯＰ)(?:$|[\s_\-\)\]:])/i;
+const ED_REGEX = /(?:^|[\s_\-\(\[])(?:ed(?:\s*\d+[a-z]?)?|ending(?:\s*\d+)?|outro|nced|abspann|générique\s+de\s+fin|crédits?\s+de\s+fin|générique\s+fin|ending\s+theme|エンディング|ＥＤ)(?:$|[\s_\-\)\]:])/i;
+const POST_CREDITS_REGEX = /(?:^|[\s_\-\(\[])(?:preview|teaser|post-credit[s]?|after\s*credits?|epilogue|scène\s+post-générique|épisode\s+suivant|prochain\s+épisode|à\s+suivre|次回予告|予告|おまけ|Cパート|part\s*c)(?:$|[\s_\-\)\]:])/i;
+const RECAP_REGEX = /(?:^|[\s_\-\(\[])(?:recap|previously|précédemment|résumé|あらすじ|前回のあらすじ)(?:$|[\s_\-\)\]:])/i;
+const COLD_OPEN_REGEX = /(?:^|[\s_\-\(\[])(?:avant|cold\s*open|prologue|pre[\s_-]?op|intro\s*scene|アバン|プロローグ)(?:$|[\s_\-\)\]:])/i;
+const MAIN_PART_REGEX = /(?:^|[\s_\-\(\[])(?:part\s*[ab12]|a[\s_-]?part|b[\s_-]?part|acte?\s*[12]|main\s*episode|épisode|episode|corps|本編|Aパート|Bパート)(?:$|[\s_\-\)\]:])/i;
+const MAX_OP_ED_CHAPTER_DURATION_S = 130;
+
+/**
+ * Niveau 1 : Inspection des chapitres intégrés (OP, ED, Recap, Preview) + Inférence structurelle (Cold Open / Durée canonique 87-92.5s)
  */
 export async function resolveChaptersMarkers(
   videoElement: HTMLVideoElement | null,
@@ -274,11 +378,14 @@ export async function resolveChaptersMarkers(
     } catch {}
   }
 
-  // Parser les chapitres collectés
+  // Parser les chapitres collectés (avec plafond de durée <= 130s pour bloquer les faux positifs)
   for (const chap of allChapters) {
-    const title = chap.title || '';
+    const title = (chap.title || '').trim();
+    const chapDur = chap.endTime - chap.startTime;
+    if (chapDur <= 0) continue;
+
     if (!op && OP_REGEX.test(title)) {
-      if (chap.endTime > chap.startTime && chap.endTime - chap.startTime >= 20) {
+      if (chapDur >= 20 && chapDur <= MAX_OP_ED_CHAPTER_DURATION_S) {
         op = {
           start: chap.startTime,
           end: chap.endTime,
@@ -289,7 +396,7 @@ export async function resolveChaptersMarkers(
         };
       }
     } else if (!ed && ED_REGEX.test(title)) {
-      if (chap.endTime > chap.startTime && chap.endTime - chap.startTime >= 20) {
+      if (chapDur >= 20 && chapDur <= MAX_OP_ED_CHAPTER_DURATION_S) {
         ed = {
           start: chap.startTime,
           end: chap.endTime,
@@ -300,7 +407,7 @@ export async function resolveChaptersMarkers(
         };
       }
     } else if (!recap && RECAP_REGEX.test(title)) {
-      if (chap.endTime > chap.startTime) {
+      if (chapDur >= 5 && chapDur <= 180) {
         recap = {
           start: chap.startTime,
           end: chap.endTime,
@@ -313,7 +420,7 @@ export async function resolveChaptersMarkers(
     } else if (POST_CREDITS_REGEX.test(title)) {
       hasPostCredits = true;
       postCreditsStart = chap.startTime;
-      if (!preview && chap.endTime > chap.startTime) {
+      if (!preview && chapDur > 0) {
         preview = {
           start: chap.startTime,
           end: chap.endTime,
@@ -322,6 +429,71 @@ export async function resolveChaptersMarkers(
           confidence: 'high',
           title: chap.title,
         };
+      }
+    }
+  }
+
+  // Inférence structurelle : si les chapitres ont des noms génériques ("Chapter 2" ou titre de la chanson)
+  // mais présentent la signature canonique d'un OP/ED (~87.0s à 92.5s) ou sont encadrés par Cold Open -> Part A
+  if (!op && allChapters.length >= 2) {
+    for (let i = 0; i < allChapters.length; i++) {
+      const chap = allChapters[i];
+      const title = (chap.title || '').trim();
+      const chapDur = chap.endTime - chap.startTime;
+      if (chap.startTime > 330) break;
+      if (COLD_OPEN_REGEX.test(title) || MAIN_PART_REGEX.test(title) || RECAP_REGEX.test(title) || POST_CREDITS_REGEX.test(title)) {
+        continue;
+      }
+
+      const prevChap = i > 0 ? allChapters[i - 1] : null;
+      const nextChap = i + 1 < allChapters.length ? allChapters[i + 1] : null;
+      const sandwichedByColdOpenAndMain =
+        prevChap !== null &&
+        nextChap !== null &&
+        COLD_OPEN_REGEX.test(prevChap.title || '') &&
+        MAIN_PART_REGEX.test(nextChap.title || '') &&
+        chapDur >= 60 &&
+        chapDur <= 110;
+
+      const isCanonicalOpDuration =
+        chapDur >= 87.0 &&
+        chapDur <= 92.5 &&
+        nextChap !== null &&
+        nextChap.endTime - nextChap.startTime >= 180;
+
+      if (sandwichedByColdOpenAndMain || isCanonicalOpDuration) {
+        op = {
+          start: chap.startTime,
+          end: chap.endTime,
+          type: 'op',
+          source: 'chapter',
+          confidence: 'high',
+          title: chap.title || 'Opening (Chapitre Canonique)',
+        };
+        break;
+      }
+    }
+  }
+
+  if (!ed && duration >= 600 && allChapters.length >= 3) {
+    for (let i = allChapters.length - 1; i >= 1; i--) {
+      const chap = allChapters[i];
+      const title = (chap.title || '').trim();
+      const chapDur = chap.endTime - chap.startTime;
+      if (chap.startTime < duration - 330) break;
+      if (MAIN_PART_REGEX.test(title) || POST_CREDITS_REGEX.test(title) || RECAP_REGEX.test(title) || COLD_OPEN_REGEX.test(title)) {
+        continue;
+      }
+      if (chapDur >= 87.0 && chapDur <= 92.5) {
+        ed = {
+          start: chap.startTime,
+          end: chap.endTime,
+          type: 'ed',
+          source: 'chapter',
+          confidence: 'high',
+          title: chap.title || 'Ending (Chapitre Canonique)',
+        };
+        break;
       }
     }
   }
@@ -694,12 +866,13 @@ export async function getHeuristicMarkers(
 export const resolveAcousticMarkers = getHeuristicMarkers;
 
 /**
- * Intro Skipper Module 1 : Snapping chirurgical aux silences audio / transitions (TimeAdjustment)
+ * Intro Skipper Module 1 : Snapping chirurgical asymétrique aux silences audio / transitions (TimeAdjustment)
  */
 export async function fineTuneIntervalMarkers(
   filePath: string,
   interval: SkipInterval | null,
-  searchWindow: number = 3.5
+  searchWindow: number = 3.5,
+  firstDialogueAfter?: number | null
 ): Promise<SkipInterval | null> {
   if (!interval || !filePath) return interval;
   try {
@@ -709,6 +882,9 @@ export async function fineTuneIntervalMarkers(
       end: interval.end.toString(),
       window: searchWindow.toString(),
     });
+    if (typeof firstDialogueAfter === 'number' && !isNaN(firstDialogueAfter) && firstDialogueAfter > 0) {
+      params.set('firstDialogueAfter', firstDialogueAfter.toString());
+    }
     const res = await fetch(`/api/video/fine-tune-markers?${params.toString()}`);
     if (res.ok) {
       const data = await res.json();
@@ -729,40 +905,67 @@ export async function fineTuneIntervalMarkers(
 }
 
 /**
- * Intro Skipper Module 2 : Détection de générique 100% locale par corrélation acoustique multi-épisodes
+ * Intro Skipper Module 2 : Détection de générique 100% locale par corrélation acoustique multi-épisodes (OP + ED)
  */
-export async function resolveAcousticMatchMarkers(filePath: string): Promise<SkipInterval | null> {
-  if (!filePath) return null;
+export async function resolveAcousticMatchFull(
+  filePath: string
+): Promise<{ op: SkipInterval | null; ed: SkipInterval | null }> {
+  if (!filePath) return { op: null, ed: null };
   try {
     const params = new URLSearchParams({ filePath });
     const res = await fetch(`/api/video/acoustic-match?${params.toString()}`);
     if (res.ok) {
       const data = await res.json();
-      if (data.success && typeof data.start === 'number' && typeof data.end === 'number') {
-        return {
-          start: data.start,
-          end: data.end,
-          type: 'op',
-          source: 'acoustic',
-          confidence: 'high',
-          title: data.matchedSibling
-            ? `Opening (Empreinte Audio Locale - ${data.matchedSibling})`
-            : 'Opening (Empreinte Audio Locale)',
-        };
+      if (data.success) {
+        let op: SkipInterval | null = null;
+        let ed: SkipInterval | null = null;
+        const sibSuffix = data.matchedSibling ? ` - ${data.matchedSibling}` : '';
+
+        if (typeof data.start === 'number' && typeof data.end === 'number' && data.end > data.start) {
+          op = {
+            start: data.start,
+            end: data.end,
+            type: 'op',
+            source: 'acoustic',
+            confidence: 'high',
+            title: `Opening (Empreinte Audio Locale${sibSuffix})`,
+          };
+        }
+        if (typeof data.edStart === 'number' && typeof data.edEnd === 'number' && data.edEnd > data.edStart) {
+          ed = {
+            start: data.edStart,
+            end: data.edEnd,
+            type: 'ed',
+            source: 'acoustic',
+            confidence: 'high',
+            title: `Ending (Empreinte Audio Locale${sibSuffix})`,
+          };
+        }
+        return { op, ed };
       }
     }
   } catch {}
-  return null;
+  return { op: null, ed: null };
+}
+
+export async function resolveAcousticMatchMarkers(filePath: string): Promise<SkipInterval | null> {
+  const { op } = await resolveAcousticMatchFull(filePath);
+  return op;
 }
 
 /**
- * Intro Skipper Module 3 : Analyse des sous-titres multilingues pour détection des récapitulatifs et teasers
+ * Intro Skipper Module 3 : Analyse des sous-titres multilingues (.ass/.ssa/.srt/.vtt) pour détection
+ * des OP/ED (styles ASS, karaoké, trous de dialogues ~89-90s), récapitulatifs, teasers et gardes de répliques.
  */
 export async function resolveSubtitleMarkers(filePath: string): Promise<{
   recap: SkipInterval | null;
   preview: SkipInterval | null;
+  op?: SkipInterval | null;
+  ed?: SkipInterval | null;
+  firstDialogueAfterOp?: number | null;
+  firstDialogueAfterEd?: number | null;
 }> {
-  if (!filePath) return { recap: null, preview: null };
+  if (!filePath) return { recap: null, preview: null, op: null, ed: null };
   try {
     const params = new URLSearchParams({ filePath });
     const res = await fetch(`/api/video/subtitles/analyze?${params.toString()}`);
@@ -770,6 +973,11 @@ export async function resolveSubtitleMarkers(filePath: string): Promise<{
       const data = await res.json();
       let recap: SkipInterval | null = null;
       let preview: SkipInterval | null = null;
+      let op: SkipInterval | null = null;
+      let ed: SkipInterval | null = null;
+      let firstDialogueAfterOp: number | null = null;
+      let firstDialogueAfterEd: number | null = null;
+
       if (data.success) {
         if (typeof data.recapStart === 'number' && typeof data.recapEnd === 'number') {
           recap = {
@@ -791,11 +999,88 @@ export async function resolveSubtitleMarkers(filePath: string): Promise<{
             title: 'Scène Teaser / Prochain Épisode',
           };
         }
+        if (typeof data.opStart === 'number' && typeof data.opEnd === 'number' && data.opEnd > data.opStart) {
+          const methodLabel =
+            data.opMethod === 'ass-style'
+              ? 'Styles ASS'
+              : data.opMethod === 'lyrics'
+              ? 'Karaoké / Paroles'
+              : 'Trou de Dialogues';
+          op = {
+            start: data.opStart,
+            end: data.opEnd,
+            type: 'op',
+            source: 'subtitle',
+            confidence: 'high',
+            title: `Opening (Sous-titres - ${methodLabel})`,
+          };
+        }
+        if (typeof data.edStart === 'number' && typeof data.edEnd === 'number' && data.edEnd > data.edStart) {
+          const methodLabel =
+            data.edMethod === 'ass-style'
+              ? 'Styles ASS'
+              : data.edMethod === 'lyrics'
+              ? 'Karaoké / Paroles'
+              : 'Trou de Dialogues';
+          ed = {
+            start: data.edStart,
+            end: data.edEnd,
+            type: 'ed',
+            source: 'subtitle',
+            confidence: 'high',
+            title: `Ending (Sous-titres - ${methodLabel})`,
+          };
+        }
+        if (typeof data.firstDialogueAfterOp === 'number') {
+          firstDialogueAfterOp = data.firstDialogueAfterOp;
+        }
+        if (typeof data.firstDialogueAfterEd === 'number') {
+          firstDialogueAfterEd = data.firstDialogueAfterEd;
+        }
       }
-      return { recap, preview };
+      return { recap, preview, op, ed, firstDialogueAfterOp, firstDialogueAfterEd };
     }
   } catch {}
-  return { recap: null, preview: null };
+  return { recap: null, preview: null, op: null, ed: null };
+}
+
+/**
+ * Garde-fou anti-coupure de réplique : garantit que la borne de fin (T_end) ne dépasse jamais
+ * le début de la première phrase parlée suivant le générique (firstDialogueAfter - 0.15s).
+ */
+export function applyDialogueResumeGuard(
+  interval: SkipInterval | null,
+  firstDialogueAfter?: number | null
+): SkipInterval | null {
+  if (!interval || typeof firstDialogueAfter !== 'number' || isNaN(firstDialogueAfter)) {
+    return interval;
+  }
+  const safeMaxEnd = Math.round((firstDialogueAfter - 0.15) * 100) / 100;
+  // Si T_end déborde sur la 1ère réplique (dans une fenêtre de 4s autour de la fin du générique)
+  if (
+    firstDialogueAfter >= interval.end - 3.5 &&
+    firstDialogueAfter <= interval.end + 3.5 &&
+    interval.end > safeMaxEnd &&
+    safeMaxEnd - interval.start >= 25
+  ) {
+    return {
+      ...interval,
+      end: safeMaxEnd,
+    };
+  }
+  return interval;
+}
+
+function pickBestIntervalCandidate(
+  current: SkipInterval | null,
+  candidate: SkipInterval | null,
+  episodeDuration: number
+): SkipInterval | null {
+  if (!current) return candidate;
+  if (!candidate) return current;
+  return scoreIntervalCandidate(candidate, episodeDuration) > scoreIntervalCandidate(current, episodeDuration)
+    ? candidate
+    : current;
 }
 
 /**
@@ -916,7 +1201,7 @@ Réponds STRICTEMENT sous forme de JSON valide avec cette structure exacte (sans
 
 /**
  * Fonction maîtresse : Résolution complète des marqueurs vidéo en cascade enrichie
- * Détecte à la fois Opening, Ending, Recap, Preview, Scène post-crédits, contrôle de dérive et Snapping
+ * Détecte à la fois Opening, Ending, Recap, Preview, Scène post-crédits, contrôle de dérive et Snapping asymétrique
  */
 export async function resolveVideoMarkersCascade(
   videoElement: HTMLVideoElement | null,
@@ -928,9 +1213,9 @@ export async function resolveVideoMarkersCascade(
     return { op: null, ed: null, hasPostCredits: false };
   }
 
-  const trackKey = track.id || track.filePath || track.title;
+  const primaryCacheKey = getTrackMarkersCacheKey(track);
   const actualDuration = duration || track.duration || 0;
-  const cached = getCachedMarkers(trackKey, actualDuration);
+  const cached = getCachedMarkersForTrack(track, actualDuration);
   if (cached) return cached;
 
   let op: SkipInterval | null = null;
@@ -942,8 +1227,10 @@ export async function resolveVideoMarkersCascade(
   let driftDetected = false;
   let referenceDuration: number | undefined;
   let snapped = false;
+  let firstDialogueAfterOp: number | null = null;
+  let firstDialogueAfterEd: number | null = null;
 
-  // === Niveau 1 : Chapitres intégrés ===
+  // === Niveau 1 : Chapitres intégrés (avec inférence structurelle Cold Open / 89.5s) ===
   try {
     const chapMarkers = await resolveChaptersMarkers(videoElement, track, actualDuration);
     if (chapMarkers.op) op = chapMarkers.op;
@@ -958,13 +1245,12 @@ export async function resolveVideoMarkersCascade(
     console.warn('[VideoMarkers] Erreur Niveau 1 (Chapitres):', err);
   }
 
-  // === Niveau 2 : Empreinte acoustique locale multi-épisodes (Acoustic Matching) ===
-  if (!op && track.filePath) {
+  // === Niveau 2 : Empreinte acoustique locale multi-épisodes (OP + ED) ===
+  if ((!op || !ed) && track.filePath) {
     try {
-      const acousticOp = await resolveAcousticMatchMarkers(track.filePath);
-      if (acousticOp) {
-        op = acousticOp;
-      }
+      const acoustic = await resolveAcousticMatchFull(track.filePath);
+      if (!op && acoustic.op) op = acoustic.op;
+      if (!ed && acoustic.ed) ed = acoustic.ed;
     } catch (err) {
       console.warn('[VideoMarkers] Erreur Niveau 2 (Acoustic Matching):', err);
     }
@@ -977,8 +1263,8 @@ export async function resolveVideoMarkersCascade(
       if (cleanTitle) {
         const apiMarkers = await resolveAniskipMarkers(cleanTitle, episodeNumber, actualDuration);
         if (apiMarkers) {
-          if (!op && apiMarkers.op) op = apiMarkers.op;
-          if (!ed && apiMarkers.ed) ed = apiMarkers.ed;
+          if (apiMarkers.op) op = pickBestIntervalCandidate(op, apiMarkers.op, actualDuration);
+          if (apiMarkers.ed) ed = pickBestIntervalCandidate(ed, apiMarkers.ed, actualDuration);
           if (apiMarkers.hasPostCredits) {
             hasPostCredits = true;
             postCreditsStart = apiMarkers.postCreditsStart;
@@ -996,8 +1282,8 @@ export async function resolveVideoMarkersCascade(
     }
   }
 
-  // === Niveau 4 : Analyse des Sous-Titres (Recap / Preview) si fichier local ===
-  if ((!recap || !preview) && track.filePath) {
+  // === Niveau 4 : Analyse des Sous-Titres (OP / ED / Recap / Preview + Garde-fou de réplique) ===
+  if (track.filePath && (!op || !ed || !recap || !preview || enableSnapping)) {
     try {
       const subMarkers = await resolveSubtitleMarkers(track.filePath);
       if (!recap && subMarkers.recap) recap = subMarkers.recap;
@@ -1005,6 +1291,18 @@ export async function resolveVideoMarkersCascade(
         preview = subMarkers.preview;
         hasPostCredits = true;
         if (!postCreditsStart) postCreditsStart = subMarkers.preview.start;
+      }
+      if (subMarkers.op && (!op || op.source !== 'chapter')) {
+        op = pickBestIntervalCandidate(op, subMarkers.op, actualDuration);
+      }
+      if (subMarkers.ed && (!ed || ed.source !== 'chapter')) {
+        ed = pickBestIntervalCandidate(ed, subMarkers.ed, actualDuration);
+      }
+      if (typeof subMarkers.firstDialogueAfterOp === 'number') {
+        firstDialogueAfterOp = subMarkers.firstDialogueAfterOp;
+      }
+      if (typeof subMarkers.firstDialogueAfterEd === 'number') {
+        firstDialogueAfterEd = subMarkers.firstDialogueAfterEd;
       }
     } catch (err) {
       console.warn('[VideoMarkers] Erreur Niveau 4 (Sous-Titres):', err);
@@ -1051,25 +1349,37 @@ export async function resolveVideoMarkersCascade(
     }
   }
 
-  // === Passe de finition : Snapping chirurgical aux silences audio (Time Adjustment) ===
+  // Appliquer le garde-fou de reprise des dialogues avant et après le snapping
+  op = applyDialogueResumeGuard(op, firstDialogueAfterOp);
+  ed = applyDialogueResumeGuard(ed, firstDialogueAfterEd);
+
+  // === Passe de finition : Snapping chirurgical asymétrique aux silences audio (Time Adjustment) ===
   if (enableSnapping && track.filePath) {
     try {
       if (op && op.source !== 'chapter') {
-        const tunedOp = await fineTuneIntervalMarkers(track.filePath, op);
+        const tunedOp = await fineTuneIntervalMarkers(track.filePath, op, 3.5, firstDialogueAfterOp);
         if (tunedOp && tunedOp.snapped) {
-          op = tunedOp;
+          op = applyDialogueResumeGuard(tunedOp, firstDialogueAfterOp);
           snapped = true;
         }
       }
       if (ed && ed.source !== 'chapter') {
-        const tunedEd = await fineTuneIntervalMarkers(track.filePath, ed);
+        const tunedEd = await fineTuneIntervalMarkers(track.filePath, ed, 3.5, firstDialogueAfterEd);
         if (tunedEd && tunedEd.snapped) {
-          ed = tunedEd;
+          ed = applyDialogueResumeGuard(tunedEd, firstDialogueAfterEd);
           snapped = true;
         }
       }
     } catch (err) {
       console.warn('[VideoMarkers] Erreur Finition Snapping:', err);
+    }
+  }
+
+  // Si un ED est détecté et qu'il reste plus de 15s après l'ED, signaler la scène post-crédits
+  if (ed && actualDuration > 0 && actualDuration - ed.end >= 15 && !hasPostCredits) {
+    hasPostCredits = true;
+    if (postCreditsStart === undefined) {
+      postCreditsStart = ed.end;
     }
   }
 
@@ -1085,8 +1395,10 @@ export async function resolveVideoMarkersCascade(
     snapped,
   };
 
-  if (!track.isTransient) {
-    setCachedMarkers(trackKey, result, actualDuration);
+  // Toujours persister en mémoire vive (et localStorage si clé valide) pour que preloadNextTrack serve en 0 ms
+  setCachedMarkers(primaryCacheKey, result, actualDuration, !track.isTransient || Boolean(track.filePath));
+  if (track.id && track.id !== primaryCacheKey) {
+    setCachedMarkers(track.id, result, actualDuration, !track.isTransient);
   }
   return result;
 }

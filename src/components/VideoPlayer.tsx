@@ -211,8 +211,15 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
       return [];
     });
     setSelectedSubtitleId(null);
+    setSubtitleOffset(0);
     setAudioTracks([]);
     setSelectedAudioTrackIndex(null);
+    setLipSyncOffset(0);
+    isCorrectingDriftRef.current = false;
+    if (videoRef.current) {
+      videoRef.current.defaultPlaybackRate = normalPlaybackRateRef.current;
+      videoRef.current.playbackRate = normalPlaybackRateRef.current;
+    }
 
     if (!isTrackVideo(currentTrack) || !currentTrack.filePath) {
       return;
@@ -250,7 +257,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
 
     const video = videoRef.current;
     if (video) {
-      if (!video.paused && !video.ended && video.readyState >= 2) {
+      if (!video.paused && !video.ended && video.readyState >= 2 && video.currentTime < 5) {
         scheduleLoad();
       } else {
         video.addEventListener('playing', scheduleLoad, { once: true });
@@ -556,46 +563,104 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
     let rVfcId: number | null = null;
     let rafId: number | null = null;
 
-    const onFrame = (_now: DOMHighResTimeStamp, metadata?: any) => {
+    // État interne du moteur d'asservissement labial réinitialisé à chaque piste
+    let driftCorrectionMode: 'none' | 'speedup' | 'slowdown' = 'none';
+    let smoothedDrift = 0;
+    let lastPresentedFrames = -1;
+    let lastMediaTime = -1;
+    let consecutiveDriftFrames = 0;
+    let lastResyncTime = 0;
+    let warmupUntil = performance.now() + 1000;
+
+    const resetLipSyncState = () => {
+      driftCorrectionMode = 'none';
+      smoothedDrift = 0;
+      lastPresentedFrames = -1;
+      lastMediaTime = -1;
+      consecutiveDriftFrames = 0;
+      warmupUntil = performance.now() + 1000;
+      if (isCorrectingDriftRef.current) {
+        isCorrectingDriftRef.current = false;
+      }
+      if (video && video.playbackRate !== normalPlaybackRateRef.current) {
+        video.playbackRate = normalPlaybackRateRef.current;
+      }
+    };
+
+    resetLipSyncState();
+
+    video.addEventListener('loadstart', resetLipSyncState);
+    video.addEventListener('loadeddata', resetLipSyncState);
+    video.addEventListener('seeking', resetLipSyncState);
+    video.addEventListener('seeked', resetLipSyncState);
+
+    const onFrame = (now: DOMHighResTimeStamp, metadata?: any) => {
       if (isCancelled || !video) return;
 
-      // Uniquement pendant la lecture active et hors phase de seek
-      if (!video.paused && !video.seeking && video.readyState >= 3) {
+      // Uniquement pendant la lecture active, hors phase de seek et après la fenêtre d'amorçage initiale
+      if (
+        !video.paused &&
+        !video.seeking &&
+        video.readyState >= 3 &&
+        now >= warmupUntil &&
+        video.currentTime > 1.0
+      ) {
         // mediaTime : timestamp exact de présentation de la trame vidéo affichée à l'écran
         // currentTime : horloge audio maîtresse (WASAPI)
         const mediaTime = typeof metadata?.mediaTime === 'number' ? metadata.mediaTime : video.currentTime;
         const audioTime = video.currentTime;
+        const presentedFrames = typeof metadata?.presentedFrames === 'number' ? metadata.presentedFrames : -1;
 
-        // Dérive effective = (Audio - Décalage souhaité) - Vidéo
-        // > 0 : Voix en avance sur les lèvres
-        // < 0 : Lèvres en avance sur la voix
-        const effectiveDrift = (audioTime - lipSyncOffset) - mediaTime;
+        const isNewFrame =
+          presentedFrames >= 0 ? presentedFrames !== lastPresentedFrames : mediaTime !== lastMediaTime;
 
-        if (effectiveDrift > 0.035 && effectiveDrift < 0.3) {
-          // Micro-accélération fluide (+4%) pour rattraper le décalage labial sans altération de tonalité
-          if (!isCorrectingDriftRef.current) {
-            isCorrectingDriftRef.current = true;
-            video.playbackRate = normalPlaybackRateRef.current * 1.04;
+        // Ignorer les trames dupliquées et rejeter tout timestamp PTS résiduel d'une vidéo précédente
+        if (isNewFrame && mediaTime >= 0 && Math.abs(audioTime - mediaTime) < 5.0) {
+          lastPresentedFrames = presentedFrames;
+          lastMediaTime = mediaTime;
+
+          // Dérive effective = (Audio - Décalage souhaité) - Vidéo
+          // > 0 : Voix en avance sur les lèvres
+          // < 0 : Lèvres en avance sur la voix
+          const effectiveDrift = (audioTime - lipSyncOffset) - mediaTime;
+          smoothedDrift = smoothedDrift === 0 ? effectiveDrift : smoothedDrift * 0.8 + effectiveDrift * 0.2;
+
+          if (Math.abs(smoothedDrift) > 0.045) {
+            consecutiveDriftFrames++;
+          } else {
+            consecutiveDriftFrames = 0;
           }
-        } else if (effectiveDrift < -0.035 && effectiveDrift > -0.3) {
-          // Micro-décélération fluide (-4%)
-          if (!isCorrectingDriftRef.current) {
-            isCorrectingDriftRef.current = true;
-            video.playbackRate = normalPlaybackRateRef.current * 0.96;
+
+          if (Math.abs(smoothedDrift) >= 0.3 && consecutiveDriftFrames >= 8 && now - lastResyncTime > 4000) {
+            // Dérive critique confirmée (> 300ms sur >= 8 trames) : réalignement unique avec cooldown
+            try {
+              video.currentTime = Math.max(0, mediaTime + lipSyncOffset);
+            } catch {}
+            lastResyncTime = now;
+            resetLipSyncState();
+          } else if (smoothedDrift > 0.045 && smoothedDrift < 0.3 && consecutiveDriftFrames >= 5) {
+            // Micro-accélération fluide (+4%) pour rattraper le décalage labial sans altération de tonalité
+            if (driftCorrectionMode !== 'speedup') {
+              driftCorrectionMode = 'speedup';
+              isCorrectingDriftRef.current = true;
+              video.playbackRate = normalPlaybackRateRef.current * 1.04;
+            }
+          } else if (smoothedDrift < -0.045 && smoothedDrift > -0.3 && consecutiveDriftFrames >= 5) {
+            // Micro-décélération fluide (-4%) — autorise l'inversion directe sans blocage d'état
+            if (driftCorrectionMode !== 'slowdown') {
+              driftCorrectionMode = 'slowdown';
+              isCorrectingDriftRef.current = true;
+              video.playbackRate = normalPlaybackRateRef.current * 0.96;
+            }
+          } else if (Math.abs(smoothedDrift) <= 0.020 && isCorrectingDriftRef.current) {
+            // Décalage aligné (<= 20ms) : rétablissement immédiat de la vitesse nominale (1.0x)
+            driftCorrectionMode = 'none';
+            isCorrectingDriftRef.current = false;
+            video.playbackRate = normalPlaybackRateRef.current;
           }
-        } else if (Math.abs(effectiveDrift) <= 0.015 && isCorrectingDriftRef.current) {
-          // Décalage parfaitement aligné (< 15ms) : rétablissement de la vitesse nominale
-          isCorrectingDriftRef.current = false;
-          video.playbackRate = normalPlaybackRateRef.current;
-        } else if (Math.abs(effectiveDrift) >= 0.3 && !video.seeking) {
-          // Dérive critique (> 300ms) : réalignement immédiat de l'horloge
-          try {
-            video.currentTime = Math.max(0, mediaTime + lipSyncOffset);
-          } catch {}
-          isCorrectingDriftRef.current = false;
-          video.playbackRate = normalPlaybackRateRef.current;
         }
       } else if (isCorrectingDriftRef.current) {
+        driftCorrectionMode = 'none';
         isCorrectingDriftRef.current = false;
         if (video) video.playbackRate = normalPlaybackRateRef.current;
       }
@@ -616,14 +681,18 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
 
     return () => {
       isCancelled = true;
+      video.removeEventListener('loadstart', resetLipSyncState);
+      video.removeEventListener('loadeddata', resetLipSyncState);
+      video.removeEventListener('seeking', resetLipSyncState);
+      video.removeEventListener('seeked', resetLipSyncState);
       if (rVfcId !== null && 'cancelVideoFrameCallback' in video) {
         (video as any).cancelVideoFrameCallback(rVfcId);
       }
       if (rafId !== null) {
         cancelAnimationFrame(rafId);
       }
-      if (video && isCorrectingDriftRef.current) {
-        isCorrectingDriftRef.current = false;
+      isCorrectingDriftRef.current = false;
+      if (video) {
         video.playbackRate = normalPlaybackRateRef.current;
       }
     };

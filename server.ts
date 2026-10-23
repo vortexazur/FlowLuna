@@ -18,6 +18,8 @@ import {
   parseYtdlpProgress,
   YtDlpProgressUpdate,
 } from './src/services/binaryManager';
+import { searchAutoEqProfiles, getAutoEqBrands } from './src/services/autoEqService';
+import { convertWhisperSegmentsToLrc } from './src/services/whisperLyricsService';
 
 export function getFlowLunaDataDir(): string {
   const base = process.env.APPDATA || (process.platform === 'darwin' ? path.join(os.homedir(), 'Library', 'Preferences') : path.join(os.homedir(), '.config'));
@@ -4896,19 +4898,205 @@ const SNAP_MIN_INTERVAL_DURATION = 15.0; // Même règle de cohérence que le C#
 const fineTuneMarkersCache = new Map<string, any>();
 const MAX_FINE_TUNE_CACHE = 64;
 
+/**
+ * Parse séquentiellement les paires silence_start / silence_end depuis stderr de FFmpeg
+ * (Corrige le bug d'écrasement lorsque plusieurs silences existent dans la fenêtre).
+ */
+export function parseFfmpegSilences(stderr: string, rangeMin: number): Array<{ start: number; end: number }> {
+  const silenceRegex = /silence_(start|end):\s*([\d\.]+)/g;
+  const silences: Array<{ start: number; end: number }> = [];
+  let curStart: number | null = null;
+  let m: RegExpExecArray | null;
+  while ((m = silenceRegex.exec(stderr)) !== null) {
+    const kind = m[1];
+    const val = rangeMin + parseFloat(m[2]);
+    if (isNaN(val)) continue;
+    if (kind === 'start') {
+      curStart = val;
+    } else if (kind === 'end') {
+      const s = curStart !== null && curStart <= val ? curStart : Math.max(rangeMin, val - 0.2);
+      silences.push({ start: s, end: val });
+      curStart = null;
+    }
+  }
+  return silences;
+}
+
+/**
+ * Sélection directionnelle asymétrique pour T_start (entrée d'OP/ED) et T_end (reprise de l'épisode) :
+ * - Sur T_start : privilégie la fin du silence (attaque musicale) pour ne pas couper la dernière syllabe du Cold Open.
+ * - Sur T_end : privilégie le point de reprise post-silence/fondu au noir, favorise la durée canonique (88.0s - 91.0s),
+ *   et plafonne strictement avant la première réplique de dialogue (firstDialogueAfter - 0.15s).
+ */
+export function selectAsymmetricSnapBounds(
+  rawStart: number,
+  rawEnd: number,
+  searchWindow: number,
+  startSilences: Array<{ start: number; end: number }>,
+  endSilences: Array<{ start: number; end: number }>,
+  startBlacks: Array<{ start: number; end: number }> = [],
+  endBlacks: Array<{ start: number; end: number }> = [],
+  firstDialogueAfter?: number
+): {
+  adjustedStart: number;
+  adjustedEnd: number;
+  startSnapped: boolean;
+  endSnapped: boolean;
+  snapType: 'silence' | 'black' | 'none';
+} {
+  let adjustedStart = rawStart;
+  let adjustedEnd = rawEnd;
+  let startSnapped = false;
+  let endSnapped = false;
+  let snapType: 'silence' | 'black' | 'none' = 'none';
+
+  // 1. Sélection de T_start : privilégier s.end (attaque musicale après le silence)
+  const pickBestStart = (intervals: Array<{ start: number; end: number }>): number | null => {
+    let best: number | null = null;
+    let bestScore = Infinity;
+    for (const iv of intervals) {
+      // s.end reçoit un bonus directionnel (-0.35s de distance effective) car c'est l'attaque musicale réelle du générique
+      const dEnd = Math.abs(iv.end - rawStart);
+      if (dEnd <= searchWindow && dEnd > 0.04) {
+        const effEnd = dEnd - 0.35;
+        if (effEnd < bestScore) {
+          bestScore = effEnd;
+          best = iv.end;
+        }
+      }
+      const dStart = Math.abs(iv.start - rawStart);
+      if (dStart <= searchWindow && dStart > 0.04) {
+        if (dStart < bestScore) {
+          bestScore = dStart;
+          best = iv.start;
+        }
+      }
+    }
+    return best;
+  };
+
+  const startSilCandidate = pickBestStart(startSilences);
+  if (startSilCandidate !== null) {
+    adjustedStart = Math.round(startSilCandidate * 100) / 100;
+    startSnapped = true;
+    snapType = 'silence';
+  } else {
+    const startBlkCandidate = pickBestStart(startBlacks);
+    if (startBlkCandidate !== null) {
+      adjustedStart = Math.round(startBlkCandidate * 100) / 100;
+      startSnapped = true;
+      snapType = 'black';
+    }
+  }
+
+  // Borne stricte anti-coupure de réplique sur T_end
+  const maxAllowedEnd =
+    typeof firstDialogueAfter === 'number' &&
+    !isNaN(firstDialogueAfter) &&
+    firstDialogueAfter >= rawEnd - searchWindow
+      ? firstDialogueAfter - 0.15
+      : Infinity;
+
+  const rawDuration = rawEnd - adjustedStart;
+  const isNearCanonical = rawDuration >= 84.5 && rawDuration <= 94.5;
+
+  // 2. Sélection de T_end : éviter de snapper sur une respiration interne de la chanson 2-3s trop tôt,
+  // privilégier la fin du silence de transition (ou le début si le silence est très long) tout en respectant maxAllowedEnd.
+  const pickBestEnd = (intervals: Array<{ start: number; end: number }>): number | null => {
+    let best: number | null = null;
+    let bestScore = Infinity;
+
+    for (const iv of intervals) {
+      const silenceLen = iv.end - iv.start;
+      // Si la pause de transition est courte (<= 1.4s), reprendre à iv.end évite de laisser un écran noir/silence résiduel
+      const points: Array<{ pt: number; roleBonus: number }> =
+        silenceLen <= 1.4
+          ? [
+              { pt: iv.end, roleBonus: -0.22 },
+              { pt: iv.start, roleBonus: 0 },
+            ]
+          : [
+              { pt: iv.start, roleBonus: -0.1 },
+              { pt: iv.end, roleBonus: 0 },
+            ];
+
+      for (const { pt, roleBonus } of points) {
+        if (pt > maxAllowedEnd) continue;
+        const dist = Math.abs(pt - rawEnd);
+        if (dist > searchWindow || dist <= 0.04) continue;
+
+        const candidateDuration = pt - adjustedStart;
+        // Bonus de durée canonique (88.0s - 91.0s) et pénalité si un snap raccourcit un OP canonique sous 86.5s
+        let canonicalBias = 0;
+        if (isNearCanonical) {
+          if (candidateDuration >= 88.2 && candidateDuration <= 90.8) {
+            canonicalBias = -0.35;
+          } else if (candidateDuration < 86.5) {
+            canonicalBias = 0.85; // Évite de snapper sur une micro-pause 3s avant la fin du générique
+          }
+        }
+
+        const effectiveScore = dist + roleBonus + canonicalBias;
+        if (effectiveScore < bestScore) {
+          bestScore = effectiveScore;
+          best = pt;
+        }
+      }
+    }
+    return best;
+  };
+
+  const endSilCandidate = pickBestEnd(endSilences);
+  if (endSilCandidate !== null) {
+    adjustedEnd = Math.round(endSilCandidate * 100) / 100;
+    endSnapped = true;
+    if (snapType === 'none') snapType = 'silence';
+  } else {
+    const endBlkCandidate = pickBestEnd(endBlacks);
+    if (endBlkCandidate !== null) {
+      adjustedEnd = Math.round(endBlkCandidate * 100) / 100;
+      endSnapped = true;
+      if (snapType === 'none') snapType = 'black';
+    }
+  }
+
+  // Appliquer dans tous les cas le garde-fou anti-coupure de réplique si adjustedEnd déborde sur le 1er dialogue
+  if (adjustedEnd > maxAllowedEnd && maxAllowedEnd > adjustedStart + SNAP_MIN_INTERVAL_DURATION) {
+    adjustedEnd = Math.round(maxAllowedEnd * 100) / 100;
+    endSnapped = true;
+    if (snapType === 'none') snapType = 'silence';
+  }
+
+  if (adjustedEnd - adjustedStart < SNAP_MIN_INTERVAL_DURATION) {
+    return {
+      adjustedStart: rawStart,
+      adjustedEnd: rawEnd,
+      startSnapped: false,
+      endSnapped: false,
+      snapType: 'none',
+    };
+  }
+
+  return { adjustedStart, adjustedEnd, startSnapped, endSnapped, snapType };
+}
+
 app.get('/api/video/fine-tune-markers', requireInternalToken, (req, res) => {
   try {
     const rawPath = (req.query.filePath as string) || '';
     const rawStart = parseFloat((req.query.start as string) || '');
     const rawEnd = parseFloat((req.query.end as string) || '');
     const searchWindow = parseFloat((req.query.window as string) || '3.5');
+    const firstDialogueAfter = req.query.firstDialogueAfter
+      ? parseFloat(req.query.firstDialogueAfter as string)
+      : undefined;
 
     const filePath = resolveAllowedPath(rawPath, true);
     if (!filePath || isNaN(rawStart) || isNaN(rawEnd)) {
       return res.status(400).json({ success: false, message: 'Paramètres filePath, start et end requis ou non autorisés' });
     }
 
-    const cacheKey = `${filePath.toLowerCase()}::${rawStart.toFixed(2)}::${rawEnd.toFixed(2)}::${searchWindow.toFixed(2)}`;
+    const dlgKey = typeof firstDialogueAfter === 'number' && !isNaN(firstDialogueAfter) ? firstDialogueAfter.toFixed(2) : 'none';
+    const cacheKey = `${filePath.toLowerCase()}::${rawStart.toFixed(2)}::${rawEnd.toFixed(2)}::${searchWindow.toFixed(2)}::${dlgKey}`;
     if (fineTuneMarkersCache.has(cacheKey)) {
       return res.json(fineTuneMarkersCache.get(cacheKey));
     }
@@ -4951,24 +5139,6 @@ app.get('/api/video/fine-tune-markers', requireInternalToken, (req, res) => {
       });
     }
 
-    /** Parse silences from ffmpeg stderr → tableau { start, end } */
-    function parseSilences(stderr: string, rangeMin: number): Array<{ start: number; end: number }> {
-      const startRegex = /silence_start:\s*([\d\.]+)/g;
-      const endRegex = /silence_end:\s*([\d\.]+)/g;
-      const silences: Array<{ start: number; end: number }> = [];
-      let curStart: number | null = null;
-      let m: RegExpExecArray | null;
-      while ((m = startRegex.exec(stderr)) !== null) {
-        curStart = rangeMin + parseFloat(m[1]);
-      }
-      while ((m = endRegex.exec(stderr)) !== null) {
-        const e = rangeMin + parseFloat(m[1]);
-        const s = curStart ?? (e - 0.2);
-        silences.push({ start: s, end: e });
-      }
-      return silences;
-    }
-
     /** Parse black frames from ffmpeg stderr → tableau { start, end } */
     function parseBlackFrames(stderr: string, rangeMin: number): Array<{ start: number; end: number }> {
       const blackRegex = /black_start:([\d\.]+)\s+black_end:([\d\.]+)/g;
@@ -4978,20 +5148,6 @@ app.get('/api/video/fine-tune-markers', requireInternalToken, (req, res) => {
         frames.push({ start: rangeMin + parseFloat(m[1]), end: rangeMin + parseFloat(m[2]) });
       }
       return frames;
-    }
-
-    /** Choisit le candidat le plus proche parmi des points temporels, dans la fenêtre */
-    function nearestPoint(candidates: number[], target: number, window: number): number | null {
-      let best: number | null = null;
-      let bestDist = Infinity;
-      for (const c of candidates) {
-        const d = Math.abs(c - target);
-        if (d < bestDist && d <= window && d > 0.05) {
-          bestDist = d;
-          best = c;
-        }
-      }
-      return best;
     }
 
     (async () => {
@@ -5030,34 +5186,14 @@ app.get('/api/video/fine-tune-markers', requireInternalToken, (req, res) => {
 
       if (isClientClosed) return;
 
-      let adjustedStart = rawStart;
-      let startSnapped = false;
-      if (stderr1) {
-        const silences = parseSilences(stderr1, startRangeMin);
-        const points = silences.flatMap((s) => [s.end, s.start]);
-        const candidate = nearestPoint(points, rawStart, searchWindow);
-        if (candidate !== null) {
-          adjustedStart = Math.round(candidate * 100) / 100;
-          startSnapped = true;
-        }
-      }
+      const startSilences = stderr1 ? parseFfmpegSilences(stderr1, startRangeMin) : [];
+      const endSilences = stderr2 ? parseFfmpegSilences(stderr2, endRangeMin) : [];
 
-      let adjustedEnd = rawEnd;
-      let endSnapped = false;
-      if (stderr2) {
-        const silences = parseSilences(stderr2, endRangeMin);
-        const points = silences.flatMap((s) => [s.start, s.end]);
-        const candidate = nearestPoint(points, rawEnd, searchWindow);
-        if (candidate !== null) {
-          adjustedEnd = Math.round(candidate * 100) / 100;
-          endSnapped = true;
-        }
-      }
+      let startBlacks: Array<{ start: number; end: number }> = [];
+      let endBlacks: Array<{ start: number; end: number }> = [];
 
-      let snapType = startSnapped || endSnapped ? 'silence' : 'none';
-
-      // 3. Fallback blackdetect ciblé uniquement sur la courte fenêtre de 7s (avec downscale 160x90 ultra-léger)
-      if (!startSnapped) {
+      // 3. Fallback blackdetect ciblé uniquement si aucun silence n'a été détecté sur la borne
+      if (startSilences.length === 0) {
         const stderrBlackStart = await runFfmpegWindow(
           [
             '-v', 'info',
@@ -5071,18 +5207,11 @@ app.get('/api/video/fine-tune-markers', requireInternalToken, (req, res) => {
           5000
         );
         if (stderrBlackStart) {
-          const blacks = parseBlackFrames(stderrBlackStart, startRangeMin);
-          const pts = blacks.flatMap((b) => [b.end, b.start]);
-          const c = nearestPoint(pts, rawStart, searchWindow);
-          if (c !== null) {
-            adjustedStart = Math.round(c * 100) / 100;
-            startSnapped = true;
-            if (snapType === 'none') snapType = 'black';
-          }
+          startBlacks = parseBlackFrames(stderrBlackStart, startRangeMin);
         }
       }
 
-      if (!endSnapped && !isClientClosed) {
+      if (endSilences.length === 0 && !isClientClosed) {
         const stderrBlackEnd = await runFfmpegWindow(
           [
             '-v', 'info',
@@ -5096,27 +5225,28 @@ app.get('/api/video/fine-tune-markers', requireInternalToken, (req, res) => {
           5000
         );
         if (stderrBlackEnd) {
-          const blacks = parseBlackFrames(stderrBlackEnd, endRangeMin);
-          const pts = blacks.flatMap((b) => [b.start, b.end]);
-          const c = nearestPoint(pts, rawEnd, searchWindow);
-          if (c !== null) {
-            adjustedEnd = Math.round(c * 100) / 100;
-            endSnapped = true;
-            if (snapType === 'none') snapType = 'black';
-          }
+          endBlacks = parseBlackFrames(stderrBlackEnd, endRangeMin);
         }
       }
 
       if (isClientClosed) return;
 
-      // Valider cohérence (≥ 15s) — même règle C#
-      if (adjustedEnd - adjustedStart < SNAP_MIN_INTERVAL_DURATION) {
-        adjustedStart = rawStart;
-        adjustedEnd = rawEnd;
-        startSnapped = false;
-        endSnapped = false;
-        snapType = 'none';
-      }
+      const {
+        adjustedStart,
+        adjustedEnd,
+        startSnapped,
+        endSnapped,
+        snapType,
+      } = selectAsymmetricSnapBounds(
+        rawStart,
+        rawEnd,
+        searchWindow,
+        startSilences,
+        endSilences,
+        startBlacks,
+        endBlacks,
+        firstDialogueAfter
+      );
 
       const snapped = startSnapped || endSnapped;
       const payload = {
@@ -5153,7 +5283,322 @@ app.get('/api/video/fine-tune-markers', requireInternalToken, (req, res) => {
   }
 });
 
-// Intro Skipper Endpoint 2 : Analyse multilingue des sous-titres (Recap / Preview)
+/**
+ * Analyse avancée du contenu d'un fichier sous-titre (.ass, .ssa, .srt, .vtt) :
+ * - Supporte nativement les événements ASS/SSA (Dialogue:) ET les blocs SRT/WebVTT (-->)
+ * - Détecte l'OP et l'ED via les styles/acteurs ASS (OP, ED, Karaoke, Romaji, Kanji), les balises karaoké (\k) et notes musicales
+ * - Détecte l'OP et l'ED via les trous de dialogues canoniques (~85s à 94s) et les OP démarrant à 0:00
+ * - Extrait le timestamp exact de la 1ère réplique après l'OP/ED (firstDialogueAfterOp / Ed) pour empêcher toute coupure de réplique.
+ */
+export function analyzeSubtitleTextForMarkers(
+  content: string,
+  videoDuration: number = 0
+): {
+  recap: { start: number; end: number } | null;
+  preview: { start: number; end: number } | null;
+  op: { start: number; end: number; method: 'ass-style' | 'lyrics' | 'dialogue-gap' } | null;
+  ed: { start: number; end: number; method: 'ass-style' | 'lyrics' | 'dialogue-gap' } | null;
+  firstDialogueAfterOp: number | null;
+  firstDialogueAfterEd: number | null;
+} {
+  const recapPattern = /(?:^|\b)(?:previously\s+on|last\s+time\s+on|recap|précédemment|dans\s+l'épisode\s+précédent|résumé|anteriormente\s+en|en\s+el\s+episodio\s+anterior|was\s+bisher\s+geschah|in\s+der\s+letzten\s+folge|前回のあらすじ|これまでのあらすじ)\b/i;
+  const previewPattern = /(?:^|\b)(?:next\s+time\s+on|next\s+episode|preview|coming\s+up|prochain\s+épisode|dans\s+le\s+prochain\s+épisode|à\s+suivre|en\s+el\s+próximo\s+episodio|siguiente\s+episodio|adelanto|in\s+der\s+nächsten\s+folge|nächste\s+folge|vorschau|次回予告|次回|つづく)\b/i;
+
+  const opStyleRegex = /(?:^|[\s_\-\(\[])(op|opening|ncop|op[\s_\-]?(?:romaji|kanji|trad|fr|en|jp|kara|lyrics|\d+)|karaoke[\s_\-]?op)(?:$|[\s_\-\)\]])/i;
+  const edStyleRegex = /(?:^|[\s_\-\(\[])(ed|ending|nced|ed[\s_\-]?(?:romaji|kanji|trad|fr|en|jp|kara|lyrics|\d+)|karaoke[\s_\-]?ed)(?:$|[\s_\-\)\]])/i;
+  const songStyleRegex = /(?:^|[\s_\-\(\[])(song|lyrics|karaoke|romaji|kanji|paroles|chanson|theme|k[\s_\-]?timed)(?:$|[\s_\-\)\]])/i;
+  const signStyleRegex = /(?:^|[\s_\-\(\[])(sign|signs|typeset|ts|title|eyecatch|logo|board|caption|screen|note)(?:$|[\s_\-\)\]])/i;
+
+  interface ParsedCue {
+    start: number;
+    end: number;
+    style: string;
+    actor: string;
+    rawText: string;
+    cleanText: string;
+    isOpSong: boolean;
+    isEdSong: boolean;
+    isGenericSong: boolean;
+    isSign: boolean;
+  }
+
+  function toSec(ts: string): number {
+    const parts = ts.trim().replace(',', '.').split(':');
+    if (parts.length === 3) return parseFloat(parts[0]) * 3600 + parseFloat(parts[1]) * 60 + parseFloat(parts[2]);
+    if (parts.length === 2) return parseFloat(parts[0]) * 60 + parseFloat(parts[1]);
+    return 0;
+  }
+
+  const cues: ParsedCue[] = [];
+  const lines = content.split(/\r?\n/);
+  const cueTimeRegex = /(?<start>\d{1,2}:\d{2}:\d{2}[\.,]\d{1,3})\s*-->\s*(?<end>\d{1,2}:\d{2}:\d{2}[\.,]\d{1,3})/;
+  const assDialogueRegex = /^Dialogue:\s*\d+\s*,\s*(\d+:\d{2}:\d{2}[\.,]\d{1,3})\s*,\s*(\d+:\d{2}:\d{2}[\.,]\d{1,3})\s*,\s*([^,]*)\s*,\s*([^,]*)\s*,\s*[^,]*\s*,\s*[^,]*\s*,\s*[^,]*\s*,\s*([^,]*)\s*,(.*)$/i;
+
+  let curStart = -1;
+  let curEnd = -1;
+  let curTextLines: string[] = [];
+
+  const flushVttCue = () => {
+    if (curStart >= 0 && curTextLines.length > 0) {
+      const rawText = curTextLines.join(' ').trim();
+      const cleanText = rawText.replace(/\{[^\}]*\}/g, '').replace(/<[^>]*>/g, '').trim();
+      if (cleanText) {
+        const hasMusicalNotes = /[♪♫♬]/.test(rawText);
+        const hasKaraokeTags = /\\k[fo]?/i.test(rawText);
+        cues.push({
+          start: curStart,
+          end: curEnd,
+          style: '',
+          actor: '',
+          rawText,
+          cleanText,
+          isOpSong: false,
+          isEdSong: false,
+          isGenericSong: hasMusicalNotes || hasKaraokeTags,
+          isSign: false,
+        });
+      }
+    }
+    curStart = -1;
+    curEnd = -1;
+    curTextLines = [];
+  };
+
+  for (const line of lines) {
+    const assMatch = assDialogueRegex.exec(line);
+    if (assMatch) {
+      flushVttCue();
+      const start = toSec(assMatch[1]);
+      const end = toSec(assMatch[2]);
+      const style = (assMatch[3] || '').trim();
+      const actor = (assMatch[4] || '').trim();
+      const effect = (assMatch[5] || '').trim();
+      const rawText = (assMatch[6] || '').trim();
+      const cleanText = rawText
+        .replace(/\{[^\}]*\}/g, '')
+        .replace(/\\[Nnh]/g, ' ')
+        .trim();
+      if (!cleanText || end <= start) continue;
+
+      const metaCombined = `${style} ${actor} ${effect}`;
+      const isOpSong = opStyleRegex.test(metaCombined);
+      const isEdSong = edStyleRegex.test(metaCombined);
+      const hasKaraoke = /\\k[fo]?/i.test(rawText) || /karaoke/i.test(effect);
+      const hasNotes = /[♪♫♬]/.test(rawText);
+      const isGenericSong = isOpSong || isEdSong || songStyleRegex.test(metaCombined) || hasKaraoke || hasNotes;
+      const isSign =
+        !isGenericSong &&
+        (signStyleRegex.test(metaCombined) || (/\\(?:pos|move|org|p1)\b/.test(rawText) && cleanText.length < 18));
+
+      cues.push({
+        start,
+        end,
+        style,
+        actor,
+        rawText,
+        cleanText,
+        isOpSong,
+        isEdSong,
+        isGenericSong,
+        isSign,
+      });
+      continue;
+    }
+
+    const vttMatch = cueTimeRegex.exec(line);
+    if (vttMatch) {
+      flushVttCue();
+      curStart = toSec(vttMatch.groups!.start);
+      curEnd = toSec(vttMatch.groups!.end);
+      continue;
+    }
+
+    if (curStart >= 0) {
+      if (!line.trim()) {
+        flushVttCue();
+      } else {
+        curTextLines.push(line.trim());
+      }
+    }
+  }
+  flushVttCue();
+
+  if (cues.length === 0) {
+    return {
+      recap: null,
+      preview: null,
+      op: null,
+      ed: null,
+      firstDialogueAfterOp: null,
+      firstDialogueAfterEd: null,
+    };
+  }
+
+  cues.sort((a, b) => a.start - b.start);
+
+  let recap: { start: number; end: number } | null = null;
+  let preview: { start: number; end: number } | null = null;
+
+  for (const cue of cues) {
+    if (!recap && cue.start < 240 && recapPattern.test(cue.cleanText)) {
+      recap = { start: Math.max(0, cue.start - 2), end: cue.end + 5 };
+    } else if (!preview && cue.start > 480 && previewPattern.test(cue.cleanText)) {
+      preview = { start: cue.start, end: cue.end + 30 };
+    }
+  }
+
+  // Isoler les répliques de dialogue parlées (hors chansons et hors panneaux graphiques)
+  const dialogueCues = cues.filter((c) => !c.isOpSong && !c.isEdSong && !c.isGenericSong && !c.isSign);
+
+  let op: { start: number; end: number; method: 'ass-style' | 'lyrics' | 'dialogue-gap' } | null = null;
+  let ed: { start: number; end: number; method: 'ass-style' | 'lyrics' | 'dialogue-gap' } | null = null;
+
+  // 1. Détection par styles ASS / Karaoké / Paroles pour l'Opening (zone 0s -> 390s)
+  const opSongCues = cues.filter((c) => c.start <= 390 && (c.isOpSong || (c.isGenericSong && !c.isEdSong)));
+  if (opSongCues.length >= 3) {
+    const firstLyric = opSongCues[0].start;
+    const lastLyric = Math.max(...opSongCues.map((c) => c.end));
+    const lyricSpan = lastLyric - firstLyric;
+    if (lyricSpan >= 35 && lyricSpan <= 115) {
+      // Vérifier si un trou de dialogues de ~85-94s encadre ces paroles (pour inclure l'intro/outro instrumentale de la chanson)
+      const prevDlg = [...dialogueCues].reverse().find((d) => d.end <= firstLyric + 1.5);
+      const nextDlg = dialogueCues.find((d) => d.start >= lastLyric - 1.5);
+
+      let opStart = firstLyric;
+      let opEnd = lastLyric;
+
+      if (!prevDlg && firstLyric <= 16 && nextDlg && nextDlg.start >= 85 && nextDlg.start <= 94) {
+        opStart = 0;
+        opEnd = Math.round((nextDlg.start - 0.15) * 100) / 100;
+      } else if (prevDlg && nextDlg) {
+        const dlgGap = nextDlg.start - prevDlg.end;
+        if (dlgGap >= 85.0 && dlgGap <= 94.5) {
+          opStart = Math.round((prevDlg.end + 0.2) * 100) / 100;
+          opEnd = Math.round((nextDlg.start - 0.15) * 100) / 100;
+        } else if (nextDlg.start - opStart >= 87.5 && nextDlg.start - opStart <= 92.5) {
+          opEnd = Math.round((nextDlg.start - 0.15) * 100) / 100;
+        }
+      }
+
+      if (opEnd - opStart >= 55 && opEnd - opStart <= 120) {
+        op = {
+          start: Math.round(opStart * 100) / 100,
+          end: Math.round(opEnd * 100) / 100,
+          method: opSongCues.some((c) => c.isOpSong) ? 'ass-style' : 'lyrics',
+        };
+      }
+    }
+  }
+
+  // 2. Détection par Trou de Dialogues Canonique (~85s à 94s) pour l'Opening si non trouvé par paroles
+  if (!op && dialogueCues.length >= 5) {
+    // Cas A : OP démarrant à 0:00 (aucun dialogue pendant les ~88-92 premières secondes)
+    const firstDlg = dialogueCues[0];
+    if (firstDlg.start >= 87.0 && firstDlg.start <= 92.5) {
+      op = {
+        start: 0,
+        end: Math.round((firstDlg.start - 0.15) * 100) / 100,
+        method: 'dialogue-gap',
+      };
+    } else {
+      // Cas B : Cold Open suivi d'un trou de dialogues canonique (85.0s à 94.0s) dans les 5 premières minutes
+      let bestGapScore = Infinity;
+      for (let i = 0; i < dialogueCues.length - 1; i++) {
+        const prevEnd = dialogueCues[i].end;
+        const nextStart = dialogueCues[i + 1].start;
+        if (prevEnd < 10) continue;
+        if (prevEnd > 300) break;
+        const gap = nextStart - prevEnd;
+        if (gap >= 85.0 && gap <= 94.0) {
+          const distFromCanonical = Math.abs(gap - 89.8);
+          if (distFromCanonical < bestGapScore) {
+            bestGapScore = distFromCanonical;
+            op = {
+              start: Math.round((prevEnd + 0.2) * 100) / 100,
+              end: Math.round((nextStart - 0.15) * 100) / 100,
+              method: 'dialogue-gap',
+            };
+          }
+        }
+      }
+    }
+  }
+
+  // 3. Détection de l'Ending (ED) par styles ASS / Paroles ou Trou de Dialogues en fin d'épisode
+  const edZoneMin = videoDuration > 600 ? Math.max(480, videoDuration - 360) : 900;
+  const edSongCues = cues.filter((c) => c.start >= edZoneMin && (c.isEdSong || (c.isGenericSong && !c.isOpSong)));
+  if (edSongCues.length >= 3) {
+    const firstLyric = edSongCues[0].start;
+    const lastLyric = Math.max(...edSongCues.map((c) => c.end));
+    const lyricSpan = lastLyric - firstLyric;
+    if (lyricSpan >= 35 && lyricSpan <= 115) {
+      const prevDlg = [...dialogueCues].reverse().find((d) => d.end <= firstLyric + 1.5);
+      const nextDlg = dialogueCues.find((d) => d.start >= lastLyric - 1.5);
+      let edStart = firstLyric;
+      let edEnd = lastLyric;
+
+      if (prevDlg && nextDlg) {
+        const dlgGap = nextDlg.start - prevDlg.end;
+        if (dlgGap >= 85.0 && dlgGap <= 94.5) {
+          edStart = Math.round((prevDlg.end + 0.2) * 100) / 100;
+          edEnd = Math.round((nextDlg.start - 0.15) * 100) / 100;
+        }
+      } else if (prevDlg && videoDuration > 0 && videoDuration - prevDlg.end >= 86 && videoDuration - prevDlg.end <= 94) {
+        edStart = Math.round((prevDlg.end + 0.2) * 100) / 100;
+        edEnd = Math.round(videoDuration * 100) / 100;
+      }
+
+      if (edEnd - edStart >= 55 && edEnd - edStart <= 120) {
+        ed = {
+          start: Math.round(edStart * 100) / 100,
+          end: Math.round(edEnd * 100) / 100,
+          method: edSongCues.some((c) => c.isEdSong) ? 'ass-style' : 'lyrics',
+        };
+      }
+    }
+  }
+
+  if (!ed && dialogueCues.length >= 5) {
+    for (let i = dialogueCues.length - 2; i >= 0; i--) {
+      const prevEnd = dialogueCues[i].end;
+      const nextStart = dialogueCues[i + 1].start;
+      if (prevEnd < edZoneMin) break;
+      const gap = nextStart - prevEnd;
+      if (gap >= 85.0 && gap <= 94.0) {
+        ed = {
+          start: Math.round((prevEnd + 0.2) * 100) / 100,
+          end: Math.round((nextStart - 0.15) * 100) / 100,
+          method: 'dialogue-gap',
+        };
+        break;
+      }
+    }
+  }
+
+  // 4. Calculer la première réplique parlée après l'OP et après l'ED (garde-fou anti-coupure de réplique)
+  let firstDialogueAfterOp: number | null = null;
+  if (op) {
+    const dlgAfter = dialogueCues.find((d) => d.start >= op!.end - 2.5);
+    if (dlgAfter) firstDialogueAfterOp = Math.round(dlgAfter.start * 100) / 100;
+  }
+
+  let firstDialogueAfterEd: number | null = null;
+  if (ed) {
+    const dlgAfter = dialogueCues.find((d) => d.start >= ed!.end - 2.5);
+    if (dlgAfter) firstDialogueAfterEd = Math.round(dlgAfter.start * 100) / 100;
+  }
+
+  return {
+    recap,
+    preview,
+    op,
+    ed,
+    firstDialogueAfterOp,
+    firstDialogueAfterEd,
+  };
+}
+
+// Intro Skipper Endpoint 2 : Analyse multilingue des sous-titres (OP / ED / Recap / Preview / Garde-fou Dialogues)
 app.get('/api/video/subtitles/analyze', requireInternalToken, async (req, res) => {
   try {
     const rawPath = (req.query.filePath as string) || '';
@@ -5162,60 +5607,36 @@ app.get('/api/video/subtitles/analyze', requireInternalToken, async (req, res) =
       return res.status(400).json({ success: false, message: 'Paramètre filePath requis ou non autorisé' });
     }
 
+    const probeData = await getCachedFfprobeData(filePath);
+    const formatDuration = parseFloat(probeData?.format?.duration || '0') || 0;
+
     const dir = path.dirname(filePath);
     const baseName = path.parse(filePath).name;
-    const sidecars = ['.srt', '.ass', '.ssa', '.vtt']
+    // Prioriser .ass et .ssa car ils contiennent les styles OP/ED et le karaoké natif
+    const sidecars = ['.ass', '.ssa', '.srt', '.vtt']
       .map((ext) => path.join(dir, baseName + ext))
       .filter((p) => fs.existsSync(p));
-
-    const recapPattern = /(?:^|\b)(?:previously\s+on|last\s+time\s+on|recap|précédemment|dans\s+l'épisode\s+précédent|résumé|anteriormente\s+en|en\s+el\s+episodio\s+anterior|was\s+bisher\s+geschah|in\s+der\s+letzten\s+folge|前回のあらすじ|これまでのあらすじ)\b/i;
-    const previewPattern = /(?:^|\b)(?:next\s+time\s+on|next\s+episode|preview|coming\s+up|prochain\s+épisode|dans\s+le\s+prochain\s+épisode|à\s+suivre|en\s+el\s+próximo\s+episodio|siguiente\s+episodio|adelanto|in\s+der\s+nächsten\s+folge|nächste\s+folge|vorschau|次回予告|次回|つづく)\b/i;
-
-    function parseCues(content: string) {
-      const cueTimeRegex = /(?<start>\d{1,2}:\d{2}:\d{2}[\.,]\d{3})\s*-->\s*(?<end>\d{1,2}:\d{2}:\d{2}[\.,]\d{3})/;
-      const lines = content.split(/\r?\n/);
-      let curStart = -1;
-      let curEnd = -1;
-      let recap: { start: number; end: number } | null = null;
-      let preview: { start: number; end: number } | null = null;
-
-      function toSec(ts: string) {
-        const parts = ts.replace(',', '.').split(':');
-        if (parts.length === 3) return parseFloat(parts[0]) * 3600 + parseFloat(parts[1]) * 60 + parseFloat(parts[2]);
-        if (parts.length === 2) return parseFloat(parts[0]) * 60 + parseFloat(parts[1]);
-        return 0;
-      }
-
-      for (const line of lines) {
-        const m = cueTimeRegex.exec(line);
-        if (m) {
-          curStart = toSec(m.groups!.start);
-          curEnd = toSec(m.groups!.end);
-          continue;
-        }
-        if (curStart >= 0 && line.trim()) {
-          if (!recap && curStart < 240 && recapPattern.test(line)) {
-            recap = { start: Math.max(0, curStart - 2), end: curEnd + 5 };
-          } else if (!preview && curStart > 480 && previewPattern.test(line)) {
-            preview = { start: curStart, end: curEnd + 30 };
-          }
-        }
-      }
-      return { recap, preview };
-    }
 
     // Tester les fichiers sidecars
     for (const subFile of sidecars) {
       try {
         const content = await fs.promises.readFile(subFile, 'utf-8');
-        const { recap, preview } = parseCues(content);
-        if (recap || preview) {
+        const analyzed = analyzeSubtitleTextForMarkers(content, formatDuration);
+        if (analyzed.recap || analyzed.preview || analyzed.op || analyzed.ed) {
           return res.json({
             success: true,
-            recapStart: recap?.start ?? null,
-            recapEnd: recap?.end ?? null,
-            previewStart: preview?.start ?? null,
-            previewEnd: preview?.end ?? null,
+            recapStart: analyzed.recap?.start ?? null,
+            recapEnd: analyzed.recap?.end ?? null,
+            previewStart: analyzed.preview?.start ?? null,
+            previewEnd: analyzed.preview?.end ?? null,
+            opStart: analyzed.op?.start ?? null,
+            opEnd: analyzed.op?.end ?? null,
+            opMethod: analyzed.op?.method ?? null,
+            edStart: analyzed.ed?.start ?? null,
+            edEnd: analyzed.ed?.end ?? null,
+            edMethod: analyzed.ed?.method ?? null,
+            firstDialogueAfterOp: analyzed.firstDialogueAfterOp,
+            firstDialogueAfterEd: analyzed.firstDialogueAfterEd,
             source: path.basename(subFile),
           });
         }
@@ -5223,48 +5644,240 @@ app.get('/api/video/subtitles/analyze', requireInternalToken, async (req, res) =
     }
 
     // Vérifier via le cache ffprobe si une piste de sous-titre intégrée existe avant tout spawn ffmpeg
-    const probeData = await getCachedFfprobeData(filePath);
     const streams = Array.isArray(probeData?.streams) ? probeData.streams : [];
     const firstSubStream = streams.find((s: any) => s.codec_type === 'subtitle');
 
     if (probeData && !firstSubStream) {
-      return res.json({ success: true, recapStart: null, recapEnd: null, previewStart: null, previewEnd: null });
+      return res.json({
+        success: true,
+        recapStart: null,
+        recapEnd: null,
+        previewStart: null,
+        previewEnd: null,
+        opStart: null,
+        opEnd: null,
+        edStart: null,
+        edEnd: null,
+        firstDialogueAfterOp: null,
+        firstDialogueAfterEd: null,
+      });
     }
 
     const mapSpec = firstSubStream && typeof firstSubStream.index === 'number' ? `0:${firstSubStream.index}` : '0:s:0?';
     const stdout = await extractEmbeddedWebVttCached(filePath, mapSpec);
     if (stdout) {
-      const { recap, preview } = parseCues(stdout);
-      if (recap || preview) {
+      const analyzed = analyzeSubtitleTextForMarkers(stdout, formatDuration);
+      if (analyzed.recap || analyzed.preview || analyzed.op || analyzed.ed) {
         return res.json({
           success: true,
-          recapStart: recap?.start ?? null,
-          recapEnd: recap?.end ?? null,
-          previewStart: preview?.start ?? null,
-          previewEnd: preview?.end ?? null,
+          recapStart: analyzed.recap?.start ?? null,
+          recapEnd: analyzed.recap?.end ?? null,
+          previewStart: analyzed.preview?.start ?? null,
+          previewEnd: analyzed.preview?.end ?? null,
+          opStart: analyzed.op?.start ?? null,
+          opEnd: analyzed.op?.end ?? null,
+          opMethod: analyzed.op?.method ?? null,
+          edStart: analyzed.ed?.start ?? null,
+          edEnd: analyzed.ed?.end ?? null,
+          edMethod: analyzed.ed?.method ?? null,
+          firstDialogueAfterOp: analyzed.firstDialogueAfterOp,
+          firstDialogueAfterEd: analyzed.firstDialogueAfterEd,
           source: 'embedded',
         });
       }
     }
 
-    return res.json({ success: true, recapStart: null, recapEnd: null, previewStart: null, previewEnd: null });
+    return res.json({
+      success: true,
+      recapStart: null,
+      recapEnd: null,
+      previewStart: null,
+      previewEnd: null,
+      opStart: null,
+      opEnd: null,
+      edStart: null,
+      edEnd: null,
+      firstDialogueAfterOp: null,
+      firstDialogueAfterEd: null,
+    });
   } catch (err: any) {
     return res.json({ success: false, error: err?.message });
   }
 });
 
-// Intro Skipper Endpoint 3 : Corrélation acoustique locale multi-épisodes
-// Constantes partagées avec C# MatchAudioOpeningAsync
+// Intro Skipper Endpoint 3 : Corrélation acoustique locale multi-épisodes (OP + ED, sommes préfixées O(1), affinage 50ms et bornage local 3s)
 const ACOUSTIC_PEARSON_THRESHOLD = 0.70; // Seuil de corrélation de Pearson
-const ACOUSTIC_WINDOW_SAMPLES = 1800;    // 90 secondes × 20 Hz
-const ACOUSTIC_SAMPLE_RATE_HZ = 20;      // Après sous-échantillonnage (200 Hz / 10)
-const ACOUSTIC_OP_MIN_DURATION_S = 60;   // Durée minimale raisonnable d'un OP
-const ACOUSTIC_OP_MAX_DURATION_S = 120;  // Durée maximale raisonnable d'un OP
-const ACOUSTIC_ENVELOPE_DURATION_S = 240; // Plage d'extraction (4 minutes)
+const ACOUSTIC_BASE_WINDOW_SAMPLES = 1720; // 86 secondes × 20 Hz (fenêtre de base pour capter les OP de 88-90s)
+const ACOUSTIC_LOCAL_EDGE_SAMPLES = 60;    // Fenêtre locale glissante de 3.0s (60 échantillons à 20 Hz) pour borner start/end sans débordement
+const ACOUSTIC_SAMPLE_RATE_HZ = 20;        // Après sous-échantillonnage (200 Hz / 10)
+const ACOUSTIC_OP_MIN_DURATION_S = 60;     // Durée minimale raisonnable d'un OP/ED
+const ACOUSTIC_OP_MAX_DURATION_S = 115;    // Durée maximale raisonnable d'un OP/ED
+const ACOUSTIC_ENVELOPE_DURATION_S = 240;  // Plage d'extraction (4 minutes)
 
 const acousticEnvelopeCache = new Map<string, { mtimeMs: number; env: Float32Array }>();
 const acousticEnvelopeInFlight = new Map<string, Promise<Float32Array>>();
-const MAX_ACOUSTIC_ENVELOPE_CACHE = 24;
+const MAX_ACOUSTIC_ENVELOPE_CACHE = 32;
+
+/**
+ * Algorithme de corrélation acoustique haute précision entre deux enveloppes RMS à 20 Hz :
+ * - Recherche dès t = 0.0s (capte les Openings sans Cold Open)
+ * - Sommes préfixées O(1) pour les moyennes et variances
+ * - Passe 1 (pas 0.5s) + Passe 2 d'affinage local au pas de 50ms (1 échantillon)
+ * - Bornage de début et de fin par corrélation locale glissante (fenêtre de 3.0s) pour ne jamais déborder dans le dialogue post-OP.
+ */
+export async function findAcousticCorrelatedInterval(
+  env1: Float32Array,
+  env2: Float32Array,
+  shouldAbort?: () => boolean
+): Promise<{ start: number; end: number; confidence: number } | null> {
+  if (env1.length < ACOUSTIC_BASE_WINDOW_SAMPLES + 20 || env2.length < ACOUSTIC_BASE_WINDOW_SAMPLES + 20) {
+    return null;
+  }
+
+  // Pré-calcul des sommes préfixées O(1) pour env1 et env2
+  const n1 = env1.length;
+  const n2 = env2.length;
+  const ps1 = new Float64Array(n1 + 1);
+  const psSq1 = new Float64Array(n1 + 1);
+  for (let i = 0; i < n1; i++) {
+    const v = env1[i];
+    ps1[i + 1] = ps1[i] + v;
+    psSq1[i + 1] = psSq1[i] + v * v;
+  }
+
+  const ps2 = new Float64Array(n2 + 1);
+  const psSq2 = new Float64Array(n2 + 1);
+  for (let i = 0; i < n2; i++) {
+    const v = env2[i];
+    ps2[i + 1] = ps2[i] + v;
+    psSq2[i + 1] = psSq2[i] + v * v;
+  }
+
+  function fastPearson(oA: number, oB: number, len: number): number {
+    if (oA < 0 || oB < 0 || oA + len > n1 || oB + len > n2 || len <= 0) return 0;
+    const sA = ps1[oA + len] - ps1[oA];
+    const sAA = psSq1[oA + len] - psSq1[oA];
+    const sB = ps2[oB + len] - ps2[oB];
+    const sBB = psSq2[oB + len] - psSq2[oB];
+
+    const mA = sA / len;
+    const mB = sB / len;
+    const vA = sAA / len - mA * mA;
+    const vB = sBB / len - mB * mB;
+    if (vA <= 1e-7 || vB <= 1e-7) return 0;
+
+    let sAB = 0;
+    for (let i = 0; i < len; i++) {
+      sAB += env1[oA + i] * env2[oB + i];
+    }
+    return (sAB / len - mA * mB) / Math.sqrt(vA * vB);
+  }
+
+  // Passe 1 : Recherche grossière au pas de 0.5s (10 échantillons) dès t = 0 (0.0s)
+  let bestScore = 0;
+  let bestT1 = -1;
+  let bestT2 = -1;
+  let outerCount = 0;
+  const coarseStep = 10; // 0.5s à 20 Hz
+
+  for (let t1 = 0; t1 <= n1 - ACOUSTIC_BASE_WINDOW_SAMPLES; t1 += coarseStep) {
+    if (++outerCount % 16 === 0) {
+      await new Promise<void>((r) => setImmediate(r));
+      if (shouldAbort?.()) return null;
+    }
+    for (let t2 = 0; t2 <= n2 - ACOUSTIC_BASE_WINDOW_SAMPLES; t2 += coarseStep) {
+      const corr = fastPearson(t1, t2, ACOUSTIC_BASE_WINDOW_SAMPLES);
+      if (corr > bestScore) {
+        bestScore = corr;
+        bestT1 = t1;
+        bestT2 = t2;
+      }
+    }
+  }
+
+  if (bestScore < ACOUSTIC_PEARSON_THRESHOLD || bestT1 < 0 || bestT2 < 0) {
+    return null;
+  }
+
+  // Passe 2 : Affinage local à 50 ms (1 échantillon) autour du pic (bestT1, bestT2)
+  const fineRadius = coarseStep;
+  const minT1 = Math.max(0, bestT1 - fineRadius);
+  const maxT1 = Math.min(n1 - ACOUSTIC_BASE_WINDOW_SAMPLES, bestT1 + fineRadius);
+  const minT2 = Math.max(0, bestT2 - fineRadius);
+  const maxT2 = Math.min(n2 - ACOUSTIC_BASE_WINDOW_SAMPLES, bestT2 + fineRadius);
+
+  for (let t1 = minT1; t1 <= maxT1; t1++) {
+    for (let t2 = minT2; t2 <= maxT2; t2++) {
+      const corr = fastPearson(t1, t2, ACOUSTIC_BASE_WINDOW_SAMPLES);
+      if (corr > bestScore) {
+        bestScore = corr;
+        bestT1 = t1;
+        bestT2 = t2;
+      }
+    }
+  }
+
+  // Passe 3 : Bornage précis du début et de la fin par corrélation locale glissante (fenêtre 3.0s = 60 échantillons)
+  // 3a. Reculer le début si la musique corrélée avait commencé légèrement avant bestT1
+  const edgeWin = ACOUSTIC_LOCAL_EDGE_SAMPLES;
+  while (bestT1 >= 2 && bestT2 >= 2) {
+    const prevEdgeCorr = fastPearson(bestT1 - 2, bestT2 - 2, edgeWin);
+    if (prevEdgeCorr < 0.58) break;
+    bestT1 -= 2;
+    bestT2 -= 2;
+  }
+  // Si le bord initial de 3s est décorrélé (ex: fin du Cold Open incluse au début de la fenêtre de 86s), avancer bestT1
+  let trimStartCount = 0;
+  while (
+    trimStartCount < 80 &&
+    bestT1 + edgeWin < n1 &&
+    bestT2 + edgeWin < n2 &&
+    fastPearson(bestT1, bestT2, edgeWin) < 0.45
+  ) {
+    bestT1 += 2;
+    bestT2 += 2;
+    trimStartCount += 2;
+  }
+
+  // 3b. Détection précise de la fin (sans dilution par les 86 premières secondes !)
+  let extLen = ACOUSTIC_BASE_WINDOW_SAMPLES - trimStartCount;
+  const maxExtLen = Math.round(ACOUSTIC_OP_MAX_DURATION_S * ACOUSTIC_SAMPLE_RATE_HZ);
+  const minExtLen = Math.round(ACOUSTIC_OP_MIN_DURATION_S * ACOUSTIC_SAMPLE_RATE_HZ);
+
+  // Si la fin actuelle de la fenêtre de base a déjà dépassé la fin de l'OP (ex: OP de 85s), reculer extLen
+  const frontierWin = 24; // 1.2s à 20 Hz : fenêtre frontière fine pour stopper dès la fin de la musique
+  while (
+    extLen > minExtLen &&
+    fastPearson(bestT1 + extLen - frontierWin, bestT2 + extLen - frontierWin, frontierWin) < 0.65
+  ) {
+    extLen -= 2;
+  }
+
+  // Avancer par pas de 100ms (2 échantillons) tant que la frontière de 1.2s reste fortement corrélée (>= 0.68)
+  while (
+    extLen + 2 <= maxExtLen &&
+    bestT1 + extLen + 2 <= n1 &&
+    bestT2 + extLen + 2 <= n2
+  ) {
+    const tailStart1 = bestT1 + extLen + 2 - frontierWin;
+    const tailStart2 = bestT2 + extLen + 2 - frontierWin;
+    const localTailCorr = fastPearson(tailStart1, tailStart2, frontierWin);
+    if (localTailCorr < 0.68) break;
+    extLen += 2;
+  }
+
+  const startSec = Math.round((bestT1 / ACOUSTIC_SAMPLE_RATE_HZ) * 10) / 10;
+  const rawEndSec = (bestT1 + extLen) / ACOUSTIC_SAMPLE_RATE_HZ;
+  const endSec = Math.round(
+    Math.max(startSec + ACOUSTIC_OP_MIN_DURATION_S, Math.min(rawEndSec, startSec + ACOUSTIC_OP_MAX_DURATION_S)) * 10
+  ) / 10;
+
+  return {
+    start: startSec,
+    end: endSec,
+    confidence: Math.round(bestScore * 100) / 100,
+  };
+}
 
 /** Choisit les épisodes frères les plus pertinents (même préfixe, épisode voisin), max 2 */
 function chooseSiblings(filePath: string, allSiblings: string[]): string[] {
@@ -5329,9 +5942,9 @@ app.get('/api/video/acoustic-match', requireInternalToken, (req, res) => {
       isRequestAborted = true;
     });
 
-    // Extraction 240s PCM float à 200 Hz → enveloppe RMS à 20 Hz (avec cache LRU par fichier)
-    async function extractEnvelope(target: string): Promise<Float32Array> {
-      const key = path.resolve(target).toLowerCase();
+    // Extraction d'une plage PCM float à 200 Hz → enveloppe RMS à 20 Hz (avec cache LRU par fichier et offset)
+    async function extractEnvelopeSegment(target: string, startOffsetSec: number, durationSec: number): Promise<Float32Array> {
+      const key = `${path.resolve(target).toLowerCase()}::${Math.round(startOffsetSec)}::${Math.round(durationSec)}`;
       let mtimeMs = 0;
       try {
         const st = await fs.promises.stat(target);
@@ -5352,7 +5965,7 @@ app.get('/api/video/acoustic-match', requireInternalToken, (req, res) => {
 
       const promise = new Promise<Float32Array>((resolve) => {
         const args = [
-          '-v', 'quiet', '-ss', '0', '-t', String(ACOUSTIC_ENVELOPE_DURATION_S),
+          '-v', 'quiet', '-ss', String(Math.max(0, Math.round(startOffsetSec))), '-t', String(durationSec),
           '-i', target, '-vn', '-sn', '-ac', '1', '-ar', '200', '-f', 'f32le', '-',
         ];
         execFile(ffmpegPath, args, { encoding: 'buffer', maxBuffer: 10 * 1024 * 1024, timeout: 10000 }, (err, stdout) => {
@@ -5380,18 +5993,6 @@ app.get('/api/video/acoustic-match', requireInternalToken, (req, res) => {
       return promise;
     }
 
-    function pearson(a: Float32Array, oA: number, b: Float32Array, oB: number, len: number): number {
-      let sA = 0, sB = 0, sAA = 0, sBB = 0, sAB = 0;
-      for (let i = 0; i < len; i++) {
-        const va = a[oA + i], vb = b[oB + i];
-        sA += va; sB += vb; sAA += va * va; sBB += vb * vb; sAB += va * vb;
-      }
-      const mA = sA / len, mB = sB / len;
-      const vA = sAA / len - mA * mA, vB = sBB / len - mB * mB;
-      if (vA <= 1e-7 || vB <= 1e-7) return 0;
-      return (sAB / len - mA * mB) / Math.sqrt(vA * vB);
-    }
-
     // Essai des candidats frères dans l'ordre sans jamais bloquer l'Event Loop Node.js
     const tryNext = async (idx: number): Promise<void> => {
       if (isRequestAborted) return;
@@ -5401,62 +6002,51 @@ app.get('/api/video/acoustic-match', requireInternalToken, (req, res) => {
       }
       const sibling = siblings[idx];
 
-      const [env1, env2] = await Promise.all([extractEnvelope(filePath), extractEnvelope(sibling)]);
+      const [env1, env2] = await Promise.all([
+        extractEnvelopeSegment(filePath, 0, ACOUSTIC_ENVELOPE_DURATION_S),
+        extractEnvelopeSegment(sibling, 0, ACOUSTIC_ENVELOPE_DURATION_S),
+      ]);
       if (isRequestAborted) return;
 
-      if (env1.length < 100 || env2.length < 100) {
-        return tryNext(idx + 1);
-      }
+      const opMatch = await findAcousticCorrelatedInterval(env1, env2, () => isRequestAborted);
+      if (isRequestAborted) return;
 
-      let bestScore = 0;
-      let bestT1 = -1;
-      let bestT2 = -1;
-      let outerCount = 0;
-
-      for (let t1 = 200; t1 <= env1.length - ACOUSTIC_WINDOW_SAMPLES; t1 += 20) {
-        if (++outerCount % 12 === 0) {
-          // Céder l'Event Loop régulièrement pour laisser passer les requêtes HTTP Range du lecteur vidéo
-          await new Promise<void>((r) => setImmediate(r));
-          if (isRequestAborted) return;
-        }
-        for (let t2 = 200; t2 <= env2.length - ACOUSTIC_WINDOW_SAMPLES; t2 += 20) {
-          const corr = pearson(env1, t1, env2, t2, ACOUSTIC_WINDOW_SAMPLES);
-          if (corr > bestScore) {
-            bestScore = corr;
-            bestT1 = t1;
-            bestT2 = t2;
+      // Tenter également la corrélation de l'Ending (ED) sur les 260 dernières secondes si la durée est connue (>= 600s)
+      let edStart: number | null = null;
+      let edEnd: number | null = null;
+      try {
+        const [probe1, probe2] = await Promise.all([
+          getCachedFfprobeData(filePath),
+          getCachedFfprobeData(sibling),
+        ]);
+        const dur1 = parseFloat(probe1?.format?.duration || '0') || 0;
+        const dur2 = parseFloat(probe2?.format?.duration || '0') || 0;
+        if (dur1 >= 600 && dur2 >= 600 && !isRequestAborted) {
+          const tailWindowSec = 260;
+          const tailOffset1 = Math.max(0, Math.floor(dur1 - tailWindowSec));
+          const tailOffset2 = Math.max(0, Math.floor(dur2 - tailWindowSec));
+          const [tailEnv1, tailEnv2] = await Promise.all([
+            extractEnvelopeSegment(filePath, tailOffset1, tailWindowSec),
+            extractEnvelopeSegment(sibling, tailOffset2, tailWindowSec),
+          ]);
+          if (!isRequestAborted && tailEnv1.length > 100 && tailEnv2.length > 100) {
+            const edMatch = await findAcousticCorrelatedInterval(tailEnv1, tailEnv2, () => isRequestAborted);
+            if (edMatch) {
+              edStart = Math.round((tailOffset1 + edMatch.start) * 10) / 10;
+              edEnd = Math.round(Math.min(dur1, tailOffset1 + edMatch.end) * 10) / 10;
+            }
           }
         }
-      }
+      } catch {}
 
-      if (bestScore >= ACOUSTIC_PEARSON_THRESHOLD && bestT1 >= 0) {
-        const opStart = Math.round((bestT1 / ACOUSTIC_SAMPLE_RATE_HZ) * 10) / 10;
-
-        // Estimer la fin de l'OP : étendre la fenêtre corrélée tant que Pearson ≥ seuil
-        // Pas de 1 seconde (20 échantillons à 20 Hz)
-        const stepSamples = ACOUSTIC_SAMPLE_RATE_HZ;
-        let extLen = ACOUSTIC_WINDOW_SAMPLES;
-        const maxExtLen = Math.round(ACOUSTIC_OP_MAX_DURATION_S * ACOUSTIC_SAMPLE_RATE_HZ);
-        while (
-          extLen + stepSamples <= maxExtLen &&
-          bestT1 + extLen + stepSamples <= env1.length &&
-          bestT2 + extLen + stepSamples <= env2.length
-        ) {
-          const extCorr = pearson(env1, bestT1, env2, bestT2, extLen + stepSamples);
-          if (extCorr < ACOUSTIC_PEARSON_THRESHOLD) break;
-          extLen += stepSamples;
-        }
-        const rawOpEnd = opStart + extLen / ACOUSTIC_SAMPLE_RATE_HZ;
-        // Bornes min/max
-        const opEnd = Math.round(
-          Math.max(opStart + ACOUSTIC_OP_MIN_DURATION_S, Math.min(rawOpEnd, opStart + ACOUSTIC_OP_MAX_DURATION_S)) * 10
-        ) / 10;
-
+      if (opMatch || (edStart !== null && edEnd !== null)) {
         res.json({
           success: true,
-          start: opStart,
-          end: opEnd,
-          confidence: Math.round(bestScore * 100) / 100,
+          start: opMatch?.start ?? null,
+          end: opMatch?.end ?? null,
+          edStart,
+          edEnd,
+          confidence: opMatch?.confidence ?? 0.8,
           matchedSibling: path.basename(sibling),
           message: `Générique corrélé avec succès contre ${path.basename(sibling)}`,
         });
@@ -5520,6 +6110,121 @@ app.post('/api/lyrics/cache', requireInternalToken, express.json(), (req, res) =
     }
   } catch {}
   return res.status(400).json({ error: 'Bad request' });
+});
+
+// ==========================================
+// 🎧 AutoEq Profiles Route
+// ==========================================
+app.get('/api/audio/autoeq/profiles', requireInternalToken, (req, res) => {
+  const query = typeof req.query.q === 'string' ? req.query.q : '';
+  const brand = typeof req.query.brand === 'string' ? req.query.brand : 'all';
+  const formFactor = typeof req.query.formFactor === 'string' ? req.query.formFactor : 'all';
+
+  const results = searchAutoEqProfiles(query, brand, formFactor);
+  return res.json({
+    total: results.length,
+    brands: getAutoEqBrands(),
+    profiles: results,
+  });
+});
+
+// ==========================================
+// 🎙️ Whisper Audio Transcription Route
+// ==========================================
+app.post('/api/lyrics/transcribe', requireInternalToken, express.json(), async (req, res) => {
+  const { filePath: rawPath, endpoint, apiKey, model } = req.body;
+  if (!rawPath || typeof rawPath !== 'string') {
+    return res.status(400).json({ error: 'Chemin de fichier requis.' });
+  }
+
+  const filePath = resolveAllowedPath(rawPath, true);
+  if (!filePath) {
+    return res.status(403).json({ error: 'Chemin non autorisé' });
+  }
+
+  if (!fs.existsSync(filePath)) {
+    return res.status(404).json({ error: 'Fichier audio introuvable.' });
+  }
+
+  const ffmpeg = getFfmpegPath();
+  if (!ffmpeg || !fs.existsSync(ffmpeg)) {
+    return res.status(500).json({ error: 'FFmpeg non disponible pour la conversion audio.' });
+  }
+
+  const tmpOut = path.join(os.tmpdir(), `flowluna_whisper_${Date.now()}_${Math.random().toString(36).slice(2)}.mp3`);
+
+  try {
+    // Extraire un flux audio ultra-léger 16kHz mono (optimisé pour la précision de Whisper)
+    await new Promise<void>((resolve, reject) => {
+      const proc = spawn(ffmpeg, [
+        '-y',
+        '-i', filePath,
+        '-vn',
+        '-ac', '1',
+        '-ar', '16000',
+        '-b:a', '64k',
+        tmpOut,
+      ]);
+      proc.on('close', (code) => {
+        if (code === 0) resolve();
+        else reject(new Error(`FFmpeg a quitté avec le code ${code}`));
+      });
+      proc.on('error', reject);
+    });
+
+    let whisperUrl = endpoint || 'https://api.openai.com/v1/audio/transcriptions';
+    if (!whisperUrl.includes('/audio/transcriptions')) {
+      whisperUrl = `${whisperUrl.replace(/\/+$/, '')}/audio/transcriptions`;
+    }
+
+    const whisperModel = model || 'whisper-1';
+    const authKey = apiKey || process.env.OPENAI_API_KEY || '';
+
+    // Envoi multipart vers l'endpoint Whisper
+    const fileBytes = fs.readFileSync(tmpOut);
+    const formBlob = new Blob([fileBytes], { type: 'audio/mpeg' });
+    const formData = new FormData();
+    formData.append('file', formBlob, 'audio.mp3');
+    formData.append('model', whisperModel);
+    formData.append('response_format', 'verbose_json');
+
+    const headers: Record<string, string> = {};
+    if (authKey) {
+      headers['Authorization'] = `Bearer ${authKey}`;
+    }
+
+    const whisperRes = await fetch(whisperUrl, {
+      method: 'POST',
+      headers,
+      body: formData,
+    });
+
+    if (!whisperRes.ok) {
+      const errText = await whisperRes.text().catch(() => '');
+      throw new Error(`Erreur Whisper (${whisperRes.status}): ${errText}`);
+    }
+
+    const whisperData: any = await whisperRes.json();
+    let syncedLyrics = '';
+    if (Array.isArray(whisperData.segments) && whisperData.segments.length > 0) {
+      syncedLyrics = convertWhisperSegmentsToLrc(whisperData.segments);
+    } else if (whisperData.text) {
+      syncedLyrics = `[00:00.00] ${whisperData.text}`;
+    }
+
+    return res.json({
+      success: true,
+      syncedLyrics,
+      isLocal: whisperUrl.includes('localhost') || whisperUrl.includes('127.0.0.1'),
+      model: whisperModel,
+    });
+  } catch (err: any) {
+    return res.status(500).json({ error: err?.message || 'Erreur lors de la transcription Whisper.' });
+  } finally {
+    try {
+      if (fs.existsSync(tmpOut)) fs.unlinkSync(tmpOut);
+    } catch {}
+  }
 });
 
 // ==========================================

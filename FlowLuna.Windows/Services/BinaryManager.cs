@@ -315,7 +315,7 @@ public static class BinaryManager
         return 0;
     }
 
-    public static string CurrentAppVersion => typeof(BinaryManager).Assembly.GetName().Version?.ToString(3) ?? "1.23.9";
+    public static string CurrentAppVersion => typeof(BinaryManager).Assembly.GetName().Version?.ToString(3) ?? "1.24.0";
 
     public static async Task<AppUpdateStatus> CheckAppUpdateAsync()
     {

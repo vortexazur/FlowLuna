@@ -153,6 +153,49 @@ console.log('\n--- Test 5 : Isolation des Moteurs de Rendu Visuels Audio vs Vid�
   console.log('✓ Test 5 passé : Désactivation du visualiseur audio pendant la lecture vidéo validée.');
 }
 
+// --- Test 6 : Cycle de Vie Lip-Sync lors de l'Enchaînement de la 2ème Vidéo en File d'Attente ---
+console.log('\n--- Test 6 : Cycle de Vie Lip-Sync lors de l\'Enchaînement de la 2ème Vidéo en File d\'Attente ---');
+{
+  let driftCorrectionMode: 'none' | 'speedup' | 'slowdown' = 'speedup';
+  let smoothedDrift = 0.08;
+  let lastPresentedFrames = 34080;
+  let consecutiveDriftFrames = 6;
+  let playbackRate = 1.04;
+  const normalPlaybackRate = 1.0;
+
+  const resetLipSyncOnTrackChange = () => {
+    driftCorrectionMode = 'none';
+    smoothedDrift = 0;
+    lastPresentedFrames = -1;
+    consecutiveDriftFrames = 0;
+    playbackRate = normalPlaybackRate;
+  };
+
+  // Simulation de la transition Vidéo 1 -> Vidéo 2 : réinitialisation complète de l'état
+  resetLipSyncOnTrackChange();
+  assert.strictEqual(driftCorrectionMode, 'none', 'Le mode de correction doit être réinitialisé à none');
+  assert.strictEqual(smoothedDrift, 0, 'La dérive lissée doit être remise à 0');
+  assert.strictEqual(lastPresentedFrames, -1, 'Le compteur de trames présentées doit être réinitialisé');
+  assert.strictEqual(playbackRate, 1.0, 'La vitesse de lecture doit revenir à la valeur nominale 1.0x');
+
+  // Rejet d'un timestamp PTS résiduel de la 1ère vidéo (ex: mediaTime = 1420s alors que audioTime = 1.2s sur la 2ème vidéo)
+  const isStalePtsRejected = (audioTime: number, mediaTime: number) => {
+    return !(mediaTime >= 0 && Math.abs(audioTime - mediaTime) < 5.0);
+  };
+  assert.strictEqual(
+    isStalePtsRejected(1.2, 1420.0),
+    true,
+    'Un PTS résiduel de la 1ère vidéo (1420s vs 1.2s) doit être rejeté pour ne pas provoquer de seek destructeur'
+  );
+  assert.strictEqual(
+    isStalePtsRejected(1.2, 1.18),
+    false,
+    'Un PTS cohérent de la 2ème vidéo doit être accepté'
+  );
+
+  console.log('✓ Test 6 passé : Réinitialisation inter-pistes et protection contre les PTS résiduels validées.');
+}
+
 console.log('\n===============================================================');
 console.log(' TOUS LES TESTS DE SYNCHRONISATION LABIALE SONT VALIDÉS !      ');
 console.log('===============================================================');

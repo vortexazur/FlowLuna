@@ -1,7 +1,14 @@
 import React from 'react';
-import { Sliders, X, RotateCcw, Volume2, Sparkles, Check } from 'lucide-react';
+import { Sliders, X, RotateCcw, Volume2, Sparkles, Check, Headphones, Search, Upload, ChevronDown, ChevronUp } from 'lucide-react';
 import { EqualizerSettings, EqualizerPresetName, AccentColor, PlayerSettings } from '../types';
 import { EQ_PRESETS, DEFAULT_EQ_FREQUENCIES, audioEngine } from '../services/audioEngine';
+import {
+  AutoEqProfile,
+  searchAutoEqProfiles,
+  getAutoEqBrands,
+  parseAutoEqGraphicEq,
+  EMBEDDED_AUTOEQ_PROFILES,
+} from '../services/autoEqService';
 import { getT } from '../i18n';
 
 interface EqualizerModalProps {
@@ -43,6 +50,20 @@ export const EqualizerModal: React.FC<EqualizerModalProps> = ({
 }) => {
   const t = getT(playerSettings?.language);
 
+  const [showAutoEq, setShowAutoEq] = React.useState(settings.preset === 'AutoEq');
+  const [autoEqQuery, setAutoEqQuery] = React.useState('');
+  const [selectedBrand, setSelectedBrand] = React.useState('all');
+  const [selectedFormFactor, setSelectedFormFactor] = React.useState('all');
+  const [showCustomImport, setShowCustomImport] = React.useState(false);
+  const [customImportText, setCustomImportText] = React.useState('');
+  const [importError, setImportError] = React.useState<string | null>(null);
+
+  const brands = React.useMemo(() => getAutoEqBrands(), []);
+
+  const filteredAutoEqProfiles = React.useMemo(() => {
+    return searchAutoEqProfiles(autoEqQuery, selectedBrand, selectedFormFactor);
+  }, [autoEqQuery, selectedBrand, selectedFormFactor]);
+
   const effectiveBands = React.useMemo(() => {
     if (settings?.bands && Array.isArray(settings.bands) && settings.bands.length > 0) {
       return settings.bands;
@@ -68,6 +89,57 @@ export const EqualizerModal: React.FC<EqualizerModalProps> = ({
     audioEngine.applyEqualizer(updated);
   };
 
+  const handleApplyAutoEq = (profile: AutoEqProfile) => {
+    const newBands = DEFAULT_EQ_FREQUENCIES.map((freq, idx) => ({
+      frequency: freq,
+      gain: profile.bands[idx] ?? 0,
+      label: freq >= 1000 ? `${freq / 1000}k` : `${freq}`,
+    }));
+
+    const updated: EqualizerSettings = {
+      ...settings,
+      enabled: true,
+      preset: 'AutoEq',
+      bands: newBands,
+      preampGain: profile.preamp,
+      autoEqProfileId: profile.id,
+      autoEqProfileName: profile.name,
+      autoEqBrand: profile.brand,
+    };
+    onChange(updated);
+    audioEngine.applyEqualizer(updated);
+  };
+
+  const handleCustomImport = () => {
+    setImportError(null);
+    const parsed = parseAutoEqGraphicEq(customImportText);
+    if (!parsed) {
+      setImportError('Format non reconnu. Utilisez le format AutoEq (ex: GraphicEQ: 31.25 1.5; 62.5 -0.5...).');
+      return;
+    }
+
+    const newBands = DEFAULT_EQ_FREQUENCIES.map((freq, idx) => ({
+      frequency: freq,
+      gain: parsed.bands[idx] ?? 0,
+      label: freq >= 1000 ? `${freq / 1000}k` : `${freq}`,
+    }));
+
+    const updated: EqualizerSettings = {
+      ...settings,
+      enabled: true,
+      preset: 'AutoEq',
+      bands: newBands,
+      preampGain: parsed.preamp,
+      autoEqProfileId: 'custom-imported',
+      autoEqProfileName: 'Profil Personnalisé',
+      autoEqBrand: 'Import',
+    };
+    onChange(updated);
+    audioEngine.applyEqualizer(updated);
+    setShowCustomImport(false);
+    setCustomImportText('');
+  };
+
   const handlePresetSelect = (preset: EqualizerPresetName) => {
     const gains = EQ_PRESETS[preset] || [0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
     const newBands = DEFAULT_EQ_FREQUENCIES.map((freq, idx) => ({
@@ -80,6 +152,9 @@ export const EqualizerModal: React.FC<EqualizerModalProps> = ({
       ...settings,
       preset,
       bands: newBands,
+      autoEqProfileId: undefined,
+      autoEqProfileName: undefined,
+      autoEqBrand: undefined,
     };
     onChange(updated);
     audioEngine.applyEqualizer(updated);
@@ -183,7 +258,212 @@ export const EqualizerModal: React.FC<EqualizerModalProps> = ({
                 </button>
               );
             })}
+            {settings.preset === 'AutoEq' && (
+              <button
+                key="autoeq-chip"
+                type="button"
+                onClick={() => setShowAutoEq(true)}
+                className={`text-xs px-3 py-1.5 rounded-md font-bold transition-all whitespace-nowrap flex items-center gap-1.5 ${ACCENT_BG[accent]}`}
+              >
+                <Headphones className="w-3.5 h-3.5" />
+                {settings.autoEqBrand ? `${settings.autoEqBrand} ${settings.autoEqProfileName}` : 'AutoEq'}
+              </button>
+            )}
           </div>
+        </div>
+
+        {/* AutoEq Profiles Banner & Interactive Selector */}
+        <div className="bg-neutral-950/60 border border-neutral-800/80 rounded-xl overflow-hidden transition-all">
+          <div
+            className="flex items-center justify-between p-3.5 cursor-pointer hover:bg-neutral-900/60 transition-colors"
+            onClick={() => setShowAutoEq(!showAutoEq)}
+          >
+            <div className="flex items-center gap-2.5">
+              <div className="p-1.5 rounded-lg bg-emerald-500/10 border border-emerald-500/20 text-emerald-400">
+                <Headphones className="w-4 h-4" />
+              </div>
+              <div>
+                <div className="flex items-center gap-2">
+                  <h3 className="text-xs font-bold text-neutral-200">Profils Casques AutoEq (Cible Harman & Neutral)</h3>
+                  <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 font-semibold border border-emerald-500/30">
+                    {EMBEDDED_AUTOEQ_PROFILES.length} modèles intégrés
+                  </span>
+                </div>
+                <p className="text-[11px] text-neutral-400">
+                  {settings.preset === 'AutoEq' && settings.autoEqProfileName
+                    ? `Actif : ${settings.autoEqBrand} ${settings.autoEqProfileName} (${settings.preampGain} dB preamp)`
+                    : 'Compensation acoustique idéale pour casques et écouteurs (Sony, Sennheiser, Apple, Bose...)'}
+                </p>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2">
+              {settings.preset === 'AutoEq' && (
+                <span className="text-[11px] font-bold text-emerald-400 flex items-center gap-1 bg-emerald-950/40 px-2.5 py-1 rounded-md border border-emerald-800/50">
+                  <Check className="w-3.5 h-3.5" /> Calibré
+                </span>
+              )}
+              <button
+                type="button"
+                className="p-1 rounded-lg text-neutral-400 hover:text-white"
+              >
+                {showAutoEq ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+              </button>
+            </div>
+          </div>
+
+          {showAutoEq && (
+            <div className="p-3.5 border-t border-neutral-800/80 bg-neutral-900/40 flex flex-col gap-3">
+              {/* Filters bar */}
+              <div className="flex flex-wrap items-center gap-2">
+                <div className="relative flex-1 min-w-[180px]">
+                  <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-neutral-400" />
+                  <input
+                    type="text"
+                    placeholder="Rechercher par modèle ou marque (ex: XM5, HD650, AirPods, DT770)..."
+                    value={autoEqQuery}
+                    onChange={(e) => setAutoEqQuery(e.target.value)}
+                    className="w-full bg-neutral-950/80 border border-neutral-800 text-xs rounded-lg pl-8 pr-3 py-1.5 text-neutral-200 placeholder-neutral-500 focus:outline-none focus:border-neutral-600"
+                  />
+                  {autoEqQuery && (
+                    <button
+                      type="button"
+                      onClick={() => setAutoEqQuery('')}
+                      className="absolute right-2.5 top-1/2 -translate-y-1/2 text-neutral-400 hover:text-white text-xs"
+                    >
+                      ✕
+                    </button>
+                  )}
+                </div>
+
+                <select
+                  value={selectedBrand}
+                  onChange={(e) => setSelectedBrand(e.target.value)}
+                  className="bg-neutral-950 border border-neutral-800 text-neutral-300 text-xs rounded-lg px-2.5 py-1.5 focus:outline-none focus:border-neutral-600"
+                >
+                  <option value="all">Toutes les marques</option>
+                  {brands.map((b) => (
+                    <option key={b} value={b}>{b}</option>
+                  ))}
+                </select>
+
+                <select
+                  value={selectedFormFactor}
+                  onChange={(e) => setSelectedFormFactor(e.target.value)}
+                  className="bg-neutral-950 border border-neutral-800 text-neutral-300 text-xs rounded-lg px-2.5 py-1.5 focus:outline-none focus:border-neutral-600"
+                >
+                  <option value="all">Tous les formats</option>
+                  <option value="over-ear">Casques (Over-Ear)</option>
+                  <option value="in-ear">Intra-auriculaires (In-Ear)</option>
+                  <option value="earbud">Écouteurs ouverts (Earbuds)</option>
+                </select>
+
+                <button
+                  type="button"
+                  onClick={() => setShowCustomImport(!showCustomImport)}
+                  className="flex items-center gap-1.5 text-xs px-2.5 py-1.5 rounded-lg border border-neutral-700 bg-neutral-800/80 text-neutral-300 hover:text-white cursor-pointer"
+                  title="Importer un fichier ou texte GraphicEQ"
+                >
+                  <Upload className="w-3.5 h-3.5" />
+                  <span>Importer</span>
+                </button>
+              </div>
+
+              {/* Custom Import Box */}
+              {showCustomImport && (
+                <div className="p-3 bg-neutral-950/80 border border-neutral-700 rounded-lg flex flex-col gap-2">
+                  <span className="text-xs font-semibold text-neutral-200">
+                    Importer une courbe AutoEq (Texte GraphicEQ ou ParametricEQ) :
+                  </span>
+                  <textarea
+                    value={customImportText}
+                    onChange={(e) => setCustomImportText(e.target.value)}
+                    placeholder="Collez ici les données AutoEq (ex: Preamp: -5.5 dB &#10;GraphicEQ: 31.25 1.5; 62.5 -0.5; ...)"
+                    rows={3}
+                    className="w-full bg-neutral-900 border border-neutral-800 text-xs font-mono p-2 rounded-lg text-neutral-200 placeholder-neutral-600 focus:outline-none focus:border-neutral-600"
+                  />
+                  {importError && (
+                    <p className="text-xs text-rose-400 font-medium">{importError}</p>
+                  )}
+                  <div className="flex justify-end gap-2">
+                    <button
+                      type="button"
+                      onClick={() => { setShowCustomImport(false); setImportError(null); }}
+                      className="px-3 py-1 rounded-lg text-xs bg-neutral-800 text-neutral-300 hover:text-white cursor-pointer"
+                    >
+                      Annuler
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleCustomImport}
+                      className={`px-3 py-1 rounded-lg text-xs font-bold cursor-pointer ${ACCENT_BG[accent]}`}
+                    >
+                      Appliquer
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {/* Profiles Grid */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-2 max-h-56 overflow-y-auto pr-1">
+                {filteredAutoEqProfiles.length === 0 ? (
+                  <div className="col-span-2 text-center py-6 text-neutral-500 text-xs">
+                    Aucun casque correspondant trouvé. Essayez avec un autre mot-clé ou importez votre profil.
+                  </div>
+                ) : (
+                  filteredAutoEqProfiles.map((p) => {
+                    const isActive = settings.preset === 'AutoEq' && settings.autoEqProfileId === p.id;
+                    return (
+                      <div
+                        key={p.id}
+                        className={`p-2.5 rounded-xl border flex items-center justify-between gap-3 transition-all ${
+                          isActive
+                            ? 'border-emerald-500/50 bg-emerald-500/10 shadow-xs'
+                            : 'border-neutral-800/80 bg-neutral-950/50 hover:bg-neutral-950/90 hover:border-neutral-700'
+                        }`}
+                      >
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-center gap-1.5 flex-wrap">
+                            <span className="text-[10px] font-semibold uppercase px-1.5 py-0.5 rounded bg-neutral-800 text-neutral-300">
+                              {p.brand}
+                            </span>
+                            <h4 className="text-xs font-bold text-neutral-100 truncate">{p.name}</h4>
+                          </div>
+                          <p className="text-[11px] text-neutral-400 truncate mt-0.5">
+                            {p.description || `${p.formFactor} • ${p.source}`}
+                          </p>
+                          <div className="flex items-center gap-2 text-[10px] text-neutral-500 font-mono mt-1">
+                            <span>Preamp: {p.preamp > 0 ? `+${p.preamp}` : p.preamp} dB</span>
+                            <span>•</span>
+                            <span>Cible: {p.source}</span>
+                          </div>
+                        </div>
+
+                        <button
+                          type="button"
+                          onClick={() => handleApplyAutoEq(p)}
+                          className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1 shrink-0 cursor-pointer ${
+                            isActive
+                              ? 'bg-emerald-500 text-neutral-950 shadow-md'
+                              : 'bg-neutral-800 hover:bg-neutral-700 text-neutral-200'
+                          }`}
+                        >
+                          {isActive ? (
+                            <>
+                              <Check className="w-3.5 h-3.5" />
+                              <span>Actif</span>
+                            </>
+                          ) : (
+                            <span>Activer</span>
+                          )}
+                        </button>
+                      </div>
+                    );
+                  })
+                )}
+              </div>
+            </div>
+          )}
         </div>
 
         {/* 10-Band Sliders Grid */}

@@ -1,7 +1,7 @@
 {
   "name": "flowluna",
   "private": true,
-  "version": "1.23.9",
+  "version": "1.24.0",
   "license": "GPL-3.0-or-later",
   "description": "Lecteur audio haute fidélité native Windows avec égaliseur 10 bandes, cache hors-ligne et extraction yt-dlp/ffmpeg",
   "author": "vortexazur",
@@ -22,7 +22,7 @@
     "start": "node dist/server.cjs",
     "preview": "vite preview",
     "clean": "rm -rf dist dist-electron release server.js",
-    "test": "tsx --tsconfig tsconfig.json tests/skipMarkersDrift.test.ts && tsx --tsconfig tsconfig.json tests/introSkipperEnhancements.test.ts && tsx --tsconfig tsconfig.json tests/aiModelManagement.test.ts && tsx --tsconfig tsconfig.json tests/videoInteractions.test.ts && tsx --tsconfig tsconfig.json tests/securityGuards.test.ts && tsx --tsconfig tsconfig.json tests/videoSubtitlesAndTracks.test.ts && tsx --tsconfig tsconfig.json tests/modalManager.test.ts && tsx --tsconfig tsconfig.json tests/videoLipSync.test.ts && tsx --tsconfig tsconfig.json tests/smartPlaylists.test.ts && tsx --tsconfig tsconfig.json tests/remoteControl.test.ts",
+    "test": "tsx --tsconfig tsconfig.json tests/skipMarkersDrift.test.ts && tsx --tsconfig tsconfig.json tests/introSkipperEnhancements.test.ts && tsx --tsconfig tsconfig.json tests/aiModelManagement.test.ts && tsx --tsconfig tsconfig.json tests/videoInteractions.test.ts && tsx --tsconfig tsconfig.json tests/securityGuards.test.ts && tsx --tsconfig tsconfig.json tests/videoSubtitlesAndTracks.test.ts && tsx --tsconfig tsconfig.json tests/modalManager.test.ts && tsx --tsconfig tsconfig.json tests/videoLipSync.test.ts && tsx --tsconfig tsconfig.json tests/smartPlaylists.test.ts && tsx --tsconfig tsconfig.json tests/remoteControl.test.ts && tsx --tsconfig tsconfig.json tests/autoEqAndWhisperLyrics.test.ts",
     "lint": "tsc --noEmit",
     "screenshots": "node scripts/generate-screenshots.mjs"
   },

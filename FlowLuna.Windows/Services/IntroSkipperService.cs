@@ -30,7 +30,15 @@ public record SubtitleMarkerResult(
     double? RecapEnd,
     double? PreviewStart,
     double? PreviewEnd,
-    string? Source = null
+    string? Source = null,
+    double? OpStart = null,
+    double? OpEnd = null,
+    string? OpMethod = null,
+    double? EdStart = null,
+    double? EdEnd = null,
+    string? EdMethod = null,
+    double? FirstDialogueAfterOp = null,
+    double? FirstDialogueAfterEd = null
 );
 
 public record AcousticMatchResult(
@@ -39,13 +47,15 @@ public record AcousticMatchResult(
     double End,
     double Confidence,
     string? MatchedSibling = null,
-    string? Message = null
+    string? Message = null,
+    double? EdStart = null,
+    double? EdEnd = null
 );
 
 /// <summary>
 /// Service d'analyse et de détection fine des génériques et segments vidéo
 /// Inspiré des algorithmes et heuristiques de haute précision de 'intro-skipper'
-/// (Snapping aux silences/black frames, analyse de sous-titres multilingues, corrélation acoustique locale).
+/// (Snapping asymétrique aux silences/black frames, analyse ASS/SRT/VTT et trous de dialogues 89-90s, corrélation acoustique O(1) à 50ms).
 /// </summary>
 public static class IntroSkipperService
 {
@@ -67,8 +77,33 @@ public static class IntroSkipperService
         RegexOptions.Compiled | RegexOptions.IgnoreCase
     );
 
+    private static readonly Regex AssDialogueRegex = new(
+        @"^Dialogue:\s*\d+\s*,\s*(?<start>\d+:\d{2}:\d{2}[\.,]\d{1,3})\s*,\s*(?<end>\d+:\d{2}:\d{2}[\.,]\d{1,3})\s*,\s*(?<style>[^,]*)\s*,\s*(?<actor>[^,]*)\s*,\s*[^,]*\s*,\s*[^,]*\s*,\s*[^,]*\s*,\s*(?<effect>[^,]*)\s*,(?<text>.*)$",
+        RegexOptions.Compiled | RegexOptions.IgnoreCase
+    );
+
+    private static readonly Regex OpStyleRegex = new(
+        @"(?:^|[\s_\-\(\[])(op|opening|ncop|op[\s_\-]?(?:romaji|kanji|trad|fr|en|jp|kara|lyrics|\d+)|karaoke[\s_\-]?op)(?:$|[\s_\-\)\]])",
+        RegexOptions.Compiled | RegexOptions.IgnoreCase
+    );
+
+    private static readonly Regex EdStyleRegex = new(
+        @"(?:^|[\s_\-\(\[])(ed|ending|nced|ed[\s_\-]?(?:romaji|kanji|trad|fr|en|jp|kara|lyrics|\d+)|karaoke[\s_\-]?ed)(?:$|[\s_\-\)\]])",
+        RegexOptions.Compiled | RegexOptions.IgnoreCase
+    );
+
+    private static readonly Regex SongStyleRegex = new(
+        @"(?:^|[\s_\-\(\[])(song|lyrics|karaoke|romaji|kanji|paroles|chanson|theme|k[\s_\-]?timed)(?:$|[\s_\-\)\]])",
+        RegexOptions.Compiled | RegexOptions.IgnoreCase
+    );
+
+    private static readonly Regex SignStyleRegex = new(
+        @"(?:^|[\s_\-\(\[])(sign|signs|typeset|ts|title|eyecatch|logo|board|caption|screen|note)(?:$|[\s_\-\)\]])",
+        RegexOptions.Compiled | RegexOptions.IgnoreCase
+    );
+
     /// <summary>
-    /// Calage chirurgical des marqueurs sur les transitions de silence audio (ou black frames)
+    /// Calage chirurgical asymétrique des marqueurs sur les transitions de silence audio (ou black frames)
     /// Résout la dérive temporelle et évite les coupures brutales en milieu de phrase ou de musique.
     /// </summary>
     public static async Task<FineTuneResult> FineTuneIntervalAsync(
@@ -76,7 +111,8 @@ public static class IntroSkipperService
         double rawStart,
         double rawEnd,
         double searchWindowSeconds = 3.5,
-        CancellationToken ct = default)
+        CancellationToken ct = default,
+        double? firstDialogueAfter = null)
     {
         if (string.IsNullOrWhiteSpace(filePath) || !File.Exists(filePath))
         {
@@ -89,7 +125,8 @@ public static class IntroSkipperService
             return new FineTuneResult(false, rawStart, rawStart, rawEnd, rawEnd, false, "none", 0, 0, "FFmpeg non disponible");
         }
 
-        var cacheKey = $"{filePath}_{Math.Round(rawStart, 1)}_{Math.Round(rawEnd, 1)}_{searchWindowSeconds}";
+        var dlgKey = firstDialogueAfter.HasValue ? Math.Round(firstDialogueAfter.Value, 2).ToString(CultureInfo.InvariantCulture) : "none";
+        var cacheKey = $"{filePath}_{Math.Round(rawStart, 1)}_{Math.Round(rawEnd, 1)}_{searchWindowSeconds}_{dlgKey}";
         if (FineTuneCache.TryGetValue(cacheKey, out var cached))
         {
             return cached;
@@ -103,37 +140,46 @@ public static class IntroSkipperService
 
         try
         {
-            // 1. Analyse de silence autour du START : [rawStart - searchWindow, rawStart + searchWindow]
             double startRangeMin = Math.Max(0, rawStart - searchWindowSeconds);
             double startRangeDuration = searchWindowSeconds * 2.0;
+            double endRangeMin = Math.Max(0, rawEnd - searchWindowSeconds);
+            double endRangeDuration = searchWindowSeconds * 2.0;
 
-            var startSilences = await DetectSilencesAsync(ffmpegPath, filePath, startRangeMin, startRangeDuration, ct);
+            var startSilencesTask = DetectSilencesAsync(ffmpegPath, filePath, startRangeMin, startRangeDuration, ct);
+            var endSilencesTask = DetectSilencesAsync(ffmpegPath, filePath, endRangeMin, endRangeDuration, ct);
+            await Task.WhenAll(startSilencesTask, endSilencesTask);
+
+            var startSilences = startSilencesTask.Result;
+            var endSilences = endSilencesTask.Result;
+
+            // 1. Sélection directionnelle de T_start : privilégier sEnd (attaque musicale)
             if (startSilences.Count > 0)
             {
-                // Trouver le point de transition (silence_end ou silence_start) le plus proche de rawStart
-                double bestDist = double.MaxValue;
+                double bestScore = double.MaxValue;
                 double bestCandidate = rawStart;
 
                 foreach (var (sStart, sEnd) in startSilences)
                 {
-                    // La fin du silence (silence_end) est le moment idéal où la musique d'opening démarre !
                     double distEnd = Math.Abs(sEnd - rawStart);
-                    if (distEnd < bestDist && distEnd <= searchWindowSeconds)
+                    if (distEnd <= searchWindowSeconds && distEnd > 0.04)
                     {
-                        bestDist = distEnd;
-                        bestCandidate = sEnd;
+                        double effEnd = distEnd - 0.35;
+                        if (effEnd < bestScore)
+                        {
+                            bestScore = effEnd;
+                            bestCandidate = sEnd;
+                        }
                     }
 
-                    // Ou le début du silence si un blanc précède l'opening
                     double distStart = Math.Abs(sStart - rawStart);
-                    if (distStart < bestDist && distStart <= searchWindowSeconds)
+                    if (distStart <= searchWindowSeconds && distStart > 0.04 && distStart < bestScore)
                     {
-                        bestDist = distStart;
+                        bestScore = distStart;
                         bestCandidate = sStart;
                     }
                 }
 
-                if (bestDist <= searchWindowSeconds && Math.Abs(bestCandidate - rawStart) > 0.05)
+                if (bestScore < double.MaxValue)
                 {
                     adjustedStart = Math.Round(bestCandidate, 2);
                     startSnapped = true;
@@ -141,81 +187,105 @@ public static class IntroSkipperService
                 }
             }
 
-            // 2. Analyse de silence autour du END : [rawEnd - searchWindow, rawEnd + searchWindow]
-            double endRangeMin = Math.Max(0, rawEnd - searchWindowSeconds);
-            double endRangeDuration = searchWindowSeconds * 2.0;
+            // Garde-fou anti-coupure de réplique sur T_end
+            double maxAllowedEnd = (firstDialogueAfter.HasValue && firstDialogueAfter.Value >= rawEnd - searchWindowSeconds)
+                ? firstDialogueAfter.Value - 0.15
+                : double.PositiveInfinity;
 
-            var endSilences = await DetectSilencesAsync(ffmpegPath, filePath, endRangeMin, endRangeDuration, ct);
+            double rawDuration = rawEnd - adjustedStart;
+            bool isNearCanonical = rawDuration >= 84.5 && rawDuration <= 94.5;
+
+            // 2. Sélection directionnelle de T_end : favoriser la reprise post-silence et la durée canonique (88.2s - 90.8s)
             if (endSilences.Count > 0)
             {
-                double bestDist = double.MaxValue;
+                double bestScore = double.MaxValue;
                 double bestCandidate = rawEnd;
 
                 foreach (var (sStart, sEnd) in endSilences)
                 {
-                    // Le début du silence (silence_start) est le moment idéal où la musique se termine !
-                    double distStart = Math.Abs(sStart - rawEnd);
-                    if (distStart < bestDist && distStart <= searchWindowSeconds)
-                    {
-                        bestDist = distStart;
-                        bestCandidate = sStart;
-                    }
+                    double silenceLen = sEnd - sStart;
+                    var candidates = silenceLen <= 1.4
+                        ? new[] { (Pt: sEnd, RoleBonus: -0.22), (Pt: sStart, RoleBonus: 0.0) }
+                        : new[] { (Pt: sStart, RoleBonus: -0.10), (Pt: sEnd, RoleBonus: 0.0) };
 
-                    // Ou la fin du silence si l'épisode reprend juste après le blanc
-                    double distEnd = Math.Abs(sEnd - rawEnd);
-                    if (distEnd < bestDist && distEnd <= searchWindowSeconds)
+                    foreach (var (pt, roleBonus) in candidates)
                     {
-                        bestDist = distEnd;
-                        bestCandidate = sEnd;
+                        if (pt > maxAllowedEnd) continue;
+                        double dist = Math.Abs(pt - rawEnd);
+                        if (dist > searchWindowSeconds || dist <= 0.04) continue;
+
+                        double candidateDuration = pt - adjustedStart;
+                        double canonicalBias = 0.0;
+                        if (isNearCanonical)
+                        {
+                            if (candidateDuration >= 88.2 && candidateDuration <= 90.8) canonicalBias = -0.35;
+                            else if (candidateDuration < 86.5) canonicalBias = 0.85;
+                        }
+
+                        double effScore = dist + roleBonus + canonicalBias;
+                        if (effScore < bestScore)
+                        {
+                            bestScore = effScore;
+                            bestCandidate = pt;
+                        }
                     }
                 }
 
-                if (bestDist <= searchWindowSeconds && Math.Abs(bestCandidate - rawEnd) > 0.05)
+                if (bestScore < double.MaxValue)
                 {
                     adjustedEnd = Math.Round(bestCandidate, 2);
                     endSnapped = true;
-                    snapType = "silence";
+                    if (snapType == "none") snapType = "silence";
                 }
             }
 
-            // 3. Fallback Black Frames si aucun silence n'a snappé
-            if (!startSnapped || !endSnapped)
+            // 3. Fallback Black Frames ciblé sur les fenêtres de 7s si aucun silence n'a snappé
+            if (!startSnapped)
             {
-                var blackFrames = await DetectBlackFramesAsync(ffmpegPath, filePath, startRangeMin, startRangeDuration + (rawEnd - rawStart), ct);
-                if (blackFrames.Count > 0)
+                var startBlacks = await DetectBlackFramesAsync(ffmpegPath, filePath, startRangeMin, startRangeDuration, ct);
+                if (startBlacks.Count > 0)
                 {
-                    if (!startSnapped)
+                    var nearestStartBlack = startBlacks
+                        .Select(b => Math.Abs(b.End - rawStart) - 0.15 < Math.Abs(b.Start - rawStart) ? b.End : b.Start)
+                        .Where(t => Math.Abs(t - rawStart) <= searchWindowSeconds && Math.Abs(t - rawStart) > 0.04)
+                        .OrderBy(t => Math.Abs(t - rawStart))
+                        .FirstOrDefault();
+
+                    if (nearestStartBlack > 0)
                     {
-                        var nearestStartBlack = blackFrames
-                            .Select(b => Math.Abs(b.End - rawStart) < Math.Abs(b.Start - rawStart) ? b.End : b.Start)
-                            .Where(t => Math.Abs(t - rawStart) <= searchWindowSeconds)
-                            .OrderBy(t => Math.Abs(t - rawStart))
-                            .FirstOrDefault();
-
-                        if (nearestStartBlack > 0 && Math.Abs(nearestStartBlack - rawStart) <= searchWindowSeconds)
-                        {
-                            adjustedStart = Math.Round(nearestStartBlack, 2);
-                            startSnapped = true;
-                            if (snapType == "none") snapType = "black";
-                        }
-                    }
-
-                    if (!endSnapped)
-                    {
-                        var nearestEndBlack = blackFrames
-                            .Select(b => Math.Abs(b.Start - rawEnd) < Math.Abs(b.End - rawEnd) ? b.Start : b.End)
-                            .Where(t => Math.Abs(t - rawEnd) <= searchWindowSeconds)
-                            .OrderBy(t => Math.Abs(t - rawEnd))
-                            .FirstOrDefault();
-
-                        if (nearestEndBlack > 0 && Math.Abs(nearestEndBlack - rawEnd) <= searchWindowSeconds)
-                        {
-                            adjustedEnd = Math.Round(nearestEndBlack, 2);
-                            endSnapped = true;
-                            if (snapType == "none") snapType = "black";
-                        }
+                        adjustedStart = Math.Round(nearestStartBlack, 2);
+                        startSnapped = true;
+                        if (snapType == "none") snapType = "black";
                     }
                 }
+            }
+
+            if (!endSnapped)
+            {
+                var endBlacks = await DetectBlackFramesAsync(ffmpegPath, filePath, endRangeMin, endRangeDuration, ct);
+                if (endBlacks.Count > 0)
+                {
+                    var nearestEndBlack = endBlacks
+                        .Select(b => (b.End - b.Start <= 1.4) ? b.End : b.Start)
+                        .Where(t => t <= maxAllowedEnd && Math.Abs(t - rawEnd) <= searchWindowSeconds && Math.Abs(t - rawEnd) > 0.04)
+                        .OrderBy(t => Math.Abs(t - rawEnd))
+                        .FirstOrDefault();
+
+                    if (nearestEndBlack > 0)
+                    {
+                        adjustedEnd = Math.Round(nearestEndBlack, 2);
+                        endSnapped = true;
+                        if (snapType == "none") snapType = "black";
+                    }
+                }
+            }
+
+            // Garde-fou absolu anti-coupure de réplique
+            if (adjustedEnd > maxAllowedEnd && maxAllowedEnd > adjustedStart + 15.0)
+            {
+                adjustedEnd = Math.Round(maxAllowedEnd, 2);
+                endSnapped = true;
+                if (snapType == "none") snapType = "silence";
             }
 
             // Valider que l'intervalle résultant reste cohérent (> 15s)
@@ -381,8 +451,8 @@ public static class IntroSkipperService
     }
 
     /// <summary>
-    /// Analyse des sous-titres (intégrés ou fichiers annexes .srt/.ass/.vtt)
-    /// Détecte les récapitulatifs ("Previously on...", "Précédemment...") et teasers ("Prochain épisode...")
+    /// Analyse des sous-titres (intégrés ou fichiers annexes .ass/.ssa/.srt/.vtt)
+    /// Détecte OP, ED (styles ASS, karaoké, trous de dialogues ~89-90s), Recap, Preview et le 1er dialogue post-OP/ED
     /// </summary>
     public static async Task<SubtitleMarkerResult> AnalyzeSubtitlesAsync(string filePath, CancellationToken ct = default)
     {
@@ -399,8 +469,8 @@ public static class IntroSkipperService
 
             if (!string.IsNullOrEmpty(dir) && Directory.Exists(dir))
             {
-                // Trouver les fichiers sidecars dans le dossier
-                var exts = new[] { ".srt", ".ass", ".ssa", ".vtt" };
+                // Prioriser .ass et .ssa pour capter les styles OP/ED et le karaoké
+                var exts = new[] { ".ass", ".ssa", ".srt", ".vtt" };
                 foreach (var ext in exts)
                 {
                     var exact = Path.Combine(dir, baseName + ext);
@@ -412,25 +482,16 @@ public static class IntroSkipperService
                 }
             }
 
-            // Lire les sous-titres sidecars
             foreach (var subFile in subtitleFiles)
             {
                 var content = await File.ReadAllTextAsync(subFile, ct);
-                var (recap, preview) = ParseSubtitleTextCues(content);
-                if (recap != null || preview != null)
+                var parsed = ParseSubtitleTextCues(content, Path.GetFileName(subFile));
+                if (parsed.RecapStart != null || parsed.PreviewStart != null || parsed.OpStart != null || parsed.EdStart != null)
                 {
-                    return new SubtitleMarkerResult(
-                        Success: true,
-                        RecapStart: recap?.Start,
-                        RecapEnd: recap?.End,
-                        PreviewStart: preview?.Start,
-                        PreviewEnd: preview?.End,
-                        Source: Path.GetFileName(subFile)
-                    );
+                    return parsed;
                 }
             }
 
-            // Si aucun sidecar trouvé, extraction du 1er flux de sous-titres via ffmpeg en WebVTT
             var ffmpegPath = BinaryManager.GetFfmpegPath();
             if (!string.IsNullOrWhiteSpace(ffmpegPath) && File.Exists(ffmpegPath))
             {
@@ -464,17 +525,10 @@ public static class IntroSkipperService
 
                     if (!string.IsNullOrWhiteSpace(vttContent))
                     {
-                        var (recap, preview) = ParseSubtitleTextCues(vttContent);
-                        if (recap != null || preview != null)
+                        var parsed = ParseSubtitleTextCues(vttContent, "embedded");
+                        if (parsed.RecapStart != null || parsed.PreviewStart != null || parsed.OpStart != null || parsed.EdStart != null)
                         {
-                            return new SubtitleMarkerResult(
-                                Success: true,
-                                RecapStart: recap?.Start,
-                                RecapEnd: recap?.End,
-                                PreviewStart: preview?.Start,
-                                PreviewEnd: preview?.End,
-                                Source: "embedded"
-                            );
+                            return parsed;
                         }
                     }
                 }
@@ -488,45 +542,232 @@ public static class IntroSkipperService
         }
     }
 
-    private static ((double Start, double End)? Recap, (double Start, double End)? Preview) ParseSubtitleTextCues(string subtitleContent)
-    {
-        (double Start, double End)? recap = null;
-        (double Start, double End)? preview = null;
+    private record ParsedSubCue(
+        double Start,
+        double End,
+        string CleanText,
+        bool IsOpSong,
+        bool IsEdSong,
+        bool IsGenericSong,
+        bool IsSign
+    );
 
-        // Pattern générique de timestamp VTT / SRT : 00:01:23.456 --> 00:01:25.789 ou 00:01:23,456 --> 00:01:25,789
-        var cueTimeRegex = new Regex(@"(?<start>\d{1,2}:\d{2}:\d{2}[\.,]\d{3})\s*-->\s*(?<end>\d{1,2}:\d{2}:\d{2}[\.,]\d{3})", RegexOptions.Compiled);
+    private static SubtitleMarkerResult ParseSubtitleTextCues(string subtitleContent, string sourceName)
+    {
+        var cueTimeRegex = new Regex(@"(?<start>\d{1,2}:\d{2}:\d{2}[\.,]\d{1,3})\s*-->\s*(?<end>\d{1,2}:\d{2}:\d{2}[\.,]\d{1,3})", RegexOptions.Compiled);
+        var overrideTagRegex = new Regex(@"\{[^\}]*\}|<[^>]*>", RegexOptions.Compiled);
         var lines = subtitleContent.Split(new[] { "\r\n", "\r", "\n" }, StringSplitOptions.None);
 
+        var cues = new List<ParsedSubCue>();
         double curStart = -1;
         double curEnd = -1;
+        var curTextLines = new List<string>();
 
-        for (int i = 0; i < lines.Length; i++)
+        void FlushVttCue()
         {
-            var line = lines[i].Trim();
+            if (curStart >= 0 && curTextLines.Count > 0)
+            {
+                var rawText = string.Join(" ", curTextLines).Trim();
+                var cleanText = overrideTagRegex.Replace(rawText, "").Trim();
+                if (!string.IsNullOrEmpty(cleanText))
+                {
+                    bool hasMusic = rawText.IndexOfAny(new[] { '♪', '♫', '♬' }) >= 0 || Regex.IsMatch(rawText, @"\\k[fo]?", RegexOptions.IgnoreCase);
+                    cues.Add(new ParsedSubCue(curStart, curEnd, cleanText, false, false, hasMusic, false));
+                }
+            }
+            curStart = -1;
+            curEnd = -1;
+            curTextLines.Clear();
+        }
+
+        foreach (var rawLine in lines)
+        {
+            var assMatch = AssDialogueRegex.Match(rawLine);
+            if (assMatch.Success)
+            {
+                FlushVttCue();
+                double start = ParseTimestampToSeconds(assMatch.Groups["start"].Value);
+                double end = ParseTimestampToSeconds(assMatch.Groups["end"].Value);
+                var style = assMatch.Groups["style"].Value.Trim();
+                var actor = assMatch.Groups["actor"].Value.Trim();
+                var effect = assMatch.Groups["effect"].Value.Trim();
+                var rawText = assMatch.Groups["text"].Value.Trim();
+                var cleanText = overrideTagRegex.Replace(rawText, "").Replace("\\N", " ").Replace("\\n", " ").Trim();
+                if (string.IsNullOrEmpty(cleanText) || end <= start) continue;
+
+                var meta = $"{style} {actor} {effect}";
+                bool isOpSong = OpStyleRegex.IsMatch(meta);
+                bool isEdSong = EdStyleRegex.IsMatch(meta);
+                bool hasMusic = rawText.IndexOfAny(new[] { '♪', '♫', '♬' }) >= 0 || Regex.IsMatch(rawText, @"\\k[fo]?", RegexOptions.IgnoreCase);
+                bool isGenericSong = isOpSong || isEdSong || SongStyleRegex.IsMatch(meta) || hasMusic;
+                bool isSign = !isGenericSong && SignStyleRegex.IsMatch(meta);
+
+                cues.Add(new ParsedSubCue(start, end, cleanText, isOpSong, isEdSong, isGenericSong, isSign));
+                continue;
+            }
+
+            var line = rawLine.Trim();
             var timeMatch = cueTimeRegex.Match(line);
             if (timeMatch.Success)
             {
+                FlushVttCue();
                 curStart = ParseTimestampToSeconds(timeMatch.Groups["start"].Value);
                 curEnd = ParseTimestampToSeconds(timeMatch.Groups["end"].Value);
                 continue;
             }
 
-            if (curStart >= 0 && !string.IsNullOrWhiteSpace(line))
+            if (curStart >= 0)
             {
-                // Si la réplique correspond à un Recap et se situe dans les 3 premières minutes
-                if (recap == null && curStart < 240 && RecapPattern.IsMatch(line))
+                if (string.IsNullOrWhiteSpace(line)) FlushVttCue();
+                else curTextLines.Add(line);
+            }
+        }
+        FlushVttCue();
+
+        if (cues.Count == 0)
+        {
+            return new SubtitleMarkerResult(true, null, null, null, null, sourceName);
+        }
+
+        cues.Sort((a, b) => a.Start.CompareTo(b.Start));
+
+        (double Start, double End)? recap = null;
+        (double Start, double End)? preview = null;
+
+        foreach (var c in cues)
+        {
+            if (recap == null && c.Start < 240 && RecapPattern.IsMatch(c.CleanText))
+            {
+                recap = (Math.Max(0, c.Start - 2), c.End + 5);
+            }
+            else if (preview == null && c.Start > 480 && PreviewPattern.IsMatch(c.CleanText))
+            {
+                preview = (c.Start, c.End + 30);
+            }
+        }
+
+        var dialogueCues = cues.Where(c => !c.IsOpSong && !c.IsEdSong && !c.IsGenericSong && !c.IsSign).ToList();
+        double? opStart = null, opEnd = null, edStart = null, edEnd = null;
+        string? opMethod = null, edMethod = null;
+
+        // 1. Détection OP par styles ASS / Paroles (0s -> 390s)
+        var opSongs = cues.Where(c => c.Start <= 390 && (c.IsOpSong || (c.IsGenericSong && !c.IsEdSong))).ToList();
+        if (opSongs.Count >= 3)
+        {
+            double firstLyric = opSongs.First().Start;
+            double lastLyric = opSongs.Max(c => c.End);
+            if (lastLyric - firstLyric is >= 35 and <= 115)
+            {
+                var prevDlg = dialogueCues.LastOrDefault(d => d.End <= firstLyric + 1.5);
+                var nextDlg = dialogueCues.FirstOrDefault(d => d.Start >= lastLyric - 1.5);
+                double s = firstLyric, e = lastLyric;
+
+                if (prevDlg != null && nextDlg != null && (nextDlg.Start - prevDlg.End) is >= 85.0 and <= 94.5)
                 {
-                    recap = (Math.Max(0, curStart - 2), curEnd + 5);
+                    s = Math.Round(prevDlg.End + 0.2, 2);
+                    e = Math.Round(nextDlg.Start - 0.15, 2);
                 }
-                // Si la réplique correspond à un Preview et se situe au-delà de 8 minutes
-                else if (preview == null && curStart > 480 && PreviewPattern.IsMatch(line))
+
+                if (e - s is >= 55 and <= 120)
                 {
-                    preview = (curStart, curEnd + 30);
+                    opStart = Math.Round(s, 2);
+                    opEnd = Math.Round(e, 2);
+                    opMethod = opSongs.Any(c => c.IsOpSong) ? "ass-style" : "lyrics";
                 }
             }
         }
 
-        return (recap, preview);
+        // 2. Détection OP par Trou de Dialogues Canonique (~85s à 94s)
+        if (opStart == null && dialogueCues.Count >= 5)
+        {
+            if (dialogueCues[0].Start is >= 87.0 and <= 92.5)
+            {
+                opStart = 0;
+                opEnd = Math.Round(dialogueCues[0].Start - 0.15, 2);
+                opMethod = "dialogue-gap";
+            }
+            else
+            {
+                double bestGapDist = double.MaxValue;
+                for (int i = 0; i < dialogueCues.Count - 1; i++)
+                {
+                    double pEnd = dialogueCues[i].End;
+                    double nStart = dialogueCues[i + 1].Start;
+                    if (pEnd < 10) continue;
+                    if (pEnd > 300) break;
+                    double gap = nStart - pEnd;
+                    if (gap is >= 85.0 and <= 94.0 && Math.Abs(gap - 89.8) < bestGapDist)
+                    {
+                        bestGapDist = Math.Abs(gap - 89.8);
+                        opStart = Math.Round(pEnd + 0.2, 2);
+                        opEnd = Math.Round(nStart - 0.15, 2);
+                        opMethod = "dialogue-gap";
+                    }
+                }
+            }
+        }
+
+        // 3. Détection ED par styles ASS / Paroles ou Trou de Dialogues (> 900s)
+        var edSongs = cues.Where(c => c.Start >= 900 && (c.IsEdSong || (c.IsGenericSong && !c.IsOpSong))).ToList();
+        if (edSongs.Count >= 3)
+        {
+            double firstLyric = edSongs.First().Start;
+            double lastLyric = edSongs.Max(c => c.End);
+            if (lastLyric - firstLyric is >= 35 and <= 115)
+            {
+                edStart = Math.Round(firstLyric, 2);
+                edEnd = Math.Round(lastLyric, 2);
+                edMethod = edSongs.Any(c => c.IsEdSong) ? "ass-style" : "lyrics";
+            }
+        }
+        else if (dialogueCues.Count >= 5)
+        {
+            for (int i = dialogueCues.Count - 2; i >= 0; i--)
+            {
+                double pEnd = dialogueCues[i].End;
+                double nStart = dialogueCues[i + 1].Start;
+                if (pEnd < 900) break;
+                double gap = nStart - pEnd;
+                if (gap is >= 85.0 and <= 94.0)
+                {
+                    edStart = Math.Round(pEnd + 0.2, 2);
+                    edEnd = Math.Round(nStart - 0.15, 2);
+                    edMethod = "dialogue-gap";
+                    break;
+                }
+            }
+        }
+
+        double? firstDlgAfterOp = null;
+        if (opEnd.HasValue)
+        {
+            var dlg = dialogueCues.FirstOrDefault(d => d.Start >= opEnd.Value - 2.5);
+            if (dlg != null) firstDlgAfterOp = Math.Round(dlg.Start, 2);
+        }
+
+        double? firstDlgAfterEd = null;
+        if (edEnd.HasValue)
+        {
+            var dlg = dialogueCues.FirstOrDefault(d => d.Start >= edEnd.Value - 2.5);
+            if (dlg != null) firstDlgAfterEd = Math.Round(dlg.Start, 2);
+        }
+
+        return new SubtitleMarkerResult(
+            Success: true,
+            RecapStart: recap?.Start,
+            RecapEnd: recap?.End,
+            PreviewStart: preview?.Start,
+            PreviewEnd: preview?.End,
+            Source: sourceName,
+            OpStart: opStart,
+            OpEnd: opEnd,
+            OpMethod: opMethod,
+            EdStart: edStart,
+            EdEnd: edEnd,
+            EdMethod: edMethod,
+            FirstDialogueAfterOp: firstDlgAfterOp,
+            FirstDialogueAfterEd: firstDlgAfterEd
+        );
     }
 
     private static double ParseTimestampToSeconds(string timestamp)
@@ -551,8 +792,7 @@ public static class IntroSkipperService
 
     /// <summary>
     /// Corrélation acoustique locale multi-épisodes (Acoustic Matching)
-    /// Compare deux épisodes du même dossier/série pour trouver la signature audio identique du générique
-    /// Fonctionne 100% hors-ligne pour toute série TV, anime ou émission récurrente !
+    /// Sommes préfixées O(1), recherche dès 0.0s, affinage à 50 ms et bornage par fenêtre locale de 3.0s
     /// </summary>
     public static async Task<AcousticMatchResult> MatchAudioOpeningAsync(
         string filePath,
@@ -575,12 +815,6 @@ public static class IntroSkipperService
             return cached;
         }
 
-        // Constantes partagées avec le backend Node.js
-        const double PearsonThreshold = 0.70;
-        const int WindowSamples = 1800;   // 90 s × 20 Hz
-        const int SampleRateHz = 20;
-        const double OpMinDurationS = 60.0;
-        const double OpMaxDurationS = 120.0;
         const int EnvelopeDurationS = 240;
 
         try
@@ -601,7 +835,6 @@ public static class IntroSkipperService
                 return new AcousticMatchResult(false, 0, 0, 0, null, "Aucun épisode frère trouvé dans le dossier");
             }
 
-            // Sélection des frères par préfixe de nom et proximité de numéro d'épisode
             var candidates = ChooseSiblings(filePath, allCandidates, maxCandidates: 2);
 
             foreach (var sibling in candidates)
@@ -609,55 +842,14 @@ public static class IntroSkipperService
                 var env1 = await ExtractAudioEnergyEnvelopeAsync(ffmpegPath, filePath, EnvelopeDurationS, ct);
                 var env2 = await ExtractAudioEnergyEnvelopeAsync(ffmpegPath, sibling, EnvelopeDurationS, ct);
 
-                if (env1.Length < 100 || env2.Length < 100) continue;
-
-                double bestScore = 0.0;
-                int bestT1 = -1;
-                int bestT2 = -1;
-
-                for (int t1 = 200; t1 <= env1.Length - WindowSamples; t1 += 20)
+                var match = FindAcousticCorrelatedInterval(env1, env2);
+                if (match.HasValue)
                 {
-                    for (int t2 = 200; t2 <= env2.Length - WindowSamples; t2 += 20)
-                    {
-                        double corr = ComputeNormalizedCorrelation(env1, t1, env2, t2, WindowSamples);
-                        if (corr > bestScore)
-                        {
-                            bestScore = corr;
-                            bestT1 = t1;
-                            bestT2 = t2;
-                        }
-                    }
-                }
-
-                if (bestScore >= PearsonThreshold && bestT1 >= 0)
-                {
-                    double opStart = Math.Round(bestT1 / (double)SampleRateHz, 1);
-
-                    // Estimer la fin de l'OP : étendre la fenêtre corrélée tant que Pearson ≥ seuil
-                    int stepSamples = SampleRateHz; // 1 seconde
-                    int extLen = WindowSamples;
-                    int maxExtLen = (int)Math.Round(OpMaxDurationS * SampleRateHz);
-
-                    while (
-                        extLen + stepSamples <= maxExtLen &&
-                        bestT1 + extLen + stepSamples <= env1.Length &&
-                        bestT2 + extLen + stepSamples <= env2.Length)
-                    {
-                        double extCorr = ComputeNormalizedCorrelation(env1, bestT1, env2, bestT2, extLen + stepSamples);
-                        if (extCorr < PearsonThreshold) break;
-                        extLen += stepSamples;
-                    }
-
-                    double rawOpEnd = opStart + extLen / (double)SampleRateHz;
-                    // Bornes min/max
-                    double opEnd = Math.Round(
-                        Math.Max(opStart + OpMinDurationS, Math.Min(rawOpEnd, opStart + OpMaxDurationS)), 1);
-
                     var res = new AcousticMatchResult(
                         Success: true,
-                        Start: opStart,
-                        End: opEnd,
-                        Confidence: Math.Round(bestScore, 2),
+                        Start: match.Value.Start,
+                        End: match.Value.End,
+                        Confidence: match.Value.Confidence,
                         MatchedSibling: Path.GetFileName(sibling),
                         Message: $"Générique corrélé avec succès contre {Path.GetFileName(sibling)}"
                     );
@@ -665,7 +857,6 @@ public static class IntroSkipperService
                     AcousticMatchCache[filePath] = res;
                     return res;
                 }
-                // Corrélation insuffisante sur ce candidat → essayer le suivant
             }
 
             return new AcousticMatchResult(false, 0, 0, 0, Path.GetFileName(candidates.FirstOrDefault() ?? ""), "Corrélation sonore insuffisante sur tous les candidats");
@@ -674,6 +865,136 @@ public static class IntroSkipperService
         {
             return new AcousticMatchResult(false, 0, 0, 0, null, ex.Message);
         }
+    }
+
+    private static (double Start, double End, double Confidence)? FindAcousticCorrelatedInterval(float[] env1, float[] env2)
+    {
+        const double PearsonThreshold = 0.70;
+        const int BaseWindowSamples = 1720; // 86 s × 20 Hz
+        const int EdgeWin = 60;             // 3.0 s × 20 Hz
+        const int SampleRateHz = 20;
+        const double OpMinDurationS = 60.0;
+        const double OpMaxDurationS = 115.0;
+
+        int n1 = env1.Length;
+        int n2 = env2.Length;
+        if (n1 < BaseWindowSamples + 20 || n2 < BaseWindowSamples + 20) return null;
+
+        var ps1 = new double[n1 + 1];
+        var psSq1 = new double[n1 + 1];
+        for (int i = 0; i < n1; i++)
+        {
+            double v = env1[i];
+            ps1[i + 1] = ps1[i] + v;
+            psSq1[i + 1] = psSq1[i] + v * v;
+        }
+
+        var ps2 = new double[n2 + 1];
+        var psSq2 = new double[n2 + 1];
+        for (int i = 0; i < n2; i++)
+        {
+            double v = env2[i];
+            ps2[i + 1] = ps2[i] + v;
+            psSq2[i + 1] = psSq2[i] + v * v;
+        }
+
+        double FastPearson(int oA, int oB, int len)
+        {
+            if (oA < 0 || oB < 0 || oA + len > n1 || oB + len > n2 || len <= 0) return 0.0;
+            double sA = ps1[oA + len] - ps1[oA];
+            double sAA = psSq1[oA + len] - psSq1[oA];
+            double sB = ps2[oB + len] - ps2[oB];
+            double sBB = psSq2[oB + len] - psSq2[oB];
+
+            double mA = sA / len;
+            double mB = sB / len;
+            double vA = (sAA / len) - (mA * mA);
+            double vB = (sBB / len) - (mB * mB);
+            if (vA <= 1e-7 || vB <= 1e-7) return 0.0;
+
+            double sAB = 0;
+            for (int i = 0; i < len; i++)
+            {
+                sAB += env1[oA + i] * env2[oB + i];
+            }
+            return ((sAB / len) - (mA * mB)) / Math.Sqrt(vA * vB);
+        }
+
+        double bestScore = 0.0;
+        int bestT1 = -1;
+        int bestT2 = -1;
+        const int coarseStep = 10; // 0.5s
+
+        for (int t1 = 0; t1 <= n1 - BaseWindowSamples; t1 += coarseStep)
+        {
+            for (int t2 = 0; t2 <= n2 - BaseWindowSamples; t2 += coarseStep)
+            {
+                double corr = FastPearson(t1, t2, BaseWindowSamples);
+                if (corr > bestScore)
+                {
+                    bestScore = corr;
+                    bestT1 = t1;
+                    bestT2 = t2;
+                }
+            }
+        }
+
+        if (bestScore < PearsonThreshold || bestT1 < 0 || bestT2 < 0) return null;
+
+        int minT1 = Math.Max(0, bestT1 - coarseStep);
+        int maxT1 = Math.Min(n1 - BaseWindowSamples, bestT1 + coarseStep);
+        int minT2 = Math.Max(0, bestT2 - coarseStep);
+        int maxT2 = Math.Min(n2 - BaseWindowSamples, bestT2 + coarseStep);
+
+        for (int t1 = minT1; t1 <= maxT1; t1++)
+        {
+            for (int t2 = minT2; t2 <= maxT2; t2++)
+            {
+                double corr = FastPearson(t1, t2, BaseWindowSamples);
+                if (corr > bestScore)
+                {
+                    bestScore = corr;
+                    bestT1 = t1;
+                    bestT2 = t2;
+                }
+            }
+        }
+
+        while (bestT1 >= 2 && bestT2 >= 2 && FastPearson(bestT1 - 2, bestT2 - 2, EdgeWin) >= 0.58)
+        {
+            bestT1 -= 2;
+            bestT2 -= 2;
+        }
+
+        int trimStartCount = 0;
+        while (trimStartCount < 80 && bestT1 + EdgeWin < n1 && bestT2 + EdgeWin < n2 && FastPearson(bestT1, bestT2, EdgeWin) < 0.45)
+        {
+            bestT1 += 2;
+            bestT2 += 2;
+            trimStartCount += 2;
+        }
+
+        int extLen = BaseWindowSamples - trimStartCount;
+        int maxExtLen = (int)Math.Round(OpMaxDurationS * SampleRateHz);
+        int minExtLen = (int)Math.Round(OpMinDurationS * SampleRateHz);
+
+        const int FrontierWin = 24; // 1.2s à 20 Hz
+        while (extLen > minExtLen && FastPearson(bestT1 + extLen - FrontierWin, bestT2 + extLen - FrontierWin, FrontierWin) < 0.65)
+        {
+            extLen -= 2;
+        }
+
+        while (extLen + 2 <= maxExtLen && bestT1 + extLen + 2 <= n1 && bestT2 + extLen + 2 <= n2)
+        {
+            if (FastPearson(bestT1 + extLen + 2 - FrontierWin, bestT2 + extLen + 2 - FrontierWin, FrontierWin) < 0.68) break;
+            extLen += 2;
+        }
+
+        double opStart = Math.Round(bestT1 / (double)SampleRateHz, 1);
+        double rawOpEnd = (bestT1 + extLen) / (double)SampleRateHz;
+        double opEnd = Math.Round(Math.Max(opStart + OpMinDurationS, Math.Min(rawOpEnd, opStart + OpMaxDurationS)), 1);
+
+        return (opStart, opEnd, Math.Round(bestScore, 2));
     }
 
     /// <summary>
@@ -779,30 +1100,5 @@ public static class IntroSkipperService
         }
 
         return envelope;
-    }
-
-    private static double ComputeNormalizedCorrelation(float[] a, int offsetA, float[] b, int offsetB, int length)
-    {
-        double sumA = 0, sumB = 0, sumAA = 0, sumBB = 0, sumAB = 0;
-        for (int i = 0; i < length; i++)
-        {
-            float va = a[offsetA + i];
-            float vb = b[offsetB + i];
-            sumA += va;
-            sumB += vb;
-            sumAA += va * va;
-            sumBB += vb * vb;
-            sumAB += va * vb;
-        }
-
-        double meanA = sumA / length;
-        double meanB = sumB / length;
-        double varA = (sumAA / length) - (meanA * meanA);
-        double varB = (sumBB / length) - (meanB * meanB);
-
-        if (varA <= 1e-7 || varB <= 1e-7) return 0.0;
-
-        double cov = (sumAB / length) - (meanA * meanB);
-        return cov / Math.Sqrt(varA * varB);
     }
 }

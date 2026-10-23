@@ -541,6 +541,9 @@ export default function App() {
         if (videoRef.current) {
           try {
             videoRef.current.pause();
+            const targetRate = playerSettings.playbackSpeed ?? 1.0;
+            videoRef.current.defaultPlaybackRate = targetRate;
+            videoRef.current.playbackRate = targetRate;
           } catch {}
         }
       } else {
@@ -596,7 +599,10 @@ export default function App() {
         activeMedia.src = playableUrl;
 
         if (isVideoTrack) {
-          activeMedia.playbackRate = playerSettings.playbackSpeed ?? 1.0;
+          const targetRate = playerSettings.playbackSpeed ?? 1.0;
+          activeMedia.defaultPlaybackRate = targetRate;
+          activeMedia.playbackRate = targetRate;
+          (activeMedia as any).preservesPitch = true;
         }
 
         // Check again after src assignment
@@ -627,6 +633,42 @@ export default function App() {
           crossfadeAnimRef.current = requestAnimationFrame(rampUp);
         } else {
           activeMedia.volume = targetVolume;
+        }
+
+        if (isVideoTrack) {
+          // 1. Amorçage réactif A/V (< 25ms) avant play() :
+          // Garantit que le démultiplexeur a initialisé les nouveaux timestamps PTS (1ère trame D3D11 + 1er paquet WASAPI)
+          // avant le démarrage de l'horloge matérielle audio, éliminant tout déphasage voix/lèvres dès la 2ème vidéo.
+          if (activeMedia.readyState < 2) {
+            await new Promise<void>((resolve) => {
+              let isDone = false;
+              const onReady = () => {
+                if (isDone) return;
+                isDone = true;
+                cleanup();
+                resolve();
+              };
+              const fallbackTimer = setTimeout(onReady, 80);
+              const cleanup = () => {
+                clearTimeout(fallbackTimer);
+                activeMedia.removeEventListener('loadeddata', onReady);
+                activeMedia.removeEventListener('canplay', onReady);
+              };
+              activeMedia.addEventListener('loadeddata', onReady, { once: true });
+              activeMedia.addEventListener('canplay', onReady, { once: true });
+            });
+          }
+
+          if (playRequestIdRef.current !== requestId) return;
+
+          // 2. Alignement synchrone à 0s si une position résiduelle subsiste de la vidéo précédente
+          if (activeMedia.currentTime > 0.1) {
+            try {
+              activeMedia.currentTime = 0;
+            } catch {}
+          }
+
+          if (playRequestIdRef.current !== requestId) return;
         }
 
         const playPromise = activeMedia.play();
@@ -1796,13 +1838,12 @@ export default function App() {
         const isCurrentVideo = isTrackVideo(curTrack);
         if (isForVideo !== isCurrentVideo) return;
 
-        // Si c'est une piste vidéo et que le mode Marathon est actif avec une suite dans la file,
-        // céder la main à useMarathonController pour éviter un double enchaînement concurrent
+        // Si c'est une piste vidéo et qu'une suite existe dans la file,
+        // céder la main à useMarathonController (qui écoute 'ended') pour éviter un double enchaînement concurrent
         if (isCurrentVideo) {
-          const mConfig = playerSettingsRef.current?.marathonConfig;
           const curQueue = queueRef.current;
           const curIdx = currentTrackIndexRef.current;
-          const hasNextVideo = (mConfig?.enabled ?? true) && curIdx >= 0 && curIdx + 1 < curQueue.length;
+          const hasNextVideo = curIdx >= 0 && curIdx + 1 < curQueue.length;
           if (hasNextVideo) {
             return;
           }
