@@ -479,12 +479,22 @@ export function isPrivateLanIp(ipOrHost?: string): boolean {
   return false;
 }
 
+export function isRemoteLanRoute(reqPath?: string): boolean {
+  if (!reqPath || typeof reqPath !== 'string') return false;
+  return (
+    reqPath === '/remote' ||
+    reqPath.startsWith('/remote/') ||
+    reqPath === '/favicon.ico' ||
+    reqPath.startsWith('/api/remote/')
+  );
+}
+
 export function isHostSafe(hostHeader?: string, reqPath?: string): boolean {
   if (!hostHeader || typeof hostHeader !== 'string') return false;
   const host = hostHeader.trim().split(':')[0].toLowerCase();
   if (host === 'localhost' || host === '127.0.0.1') return true;
   // Allow LAN access specifically for FlowLuna Remote endpoints
-  if (reqPath && (reqPath === '/remote' || reqPath.startsWith('/remote') || reqPath.startsWith('/api/remote/'))) {
+  if (isRemoteLanRoute(reqPath)) {
     return isPrivateLanIp(host);
   }
   return false;
@@ -504,7 +514,7 @@ export function isOriginSafe(origin: string, reqPath?: string): boolean {
       return true;
     }
     // Allow LAN origins for Remote endpoints
-    if (reqPath && (reqPath === '/remote' || reqPath.startsWith('/remote') || reqPath.startsWith('/api/remote/'))) {
+    if (isRemoteLanRoute(reqPath)) {
       return isPrivateLanIp(hostname);
     }
     return false;
@@ -553,7 +563,7 @@ app.use((req, res, next) => {
   }
 
   // 2. Cross-site request blocking (allow remote routes on local LAN)
-  const isRemoteRoute = req.path === '/remote' || req.path.startsWith('/remote') || req.path.startsWith('/api/remote/');
+  const isRemoteRoute = isRemoteLanRoute(req.path);
   if (!isRemoteRoute && req.headers['sec-fetch-site'] === 'cross-site') {
     return res.status(403).send('Forbidden: Cross-site requests rejected');
   }
@@ -564,7 +574,7 @@ app.use((req, res, next) => {
     res.setHeader('Access-Control-Allow-Origin', origin);
   }
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-FlowLuna-Token');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-FlowLuna-Token, X-Remote-Token');
 
   if (origin && !isAllowed) {
     return res.status(403).send('Origin not allowed');
@@ -5519,13 +5529,40 @@ app.post('/api/lyrics/cache', requireInternalToken, express.json(), (req, res) =
 export function getLocalLanIp(): string {
   try {
     const nets = os.networkInterfaces();
+    const virtualAdapterRegex = /(vethernet|wsl|hyper-v|docker|vbox|virtualbox|vmware|tailscale|zerotier|tap|tun|loopback|bluetooth|npcap|teredo|isatap)/i;
+    const physicalHintRegex = /(wi-fi|wifi|wlan|wireless|ethernet|eth|en\d|lan)/i;
+
+    let bestIp = '';
+    let bestScore = -999;
+
     for (const name of Object.keys(nets)) {
+      const isVirtualName = virtualAdapterRegex.test(name);
+      const isPhysicalName = physicalHintRegex.test(name);
+
       for (const net of nets[name] || []) {
-        if (net.family === 'IPv4' && !net.internal && !net.address.startsWith('127.')) {
-          return net.address;
+        if (net.family === 'IPv4' && !net.internal && !net.address.startsWith('127.') && !net.address.startsWith('169.254.')) {
+          let score = 0;
+          if (isVirtualName) score -= 100;
+          if (isPhysicalName) score += 50;
+
+          if (net.address.startsWith('192.168.')) {
+            // 192.168.56.x is VirtualBox Host-Only default
+            score += net.address.startsWith('192.168.56.') ? -40 : 30;
+          } else if (net.address.startsWith('10.')) {
+            score += 20;
+          } else if (/^172\.(1[6-9]|2\d|3[0-1])\./.test(net.address)) {
+            score += 10;
+          }
+
+          if (score > bestScore) {
+            bestScore = score;
+            bestIp = net.address;
+          }
         }
       }
     }
+
+    if (bestIp) return bestIp;
   } catch {}
   return '127.0.0.1';
 }
@@ -5547,19 +5584,128 @@ let currentRemoteState: any = {
 };
 
 let remoteCommandsQueue: any[] = [];
-const remotePairingPin = '4242';
+let remoteSessionToken: string = crypto.randomUUID().replace(/-/g, '');
+let remotePairingPin: string = '4242';
 
-// 1. Informations de connexion de la télécommande (IP, QR URL, Token, PIN)
+export function getRemoteSessionToken(): string {
+  return remoteSessionToken;
+}
+
+export function getRemotePairingPin(): string {
+  return remotePairingPin;
+}
+
+export function isLocalhostRequest(req: express.Request): boolean {
+  const host = (req.headers.host || '').trim().split(':')[0].toLowerCase();
+  return host === 'localhost' || host === '127.0.0.1' || host === '::1';
+}
+
+export function isValidRemoteToken(providedToken?: string | null): boolean {
+  if (!providedToken || typeof providedToken !== 'string') return false;
+  const trimmed = providedToken.trim();
+  if (!trimmed) return false;
+  return trimmed === remoteSessionToken || trimmed === remotePairingPin;
+}
+
+const remoteAuthFailures = new Map<string, { count: number; resetAt: number }>();
+
+export function checkRemoteRateLimit(clientIp: string): boolean {
+  const now = Date.now();
+  const entry = remoteAuthFailures.get(clientIp);
+  if (!entry || now > entry.resetAt) return true;
+  return entry.count < 10;
+}
+
+export function recordRemoteAuthFailure(clientIp: string): void {
+  const now = Date.now();
+  const entry = remoteAuthFailures.get(clientIp);
+  if (!entry || now > entry.resetAt) {
+    remoteAuthFailures.set(clientIp, { count: 1, resetAt: now + 60_000 });
+  } else {
+    entry.count += 1;
+  }
+}
+
+const REMOTE_COMMAND_ALIASES: Record<string, string> = {
+  togglePlay: 'toggle_play',
+  setVolume: 'volume',
+  toggleMute: 'toggle_mute',
+  toggleFavorite: 'toggle_favorite',
+  toggleShuffle: 'toggle_shuffle',
+  cycleRepeat: 'cycle_repeat',
+  skipOpening: 'skip_opening',
+  playQueueIndex: 'play_queue_index',
+};
+
+export const ALLOWED_REMOTE_COMMANDS = new Set([
+  'play',
+  'pause',
+  'toggle_play',
+  'next',
+  'prev',
+  'seek',
+  'volume',
+  'mute',
+  'toggle_mute',
+  'toggle_favorite',
+  'toggle_shuffle',
+  'cycle_repeat',
+  'skip_opening',
+  'play_queue_index',
+]);
+
+export function validateRemoteCommandPayload(
+  rawType: any,
+  rawValue: any
+): { valid: boolean; type?: string; value?: any; error?: string } {
+  if (!rawType || typeof rawType !== 'string') {
+    return { valid: false, error: 'Type de commande manquant ou invalide' };
+  }
+  const normalizedType = REMOTE_COMMAND_ALIASES[rawType] || rawType;
+  if (!ALLOWED_REMOTE_COMMANDS.has(normalizedType)) {
+    return { valid: false, error: `Commande non autorisée: ${rawType}` };
+  }
+
+  if (normalizedType === 'volume') {
+    const v = Number(rawValue);
+    if (!Number.isFinite(v)) {
+      return { valid: false, error: 'Valeur de volume invalide' };
+    }
+    return { valid: true, type: normalizedType, value: Math.max(0, Math.min(1, v)) };
+  }
+
+  if (normalizedType === 'seek') {
+    const v = Number(rawValue);
+    if (!Number.isFinite(v) || v < 0 || v > 86400) {
+      return { valid: false, error: 'Position temporelle (seek) invalide' };
+    }
+    return { valid: true, type: normalizedType, value: v };
+  }
+
+  if (normalizedType === 'play_queue_index') {
+    const v = Number(rawValue);
+    if (!Number.isInteger(v) || v < 0 || v >= 10000) {
+      return { valid: false, error: 'Index de file d\'attente invalide' };
+    }
+    return { valid: true, type: normalizedType, value: v };
+  }
+
+  return { valid: true, type: normalizedType, value: undefined };
+}
+
+// 1. Informations de connexion de la télécommande (IP, QR URL, Token dédié, PIN) — Strictement réservé à localhost
 app.get('/api/remote/info', (req, res) => {
+  if (!isLocalhostRequest(req)) {
+    return res.status(403).json({ success: false, error: 'Forbidden: Localhost only' });
+  }
   const localIp = getLocalLanIp();
-  const token = getInternalToken() || 'flowluna_remote';
   res.json({
     enabled: true,
     port: PORT,
     localIp,
     pin: remotePairingPin,
-    token,
-    url: `http://${localIp}:${PORT}/remote?token=${encodeURIComponent(token)}`,
+    token: remoteSessionToken,
+    url: `http://${localIp}:${PORT}/remote?token=${encodeURIComponent(remoteSessionToken)}`,
   });
 });
 
@@ -5577,13 +5723,36 @@ app.get('/remote', (req, res) => {
   res.status(404).send('FlowLuna Remote client not found');
 });
 
+// 2b. Authentification par code PIN depuis le mobile
+app.post('/api/remote/auth', express.json(), (req, res) => {
+  const clientIp = req.ip || req.socket?.remoteAddress || 'unknown';
+  if (!checkRemoteRateLimit(clientIp)) {
+    return res.status(429).json({ success: false, error: 'Trop de tentatives. Réessayez dans une minute.' });
+  }
+  const { pin } = req.body || {};
+  if (isValidRemoteToken(String(pin || ''))) {
+    return res.json({ success: true, token: remoteSessionToken });
+  }
+  recordRemoteAuthFailure(clientIp);
+  return res.status(403).json({ success: false, error: 'Code PIN invalide' });
+});
+
 // 3. Récupération de l'état en direct par le smartphone
 app.get('/api/remote/state', (req, res) => {
+  if (!isLocalhostRequest(req)) {
+    const token = (req.query.token as string) || (req.headers['x-remote-token'] as string) || '';
+    if (!isValidRemoteToken(token)) {
+      return res.status(401).json({ success: false, error: 'Authentification requise (token ou PIN)' });
+    }
+  }
   res.json(currentRemoteState);
 });
 
-// 4. Synchronisation de l'état par le lecteur desktop
+// 4. Synchronisation de l'état par le lecteur desktop (Strictement réservé à localhost)
 app.post('/api/remote/state', express.json(), (req, res) => {
+  if (!isLocalhostRequest(req)) {
+    return res.status(403).json({ success: false, error: 'Forbidden: Localhost only' });
+  }
   if (req.body && typeof req.body === 'object') {
     currentRemoteState = { ...currentRemoteState, ...req.body, lastUpdated: Date.now() };
   }
@@ -5592,20 +5761,36 @@ app.post('/api/remote/state', express.json(), (req, res) => {
 
 // 5. Envoi d'une commande d'action depuis le smartphone (Play, Pause, Volume, Seek, Skip OP, etc.)
 app.post('/api/remote/command', express.json(), (req, res) => {
-  const { type, value, token } = req.body || {};
-  if (!type) {
-    return res.status(400).json({ success: false, error: 'Type de commande manquant' });
+  const clientIp = req.ip || req.socket?.remoteAddress || 'unknown';
+  if (!checkRemoteRateLimit(clientIp)) {
+    return res.status(429).json({ success: false, error: 'Trop de tentatives non autorisées.' });
   }
 
-  const validToken = getInternalToken() || 'flowluna_remote';
-  if (token && token !== validToken && token !== remotePairingPin) {
-    return res.status(403).json({ success: false, error: 'Jeton de télécommande invalide' });
+  const rawBody = req.body || {};
+  const providedToken = rawBody.token || (req.headers['x-remote-token'] as string) || '';
+
+  if (!isLocalhostRequest(req) && !isValidRemoteToken(providedToken)) {
+    recordRemoteAuthFailure(clientIp);
+    return res.status(403).json({ success: false, error: 'Jeton ou code PIN de télécommande requis ou invalide' });
+  }
+
+  // En local, si un token explicite est passé, on vérifie aussi sa validité
+  if (isLocalhostRequest(req) && !isValidRemoteToken(providedToken)) {
+    recordRemoteAuthFailure(clientIp);
+    return res.status(403).json({ success: false, error: 'Jeton ou code PIN de télécommande requis ou invalide' });
+  }
+
+  const rawType = rawBody.type || rawBody.action;
+  const rawValue = rawBody.value !== undefined ? rawBody.value : rawBody.payload;
+  const validation = validateRemoteCommandPayload(rawType, rawValue);
+  if (!validation.valid || !validation.type) {
+    return res.status(400).json({ success: false, error: validation.error || 'Commande invalide' });
   }
 
   const cmd = {
     id: `cmd-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
-    type,
-    value,
+    type: validation.type,
+    value: validation.value,
     timestamp: Date.now(),
   };
 
@@ -5617,8 +5802,11 @@ app.post('/api/remote/command', express.json(), (req, res) => {
   res.json({ success: true, commandId: cmd.id });
 });
 
-// 6. Dépilement des commandes en attente par l'application desktop
+// 6. Dépilement des commandes en attente par l'application desktop (Strictement réservé à localhost)
 app.get('/api/remote/commands', (req, res) => {
+  if (!isLocalhostRequest(req)) {
+    return res.status(403).json({ success: false, error: 'Forbidden: Localhost only' });
+  }
   const commands = [...remoteCommandsQueue];
   remoteCommandsQueue = [];
   res.json({ commands });

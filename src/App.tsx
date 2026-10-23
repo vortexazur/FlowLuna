@@ -50,6 +50,11 @@ import { DetachedMiniPlayerPortal } from './components/DetachedMiniPlayer';
 import { useModalManager } from './hooks/useModalManager';
 import { CreatePlaylistModal } from './components/CreatePlaylistModal';
 import { RemoteControlModal } from './components/RemoteControlModal';
+import {
+  syncRemoteState as pushRemoteState,
+  fetchPendingRemoteCommands,
+  sanitizeCoverUrlForRemote,
+} from './services/remoteControlService';
 import { computeSmartPlaylistTracks } from './services/smartPlaylistService';
 import { ManageSidebarPlaylistsModal } from './components/ManageSidebarPlaylistsModal';
 import { AllPlaylistsView } from './components/AllPlaylistsView';
@@ -68,7 +73,7 @@ import { TitleBar } from './components/TitleBar';
 import { discordRpc } from './services/discordRpcService';
 import { UpdateNotificationToast } from './components/UpdateNotificationToast';
 import { showSystemNotification } from './utils/systemNotification';
-import { setCustomAnimeSkipClientId, setSkipOpAiConfig } from './services/openingDetectorService';
+import { setCustomAnimeSkipClientId, setSkipOpAiConfig, getCachedMarkers } from './services/openingDetectorService';
 import { getEffectiveAiConfig } from './services/aiService';
 
 const DEFAULT_EQ_SETTINGS: EqualizerSettings = {
@@ -1997,112 +2002,197 @@ export default function App() {
 
   // Render current view
 
-  // FlowLuna Remote: Synchronisation temps réel de l'état de lecture et écoute des commandes
-  useEffect(() => {
-    const isRemoteActive = playerSettings.remoteControl?.enabled ?? true;
+  // FlowLuna Remote: Références temps réel pour éviter la réinitialisation du timer sur chaque tick timeupdate
+  const remoteLiveRefs = useRef({
+    currentTime,
+    duration,
+    volume,
+    isMuted,
+    repeatMode,
+    enableSkipOpening: playerSettings.enableSkipOpening ?? true,
+  });
+  remoteLiveRefs.current = {
+    currentTime,
+    duration,
+    volume,
+    isMuted,
+    repeatMode,
+    enableSkipOpening: playerSettings.enableSkipOpening ?? true,
+  };
+
+  const pushCurrentRemoteState = useCallback(async () => {
+    const isRemoteActive = playerSettingsRef.current.remoteControl?.enabled ?? true;
     if (!isRemoteActive) return;
 
-    // A. Envoyer l'état de lecture au serveur local
-    const syncRemoteState = async () => {
-      try {
-        const cur = currentPlayingTrackRef.current;
-        const payload: RemotePlaybackState = {
-          track: cur
-            ? {
-                id: cur.id,
-                title: cur.title,
-                artist: cur.artist,
-                album: cur.album,
-                duration: cur.duration || duration || 0,
-                coverUrl: cur.coverUrl,
-                isFavorite: !!cur.isFavorite,
-              }
-            : null,
-          isPlaying: isPlayingRef.current,
-          currentTime,
-          duration: duration || cur?.duration || 0,
-          volume,
-          isMuted,
-          shuffle,
-          repeatMode,
-          queueLength: queueRef.current.length,
-          lastUpdated: Date.now(),
-        };
+    const cur = currentPlayingTrackRef.current;
+    const live = remoteLiveRefs.current;
+    const effectiveDur = live.duration || cur?.duration || 0;
+    const isVid = isTrackVideo(cur);
 
-        await fetch('/api/remote/state', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(payload),
-        });
-      } catch {
-        // En mode hors-ligne sans serveur Express/Kestrel
-      }
-    };
-
-    // B. Récupérer et exécuter les commandes du mobile
-    const pollRemoteCommands = async () => {
-      try {
-        const res = await fetch('/api/remote/commands');
-        if (!res.ok) return;
-        const commands: RemoteCommand[] = await res.json();
-        if (Array.isArray(commands) && commands.length > 0) {
-          for (const cmd of commands) {
-            switch (cmd.action) {
-              case 'play':
-                if (!isPlayingRef.current) handleTogglePlay();
-                break;
-              case 'pause':
-                if (isPlayingRef.current) handleTogglePlay();
-                break;
-              case 'togglePlay':
-                handleTogglePlay();
-                break;
-              case 'prev':
-                handlePrev();
-                break;
-              case 'next':
-                handleNext();
-                break;
-              case 'seek':
-                if (typeof cmd.payload === 'number') handleSeek(cmd.payload);
-                break;
-              case 'setVolume':
-                if (typeof cmd.payload === 'number') handleVolumeChange(cmd.payload);
-                break;
-              case 'toggleMute':
-                handleToggleMute();
-                break;
-              case 'toggleFavorite':
-                if (currentPlayingTrackRef.current) {
-                  handleToggleFavorite(currentPlayingTrackRef.current.id);
-                }
-                break;
-            }
-          }
+    let opInterval = null;
+    let isOpButtonVisible = false;
+    if (cur && isVid && live.enableSkipOpening) {
+      const trackKey = cur.id || cur.filePath || cur.title;
+      const cached = getCachedMarkers(trackKey, effectiveDur);
+      if (cached?.op) {
+        opInterval = cached.op;
+        if (live.currentTime >= cached.op.start && live.currentTime < cached.op.end - 1) {
+          isOpButtonVisible = true;
         }
-      } catch {
-        // Ignorer si pas de serveur actif
       }
+    }
+
+    const payload: RemotePlaybackState = {
+      currentTrack: cur
+        ? {
+            id: cur.id,
+            title: cur.title,
+            artist: cur.artist,
+            album: cur.album || '',
+            duration: effectiveDur,
+            coverUrl: sanitizeCoverUrlForRemote(cur.coverUrl),
+            isVideo: isVid,
+            isFavorite: !!cur.isFavorite,
+          }
+        : null,
+      isPlaying: isPlayingRef.current,
+      currentTime: live.currentTime,
+      duration: effectiveDur,
+      volume: live.volume,
+      isMuted: live.isMuted,
+      shuffle: shuffleRef.current,
+      repeatMode: live.repeatMode,
+      queue: queueRef.current.slice(0, 100).map((t) => ({
+        id: t.id,
+        title: t.title,
+        artist: t.artist,
+        duration: t.duration || 0,
+      })),
+      currentTrackIndex: currentTrackIndexRef.current,
+      isOpButtonVisible,
+      opInterval,
+      lastUpdated: Date.now(),
     };
 
-    syncRemoteState();
-    const interval = setInterval(() => {
-      syncRemoteState();
-      pollRemoteCommands();
-    }, 1000);
+    await pushRemoteState(payload);
+  }, []);
 
-    return () => clearInterval(interval);
+  // Notification immédiate à la télécommande lors des changements d'état discrets
+  useEffect(() => {
+    pushCurrentRemoteState();
   }, [
     currentPlayingTrack,
     isPlaying,
-    currentTime,
-    duration,
     volume,
     isMuted,
     shuffle,
     repeatMode,
     queue.length,
+    currentTrackIndex,
+    pushCurrentRemoteState,
+  ]);
+
+  // Boucle stable de synchronisation et de dépilement des commandes mobiles (sans dépendance sur currentTime)
+  useEffect(() => {
+    const isRemoteActive = playerSettings.remoteControl?.enabled ?? true;
+    if (!isRemoteActive) return;
+
+    const pollRemoteCommands = async () => {
+      const commands = await fetchPendingRemoteCommands();
+      if (commands.length === 0) return;
+
+      for (const cmd of commands) {
+        const cmdType = (cmd as any).type || (cmd as any).action;
+        const cmdVal = (cmd as any).value !== undefined ? (cmd as any).value : (cmd as any).payload;
+
+        switch (cmdType) {
+          case 'play':
+            if (!isPlayingRef.current) handleTogglePlay();
+            break;
+          case 'pause':
+            if (isPlayingRef.current) handleTogglePlay();
+            break;
+          case 'toggle_play':
+          case 'togglePlay':
+            handleTogglePlay();
+            break;
+          case 'prev':
+            handlePrev();
+            break;
+          case 'next':
+            handleNext();
+            break;
+          case 'seek':
+            if (typeof cmdVal === 'number' && Number.isFinite(cmdVal)) {
+              handleSeek(cmdVal);
+            }
+            break;
+          case 'volume':
+          case 'setVolume':
+            if (typeof cmdVal === 'number' && Number.isFinite(cmdVal)) {
+              handleVolumeChange(Math.max(0, Math.min(1, cmdVal)));
+            }
+            break;
+          case 'mute':
+            if (!remoteLiveRefs.current.isMuted) handleToggleMute();
+            break;
+          case 'toggle_mute':
+          case 'toggleMute':
+            handleToggleMute();
+            break;
+          case 'toggle_favorite':
+          case 'toggleFavorite':
+            if (currentPlayingTrackRef.current) {
+              handleToggleFavorite(currentPlayingTrackRef.current.id);
+            }
+            break;
+          case 'toggle_shuffle':
+          case 'toggleShuffle':
+            handleToggleShuffle();
+            break;
+          case 'cycle_repeat':
+          case 'cycleRepeat':
+            setRepeatMode((p) => (p === 'off' ? 'all' : p === 'all' ? 'one' : 'off'));
+            break;
+          case 'skip_opening':
+          case 'skipOpening': {
+            const cur = currentPlayingTrackRef.current;
+            if (cur) {
+              const trackKey = cur.id || cur.filePath || cur.title;
+              const cached = getCachedMarkers(trackKey, remoteLiveRefs.current.duration || cur.duration || 0);
+              if (cached?.op && cached.op.end > remoteLiveRefs.current.currentTime) {
+                handleSeek(cached.op.end);
+              } else {
+                handleSeek(Math.min(remoteLiveRefs.current.duration || Infinity, remoteLiveRefs.current.currentTime + 85));
+              }
+            }
+            break;
+          }
+          case 'play_queue_index':
+          case 'playQueueIndex':
+            if (typeof cmdVal === 'number' && cmdVal >= 0 && cmdVal < queueRef.current.length) {
+              playTrackAt(cmdVal, queueRef.current, true);
+            }
+            break;
+        }
+      }
+
+      // Pousser l'état actualisé immédiatement après exécution des commandes
+      setTimeout(() => {
+        pushCurrentRemoteState();
+      }, 40);
+    };
+
+    const commandTimer = setInterval(pollRemoteCommands, 350);
+    const stateTimer = setInterval(pushCurrentRemoteState, 750);
+
+    return () => {
+      clearInterval(commandTimer);
+      clearInterval(stateTimer);
+    };
+  }, [
     playerSettings.remoteControl?.enabled,
+    pushCurrentRemoteState,
     handleTogglePlay,
     handlePrev,
     handleNext,
@@ -2110,6 +2200,8 @@ export default function App() {
     handleVolumeChange,
     handleToggleMute,
     handleToggleFavorite,
+    handleToggleShuffle,
+    playTrackAt,
   ]);
 
   const renderMainContent = () => {

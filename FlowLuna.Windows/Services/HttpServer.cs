@@ -43,7 +43,61 @@ public class HttpServer
     };
 
     private static readonly ConcurrentQueue<object> _remoteCommandsQueue = new();
+    private static readonly string RemoteSessionToken = Guid.NewGuid().ToString("N");
     private static readonly string RemotePairingPin = "4242";
+    private static readonly ConcurrentDictionary<string, (int Count, long ResetAt)> _remoteAuthFailures = new();
+
+    private static readonly System.Collections.Generic.Dictionary<string, string> RemoteCommandAliases = new(StringComparer.Ordinal)
+    {
+        ["togglePlay"] = "toggle_play",
+        ["setVolume"] = "volume",
+        ["toggleMute"] = "toggle_mute",
+        ["toggleFavorite"] = "toggle_favorite",
+        ["toggleShuffle"] = "toggle_shuffle",
+        ["cycleRepeat"] = "cycle_repeat",
+        ["skipOpening"] = "skip_opening",
+        ["playQueueIndex"] = "play_queue_index"
+    };
+
+    private static readonly System.Collections.Generic.HashSet<string> AllowedRemoteCommands = new(StringComparer.Ordinal)
+    {
+        "play", "pause", "toggle_play", "next", "prev", "seek", "volume",
+        "mute", "toggle_mute", "toggle_favorite", "toggle_shuffle",
+        "cycle_repeat", "skip_opening", "play_queue_index"
+    };
+
+    private static bool IsLocalhostRequest(HttpContext ctx)
+    {
+        var host = (ctx.Request.Host.Host ?? string.Empty).Trim().ToLowerInvariant();
+        return host == "localhost" || host == "127.0.0.1" || host == "::1";
+    }
+
+    private static bool IsValidRemoteToken(string? providedToken)
+    {
+        if (string.IsNullOrWhiteSpace(providedToken)) return false;
+        var trimmed = providedToken.Trim();
+        return trimmed == RemoteSessionToken || trimmed == RemotePairingPin;
+    }
+
+    private static bool CheckRemoteRateLimit(string clientIp)
+    {
+        var now = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+        if (_remoteAuthFailures.TryGetValue(clientIp, out var entry) && now <= entry.ResetAt)
+        {
+            return entry.Count < 10;
+        }
+        return true;
+    }
+
+    private static void RecordRemoteAuthFailure(string clientIp)
+    {
+        var now = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+        _remoteAuthFailures.AddOrUpdate(
+            clientIp,
+            _ => (1, now + 60_000),
+            (_, existing) => now > existing.ResetAt ? (1, now + 60_000) : (existing.Count + 1, existing.ResetAt)
+        );
+    }
 
     public static bool IsPrivateLanIp(string? host)
     {
@@ -60,21 +114,58 @@ public class HttpServer
     {
         try
         {
+            var virtualRegex = new System.Text.RegularExpressions.Regex(
+                @"(vethernet|wsl|hyper-v|docker|vbox|virtualbox|vmware|tailscale|zerotier|tap|tun|loopback|bluetooth|npcap|teredo|isatap)",
+                System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+            var physicalRegex = new System.Text.RegularExpressions.Regex(
+                @"(wi-fi|wifi|wlan|wireless|ethernet|eth|en\d|lan)",
+                System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+
+            string bestIp = "";
+            int bestScore = -999;
+
             foreach (var ni in System.Net.NetworkInformation.NetworkInterface.GetAllNetworkInterfaces())
             {
                 if (ni.OperationalStatus != System.Net.NetworkInformation.OperationalStatus.Up ||
                     ni.NetworkInterfaceType == System.Net.NetworkInformation.NetworkInterfaceType.Loopback)
                     continue;
 
+                var descAndName = $"{ni.Name} {ni.Description}";
+                bool isVirtual = virtualRegex.IsMatch(descAndName);
+                bool isPhysical = physicalRegex.IsMatch(descAndName);
+
                 var ipProps = ni.GetIPProperties();
+                bool hasGateway = ipProps.GatewayAddresses.Any(g => g.Address.AddressFamily == System.Net.Sockets.AddressFamily.InterNetwork && !IPAddress.Any.Equals(g.Address));
+
                 foreach (var addr in ipProps.UnicastAddresses)
                 {
                     if (addr.Address.AddressFamily == System.Net.Sockets.AddressFamily.InterNetwork && !IPAddress.IsLoopback(addr.Address))
                     {
-                        return addr.Address.ToString();
+                        var ipStr = addr.Address.ToString();
+                        if (ipStr.StartsWith("169.254.")) continue;
+
+                        int score = 0;
+                        if (isVirtual) score -= 100;
+                        if (isPhysical) score += 50;
+                        if (hasGateway) score += 40;
+
+                        if (ipStr.StartsWith("192.168."))
+                            score += ipStr.StartsWith("192.168.56.") ? -40 : 30;
+                        else if (ipStr.StartsWith("10."))
+                            score += 20;
+                        else if (System.Text.RegularExpressions.Regex.IsMatch(ipStr, @"^172\.(1[6-9]|2\d|3[0-1])\."))
+                            score += 10;
+
+                        if (score > bestScore)
+                        {
+                            bestScore = score;
+                            bestIp = ipStr;
+                        }
                     }
                 }
             }
+
+            if (!string.IsNullOrEmpty(bestIp)) return bestIp;
         }
         catch { }
         return "127.0.0.1";
@@ -162,6 +253,7 @@ public class HttpServer
             var path = context.Request.Path.Value ?? string.Empty;
             bool isRemoteRoute = path.Equals("/remote", StringComparison.OrdinalIgnoreCase) ||
                                  path.StartsWith("/remote/", StringComparison.OrdinalIgnoreCase) ||
+                                 path.Equals("/favicon.ico", StringComparison.OrdinalIgnoreCase) ||
                                  path.StartsWith("/api/remote/", StringComparison.OrdinalIgnoreCase);
 
             if (host != "localhost" && host != "127.0.0.1" && !(isRemoteRoute && IsPrivateLanIp(host)))
@@ -1316,18 +1408,22 @@ public class HttpServer
         // 📱 FlowLuna Remote Control Web & API Routes
         // ==========================================
 
-        app.MapGet("/api/remote/info", () =>
+        app.MapGet("/api/remote/info", (HttpContext ctx) =>
         {
+            if (!IsLocalhostRequest(ctx))
+            {
+                ctx.Response.StatusCode = 403;
+                return Results.Json(new { success = false, error = "Forbidden: Localhost only" });
+            }
             var localIp = GetLocalIpAddress();
-            var token = InternalToken ?? "flowluna_remote";
             return Results.Json(new
             {
                 enabled = true,
                 port = Port,
                 localIp,
                 pin = RemotePairingPin,
-                token,
-                url = $"http://{localIp}:{Port}/remote?token={Uri.EscapeDataString(token)}"
+                token = RemoteSessionToken,
+                url = $"http://{localIp}:{Port}/remote?token={Uri.EscapeDataString(RemoteSessionToken)}"
             });
         });
 
@@ -1352,10 +1448,59 @@ public class HttpServer
             }
         });
 
-        app.MapGet("/api/remote/state", () => Results.Json(_currentRemoteState));
+        app.MapPost("/api/remote/auth", async (HttpContext ctx) =>
+        {
+            var clientIp = ctx.Connection.RemoteIpAddress?.ToString() ?? "unknown";
+            if (!CheckRemoteRateLimit(clientIp))
+            {
+                ctx.Response.StatusCode = 429;
+                return Results.Json(new { success = false, error = "Trop de tentatives. Réessayez dans une minute." });
+            }
+            try
+            {
+                using var reader = new StreamReader(ctx.Request.Body);
+                var json = await reader.ReadToEndAsync();
+                if (!string.IsNullOrWhiteSpace(json))
+                {
+                    using var doc = System.Text.Json.JsonDocument.Parse(json);
+                    var pin = doc.RootElement.TryGetProperty("pin", out var pinEl) ? pinEl.ToString() : null;
+                    if (IsValidRemoteToken(pin))
+                    {
+                        return Results.Json(new { success = true, token = RemoteSessionToken });
+                    }
+                }
+            }
+            catch { }
+            RecordRemoteAuthFailure(clientIp);
+            ctx.Response.StatusCode = 403;
+            return Results.Json(new { success = false, error = "Code PIN invalide" });
+        });
+
+        app.MapGet("/api/remote/state", (HttpContext ctx) =>
+        {
+            if (!IsLocalhostRequest(ctx))
+            {
+                var token = ctx.Request.Query["token"].ToString();
+                if (string.IsNullOrEmpty(token) && ctx.Request.Headers.TryGetValue("X-Remote-Token", out var hdrTok))
+                {
+                    token = hdrTok.ToString();
+                }
+                if (!IsValidRemoteToken(token))
+                {
+                    ctx.Response.StatusCode = 401;
+                    return Results.Json(new { success = false, error = "Authentification requise (token ou PIN)" });
+                }
+            }
+            return Results.Json(_currentRemoteState);
+        });
 
         app.MapPost("/api/remote/state", async (HttpContext ctx) =>
         {
+            if (!IsLocalhostRequest(ctx))
+            {
+                ctx.Response.StatusCode = 403;
+                return Results.Json(new { success = false, error = "Forbidden: Localhost only" });
+            }
             try
             {
                 using var reader = new StreamReader(ctx.Request.Body);
@@ -1372,6 +1517,13 @@ public class HttpServer
 
         app.MapPost("/api/remote/command", async (HttpContext ctx) =>
         {
+            var clientIp = ctx.Connection.RemoteIpAddress?.ToString() ?? "unknown";
+            if (!CheckRemoteRateLimit(clientIp))
+            {
+                ctx.Response.StatusCode = 429;
+                return Results.Json(new { success = false, error = "Trop de tentatives non autorisées." });
+            }
+
             try
             {
                 using var reader = new StreamReader(ctx.Request.Body);
@@ -1380,41 +1532,93 @@ public class HttpServer
                 {
                     using var doc = System.Text.Json.JsonDocument.Parse(json);
                     var root = doc.RootElement;
-                    if (root.TryGetProperty("type", out var typeEl))
+
+                    var token = root.TryGetProperty("token", out var tokEl) ? tokEl.GetString() : null;
+                    if (string.IsNullOrEmpty(token) && ctx.Request.Headers.TryGetValue("X-Remote-Token", out var hdrTok))
                     {
-                        var type = typeEl.GetString();
-                        var token = root.TryGetProperty("token", out var tokEl) ? tokEl.GetString() : null;
-                        var validToken = InternalToken ?? "flowluna_remote";
-                        if (!string.IsNullOrEmpty(token) && token != validToken && token != RemotePairingPin)
-                        {
-                            ctx.Response.StatusCode = 403;
-                            return Results.Json(new { success = false, error = "Invalid remote token" });
-                        }
-
-                        object? val = null;
-                        if (root.TryGetProperty("value", out var valEl))
-                        {
-                            val = valEl.Clone();
-                        }
-
-                        var cmd = new
-                        {
-                            id = $"cmd-{DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()}",
-                            type,
-                            value = val,
-                            timestamp = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()
-                        };
-                        _remoteCommandsQueue.Enqueue(cmd);
-                        return Results.Json(new { success = true, commandId = cmd.id });
+                        token = hdrTok.ToString();
                     }
+
+                    if (!IsValidRemoteToken(token))
+                    {
+                        RecordRemoteAuthFailure(clientIp);
+                        ctx.Response.StatusCode = 403;
+                        return Results.Json(new { success = false, error = "Jeton ou code PIN de télécommande requis ou invalide" });
+                    }
+
+                    string? rawType = null;
+                    if (root.TryGetProperty("type", out var typeEl)) rawType = typeEl.GetString();
+                    else if (root.TryGetProperty("action", out var actEl)) rawType = actEl.GetString();
+
+                    if (string.IsNullOrWhiteSpace(rawType))
+                    {
+                        ctx.Response.StatusCode = 400;
+                        return Results.Json(new { success = false, error = "Type de commande manquant" });
+                    }
+
+                    var normalizedType = RemoteCommandAliases.TryGetValue(rawType, out var mapped) ? mapped : rawType;
+                    if (!AllowedRemoteCommands.Contains(normalizedType))
+                    {
+                        ctx.Response.StatusCode = 400;
+                        return Results.Json(new { success = false, error = $"Commande non autorisée: {rawType}" });
+                    }
+
+                    object? validatedValue = null;
+                    System.Text.Json.JsonElement valEl = default;
+                    bool hasVal = root.TryGetProperty("value", out valEl) || root.TryGetProperty("payload", out valEl);
+
+                    if (normalizedType == "volume")
+                    {
+                        if (!hasVal || valEl.ValueKind != System.Text.Json.JsonValueKind.Number || !valEl.TryGetDouble(out var vol) || double.IsNaN(vol) || double.IsInfinity(vol))
+                        {
+                            ctx.Response.StatusCode = 400;
+                            return Results.Json(new { success = false, error = "Valeur de volume invalide" });
+                        }
+                        validatedValue = Math.Clamp(vol, 0.0, 1.0);
+                    }
+                    else if (normalizedType == "seek")
+                    {
+                        if (!hasVal || valEl.ValueKind != System.Text.Json.JsonValueKind.Number || !valEl.TryGetDouble(out var seekSec) || double.IsNaN(seekSec) || double.IsInfinity(seekSec) || seekSec < 0 || seekSec > 86400)
+                        {
+                            ctx.Response.StatusCode = 400;
+                            return Results.Json(new { success = false, error = "Position temporelle (seek) invalide" });
+                        }
+                        validatedValue = seekSec;
+                    }
+                    else if (normalizedType == "play_queue_index")
+                    {
+                        if (!hasVal || valEl.ValueKind != System.Text.Json.JsonValueKind.Number || !valEl.TryGetInt32(out var qIdx) || qIdx < 0 || qIdx >= 10000)
+                        {
+                            ctx.Response.StatusCode = 400;
+                            return Results.Json(new { success = false, error = "Index de file d'attente invalide" });
+                        }
+                        validatedValue = qIdx;
+                    }
+
+                    var cmd = new
+                    {
+                        id = $"cmd-{DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()}",
+                        type = normalizedType,
+                        value = validatedValue,
+                        timestamp = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()
+                    };
+                    _remoteCommandsQueue.Enqueue(cmd);
+                    while (_remoteCommandsQueue.Count > 50 && _remoteCommandsQueue.TryDequeue(out _)) { }
+                    return Results.Json(new { success = true, commandId = cmd.id });
                 }
             }
             catch { }
+            ctx.Response.StatusCode = 400;
             return Results.Json(new { success = false, error = "Bad request" });
         });
 
-        app.MapGet("/api/remote/commands", () =>
+        app.MapGet("/api/remote/commands", (HttpContext ctx) =>
         {
+            if (!IsLocalhostRequest(ctx))
+            {
+                ctx.Response.StatusCode = 403;
+                return Results.Json(new { success = false, error = "Forbidden: Localhost only" });
+            }
             var list = new System.Collections.Generic.List<object>();
             while (_remoteCommandsQueue.TryDequeue(out var cmd))
             {

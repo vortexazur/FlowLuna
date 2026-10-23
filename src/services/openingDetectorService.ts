@@ -168,7 +168,7 @@ export interface CachedMarkersData {
   timestamp: number;
 }
 
-function getCachedMarkers(cacheKey: string, currentDuration?: number): VideoSkipMarkers | null {
+export function getCachedMarkers(cacheKey: string, currentDuration?: number): VideoSkipMarkers | null {
   try {
     const raw = localStorage.getItem(`flowluna_markers_${cacheKey}`);
     if (raw) {

@@ -1,54 +1,16 @@
-import { Track, SkipInterval } from '../types';
+import {
+  RemoteTrackSummary,
+  RemotePlaybackState,
+  RemoteCommandType,
+  RemoteCommand,
+} from '../types';
 
-export interface RemoteTrackSummary {
-  id: string;
-  title: string;
-  artist: string;
-  album: string;
-  duration: number;
-  coverUrl?: string;
-  isVideo?: boolean;
-  isFavorite: boolean;
-}
-
-export interface RemotePlaybackState {
-  currentTrack: RemoteTrackSummary | null;
-  isPlaying: boolean;
-  currentTime: number;
-  duration: number;
-  volume: number;
-  isMuted: boolean;
-  shuffle: boolean;
-  repeatMode: 'off' | 'all' | 'one';
-  queue: Array<{ id: string; title: string; artist: string; duration: number }>;
-  currentTrackIndex: number;
-  isOpButtonVisible: boolean;
-  opInterval: SkipInterval | null;
-  lastUpdated: number;
-}
-
-export type RemoteCommandType =
-  | 'play'
-  | 'pause'
-  | 'toggle_play'
-  | 'next'
-  | 'prev'
-  | 'seek'
-  | 'volume'
-  | 'mute'
-  | 'toggle_mute'
-  | 'toggle_favorite'
-  | 'toggle_shuffle'
-  | 'cycle_repeat'
-  | 'skip_opening'
-  | 'play_queue_index';
-
-export interface RemoteCommand {
-  id: string;
-  type: RemoteCommandType;
-  value?: any;
-  timestamp: number;
-}
+export type {
+  RemoteTrackSummary,
+  RemotePlaybackState,
+  RemoteCommandType,
+  RemoteCommand,
+};
 
 export interface RemoteInfo {
   enabled: boolean;
@@ -57,6 +19,17 @@ export interface RemoteInfo {
   pin: string;
   token: string;
   url: string;
+}
+
+/**
+ * Filtre les URLs de pochettes pour ne transmettre au mobile que des URLs joignables sur le LAN
+ * (évite les URLs mémoire blob:http://127.0.0.1:... propres au WebView desktop).
+ */
+export function sanitizeCoverUrlForRemote(coverUrl?: string): string | undefined {
+  if (!coverUrl || typeof coverUrl !== 'string') return undefined;
+  if (coverUrl.startsWith('blob:') || coverUrl.startsWith('file:')) return undefined;
+  if (coverUrl.startsWith('data:image/') && coverUrl.length > 120_000) return undefined;
+  return coverUrl;
 }
 
 /**
@@ -97,7 +70,8 @@ export async function fetchPendingRemoteCommands(): Promise<RemoteCommand[]> {
     const res = await fetch('/api/remote/commands');
     if (!res.ok) return [];
     const data = await res.json();
-    return data.commands || [];
+    if (Array.isArray(data)) return data;
+    return Array.isArray(data?.commands) ? data.commands : [];
   } catch {
     return [];
   }

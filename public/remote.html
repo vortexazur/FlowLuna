@@ -6,6 +6,7 @@
   <meta name="theme-color" content="#0a0a0f">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <link rel="icon" href="/favicon.ico">
   <title>FlowLuna Remote</title>
   <style>
     * {
@@ -16,69 +17,104 @@
       user-select: none;
     }
     body {
-      background: radial-gradient(circle at 50% 20%, #151522 0%, #0a0a0f 100%);
+      background: radial-gradient(circle at 50% 18%, #151828 0%, #09090e 100%);
       color: #f3f4f6;
       font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
       min-height: 100vh;
+      min-height: 100dvh;
       display: flex;
       flex-direction: column;
       overflow-x: hidden;
-      padding: env(safe-area-inset-top, 16px) 16px env(safe-area-inset-bottom, 20px) 16px;
+      padding: max(env(safe-area-inset-top, 14px), 14px) 16px max(env(safe-area-inset-bottom, 18px), 18px) 16px;
     }
     .glass-card {
-      background: rgba(22, 22, 34, 0.65);
+      background: rgba(22, 24, 36, 0.68);
       backdrop-filter: blur(24px);
       -webkit-backdrop-filter: blur(24px);
       border: 1px solid rgba(255, 255, 255, 0.08);
       border-radius: 24px;
-      box-shadow: 0 16px 40px rgba(0, 0, 0, 0.4);
+      box-shadow: 0 16px 40px rgba(0, 0, 0, 0.45);
     }
+
     /* Header */
     header {
       display: flex;
       align-items: center;
       justify-content: space-between;
-      padding: 12px 6px;
-      margin-bottom: 8px;
+      padding: 8px 4px;
+      margin-bottom: 10px;
     }
     .brand {
       display: flex;
       align-items: center;
       gap: 10px;
     }
-    .brand-logo {
-      width: 32px;
-      height: 32px;
+    .brand-icon {
+      width: 34px;
+      height: 34px;
       border-radius: 10px;
-      background: linear-space-between;
-      object-fit: cover;
-      box-shadow: 0 0 12px rgba(16, 185, 129, 0.3);
+      background: linear-gradient(135deg, rgba(16, 185, 129, 0.25) 0%, rgba(5, 150, 105, 0.1) 100%);
+      border: 1px solid rgba(16, 185, 129, 0.35);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: #34d399;
+      box-shadow: 0 0 14px rgba(16, 185, 129, 0.25);
     }
     .brand-title {
-      font-size: 17px;
-      font-weight: 700;
+      font-size: 16px;
+      font-weight: 800;
       letter-spacing: -0.3px;
       background: linear-gradient(135deg, #ffffff 40%, #a7f3d0 100%);
       -webkit-background-clip: text;
       -webkit-text-fill-color: transparent;
+    }
+    .header-actions {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .wake-btn {
+      background: rgba(255, 255, 255, 0.05);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      color: #9ca3af;
+      border-radius: 10px;
+      padding: 5px 8px;
+      font-size: 11px;
+      font-weight: 600;
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      cursor: pointer;
+    }
+    .wake-btn.active {
+      color: #fbbf24;
+      border-color: rgba(251, 191, 36, 0.35);
+      background: rgba(251, 191, 36, 0.12);
     }
     .status-badge {
       display: flex;
       align-items: center;
       gap: 6px;
       font-size: 11px;
-      font-weight: 600;
+      font-weight: 700;
       padding: 5px 10px;
       border-radius: 12px;
       background: rgba(16, 185, 129, 0.12);
       border: 1px solid rgba(16, 185, 129, 0.25);
       color: #34d399;
+      transition: all 0.2s ease;
+    }
+    .status-badge.offline {
+      background: rgba(239, 68, 68, 0.12);
+      border-color: rgba(239, 68, 68, 0.3);
+      color: #f87171;
     }
     .status-dot {
       width: 6px;
       height: 6px;
       border-radius: 50%;
-      background: #10b981;
+      background: currentColor;
       animation: pulse 2s infinite;
     }
     @keyframes pulse {
@@ -93,37 +129,48 @@
       flex-direction: column;
       justify-content: center;
       align-items: center;
-      padding: 20px;
+      padding: 18px;
       margin-bottom: 12px;
     }
     .artwork-wrap {
-      width: min(72vw, 260px);
-      height: min(72vw, 260px);
+      width: min(66vw, 240px);
+      height: min(66vw, 240px);
       border-radius: 24px;
       overflow: hidden;
-      margin-bottom: 24px;
+      margin-bottom: 20px;
       position: relative;
       box-shadow: 0 20px 48px -12px rgba(0, 0, 0, 0.7);
       border: 1px solid rgba(255, 255, 255, 0.1);
-      transition: transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+      background: radial-gradient(circle at center, #1f2437 0%, #11131d 100%);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1), box-shadow 0.3s ease;
     }
     .artwork-wrap.playing {
-      box-shadow: 0 20px 48px -8px rgba(16, 185, 129, 0.25);
+      box-shadow: 0 20px 48px -8px rgba(16, 185, 129, 0.28);
     }
     .artwork {
       width: 100%;
       height: 100%;
       object-fit: cover;
-      display: block;
+      display: none;
+    }
+    .artwork-placeholder {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      color: rgba(255, 255, 255, 0.22);
     }
 
     .track-meta {
       width: 100%;
       text-align: center;
-      margin-bottom: 20px;
+      margin-bottom: 18px;
     }
     .track-title {
-      font-size: 20px;
+      font-size: 19px;
       font-weight: 800;
       color: #ffffff;
       margin-bottom: 4px;
@@ -133,7 +180,7 @@
       letter-spacing: -0.4px;
     }
     .track-artist {
-      font-size: 14px;
+      font-size: 13px;
       font-weight: 500;
       color: #9ca3af;
       white-space: nowrap;
@@ -144,13 +191,15 @@
     /* Progress & Scrubber */
     .timeline {
       width: 100%;
-      margin-bottom: 24px;
+      margin-bottom: 20px;
+      padding: 6px 0;
+      touch-action: none;
     }
     .progress-bar-bg {
       width: 100%;
-      height: 6px;
-      background: rgba(255, 255, 255, 0.1);
-      border-radius: 4px;
+      height: 8px;
+      background: rgba(255, 255, 255, 0.12);
+      border-radius: 999px;
       overflow: hidden;
       position: relative;
       cursor: pointer;
@@ -159,14 +208,19 @@
       height: 100%;
       width: 0%;
       background: linear-gradient(90deg, #10b981 0%, #34d399 100%);
-      border-radius: 4px;
-      transition: width 0.15s linear;
+      border-radius: 999px;
+      transition: width 0.1s linear;
+    }
+    .timeline.seeking .progress-bar-fill {
+      transition: none;
+      background: linear-gradient(90deg, #34d399 0%, #6ee7b7 100%);
     }
     .time-labels {
       display: flex;
       justify-content: space-between;
       font-size: 11px;
       font-weight: 600;
+      font-variant-numeric: tabular-nums;
       color: #6b7280;
       margin-top: 6px;
     }
@@ -175,10 +229,10 @@
     .controls {
       display: flex;
       align-items: center;
-      justify-content: center;
-      gap: 16px;
+      justify-content: space-between;
       width: 100%;
-      margin-bottom: 20px;
+      max-width: 310px;
+      margin-bottom: 18px;
     }
     .btn-action {
       background: rgba(255, 255, 255, 0.05);
@@ -191,33 +245,56 @@
       align-items: center;
       justify-content: center;
       cursor: pointer;
-      transition: all 0.15s ease;
+      transition: transform 0.12s ease, background 0.15s ease;
     }
     .btn-action:active {
-      transform: scale(0.92);
-      background: rgba(255, 255, 255, 0.12);
+      transform: scale(0.91);
+      background: rgba(255, 255, 255, 0.14);
     }
     .btn-play {
-      width: 68px;
-      height: 68px;
+      width: 66px;
+      height: 66px;
       background: linear-gradient(135deg, #10b981 0%, #059669 100%);
       border: none;
       color: #051b11;
       box-shadow: 0 8px 24px rgba(16, 185, 129, 0.4);
     }
     .btn-play:active {
-      transform: scale(0.94);
+      transform: scale(0.93);
       box-shadow: 0 4px 16px rgba(16, 185, 129, 0.6);
     }
     .btn-secondary {
-      width: 40px;
-      height: 40px;
+      width: 38px;
+      height: 38px;
       color: #9ca3af;
       background: transparent;
       border: none;
+      position: relative;
     }
     .btn-secondary.active {
       color: #10b981;
+    }
+    .repeat-badge {
+      position: absolute;
+      top: 3px;
+      right: 3px;
+      font-size: 8px;
+      font-weight: 900;
+      background: #10b981;
+      color: #051b11;
+      border-radius: 99px;
+      padding: 0 3px;
+      display: none;
+    }
+
+    /* Secondary Modes Row (Favorite + Repeat) */
+    .secondary-row {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 24px;
+      width: 100%;
+      margin-bottom: 12px;
     }
 
     /* Volume Slider */
@@ -227,40 +304,38 @@
       gap: 12px;
       width: 100%;
       max-width: 280px;
-      margin-bottom: 12px;
     }
     .volume-slider {
       flex: 1;
       -webkit-appearance: none;
-      height: 5px;
+      height: 6px;
       border-radius: 4px;
-      background: rgba(255, 255, 255, 0.12);
+      background: rgba(255, 255, 255, 0.14);
       outline: none;
+      touch-action: pan-y;
     }
     .volume-slider::-webkit-slider-thumb {
       -webkit-appearance: none;
-      width: 16px;
-      height: 16px;
+      width: 18px;
+      height: 18px;
       border-radius: 50%;
       background: #10b981;
       cursor: pointer;
       box-shadow: 0 0 8px rgba(16, 185, 129, 0.6);
     }
 
-    /* Dynamic Skip Opening Banner (Anime / Video Cinema) */
+    /* Dynamic Skip Opening Banner */
     .skip-banner {
       display: none;
       width: 100%;
-      max-width: 320px;
-      margin-bottom: 14px;
+      margin-bottom: 12px;
       padding: 12px 16px;
       background: linear-gradient(135deg, rgba(245, 158, 11, 0.25) 0%, rgba(217, 119, 6, 0.15) 100%);
-      border: 1px solid rgba(245, 158, 11, 0.4);
+      border: 1px solid rgba(245, 158, 11, 0.45);
       border-radius: 16px;
       color: #fef3c7;
       font-size: 13px;
       font-weight: 700;
-      display: flex;
       align-items: center;
       justify-content: space-between;
       cursor: pointer;
@@ -268,14 +343,14 @@
       animation: pulse-amber 1.8s infinite;
     }
     @keyframes pulse-amber {
-      0%, 100% { border-color: rgba(245, 158, 11, 0.4); box-shadow: 0 8px 24px rgba(245, 158, 11, 0.2); }
-      50% { border-color: rgba(245, 158, 11, 0.8); box-shadow: 0 8px 32px rgba(245, 158, 11, 0.45); }
+      0%, 100% { border-color: rgba(245, 158, 11, 0.4); }
+      50% { border-color: rgba(245, 158, 11, 0.85); }
     }
 
     /* Queue Drawer Bottom Bar */
     .queue-toggle-btn {
       width: 100%;
-      padding: 14px;
+      padding: 13px;
       display: flex;
       align-items: center;
       justify-content: center;
@@ -294,6 +369,7 @@
       max-height: 240px;
       overflow-y: auto;
       padding: 8px;
+      -webkit-overflow-scrolling: touch;
     }
     .queue-drawer.open {
       display: block;
@@ -310,9 +386,63 @@
       background: rgba(255, 255, 255, 0.02);
     }
     .queue-item.active {
-      background: rgba(16, 185, 129, 0.15);
+      background: rgba(16, 185, 129, 0.16);
       color: #34d399;
       font-weight: 700;
+    }
+
+    /* PIN Auth Modal Overlay */
+    .pin-overlay {
+      position: fixed;
+      inset: 0;
+      z-index: 100;
+      background: rgba(7, 8, 14, 0.88);
+      backdrop-filter: blur(18px);
+      -webkit-backdrop-filter: blur(18px);
+      display: none;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+    }
+    .pin-overlay.visible {
+      display: flex;
+    }
+    .pin-card {
+      width: 100%;
+      max-width: 320px;
+      padding: 24px 20px;
+      text-align: center;
+    }
+    .pin-input {
+      width: 100%;
+      padding: 12px;
+      margin: 14px 0 10px 0;
+      border-radius: 14px;
+      border: 1px solid rgba(255, 255, 255, 0.15);
+      background: rgba(0, 0, 0, 0.45);
+      color: #fff;
+      font-size: 20px;
+      font-weight: 800;
+      letter-spacing: 6px;
+      text-align: center;
+      outline: none;
+    }
+    .pin-submit {
+      width: 100%;
+      padding: 12px;
+      border-radius: 14px;
+      border: none;
+      background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+      color: #051b11;
+      font-size: 14px;
+      font-weight: 800;
+      cursor: pointer;
+    }
+    .pin-error {
+      color: #f87171;
+      font-size: 12px;
+      margin-top: 8px;
+      min-height: 16px;
     }
 
     svg {
@@ -323,17 +453,25 @@
 <body>
   <header>
     <div class="brand">
-      <img src="/logo.jpg" alt="Logo" class="brand-logo" onerror="this.style.display='none'">
+      <div class="brand-icon">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M9 18V5l12-2v13"></path><circle cx="6" cy="18" r="3"></circle><circle cx="18" cy="16" r="3"></circle></svg>
+      </div>
       <span class="brand-title">FlowLuna Remote</span>
     </div>
-    <div class="status-badge" id="status-badge">
-      <span class="status-dot"></span>
-      <span id="status-text">Connecté</span>
+    <div class="header-actions">
+      <button class="wake-btn" id="wake-btn" onclick="toggleWakeLock()" title="Maintenir l'écran allumé">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><circle cx="12" cy="12" r="5"></circle><line x1="12" y1="1" x2="12" y2="3"></line><line x1="12" y1="21" x2="12" y2="23"></line><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line><line x1="1" y1="12" x2="3" y2="12"></line><line x1="21" y1="12" x2="23" y2="12"></line></svg>
+        <span id="wake-label">Veille</span>
+      </button>
+      <div class="status-badge" id="status-badge">
+        <span class="status-dot"></span>
+        <span id="status-text">Connexion</span>
+      </div>
     </div>
   </header>
 
   <!-- Skip Opening Dynamic Action (Video Cinema) -->
-  <div id="skip-btn" class="skip-banner" style="display:none;" onclick="triggerCommand('skip_opening')">
+  <div id="skip-btn" class="skip-banner" onclick="triggerCommand('skip_opening')">
     <div style="display:flex;align-items:center;gap:8px;">
       <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#f59e0b" stroke-width="2.5"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon></svg>
       <span id="skip-label">Passer l'opening</span>
@@ -343,7 +481,10 @@
 
   <div class="glass-card player-container">
     <div class="artwork-wrap" id="art-wrap">
-      <img id="track-cover" class="artwork" src="/logo.jpg" alt="Artwork" onerror="this.src='/logo.jpg'">
+      <img id="track-cover" class="artwork" alt="Artwork">
+      <div id="art-placeholder" class="artwork-placeholder">
+        <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4"><circle cx="12" cy="12" r="10"></circle><circle cx="12" cy="12" r="3"></circle></svg>
+      </div>
     </div>
 
     <div class="track-meta">
@@ -351,8 +492,8 @@
       <div id="track-artist" class="track-artist">FlowLuna Player</div>
     </div>
 
-    <div class="timeline">
-      <div class="progress-bar-bg" id="progress-bar" onclick="handleSeekClick(event)">
+    <div class="timeline" id="timeline">
+      <div class="progress-bar-bg" id="progress-bar">
         <div class="progress-bar-fill" id="progress-fill"></div>
       </div>
       <div class="time-labels">
@@ -362,8 +503,8 @@
     </div>
 
     <div class="controls">
-      <button class="btn-action btn-secondary" id="fav-btn" onclick="triggerCommand('toggle_favorite')" title="Favori">
-        <svg id="fav-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"></path></svg>
+      <button class="btn-action btn-secondary" id="shuffle-btn" onclick="triggerCommand('toggle_shuffle')" title="Aléatoire">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="16 3 21 3 21 8"></polyline><line x1="4" y1="20" x2="21" y2="3"></line><polyline points="21 16 21 21 16 21"></polyline><line x1="15" y1="15" x2="21" y2="21"></line><line x1="4" y1="4" x2="9" y2="9"></line></svg>
       </button>
 
       <button class="btn-action" onclick="triggerCommand('prev')" title="Précédent">
@@ -378,8 +519,15 @@
         <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 4 15 12 5 20 5 4"></polygon><line x1="19" y1="5" x2="19" y2="19" stroke="currentColor" stroke-width="2.5"></line></svg>
       </button>
 
-      <button class="btn-action btn-secondary" id="shuffle-btn" onclick="triggerCommand('toggle_shuffle')" title="Aléatoire">
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="16 3 21 3 21 8"></polyline><line x1="4" y1="20" x2="21" y2="3"></line><polyline points="21 16 21 21 16 21"></polyline><line x1="15" y1="15" x2="21" y2="21"></line><line x1="4" y1="4" x2="9" y2="9"></line></svg>
+      <button class="btn-action btn-secondary" id="repeat-btn" onclick="triggerCommand('cycle_repeat')" title="Répéter">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="17 1 21 5 17 9"></polyline><path d="M3 11V9a4 4 0 0 1 4-4h14"></path><polyline points="7 23 3 19 7 15"></polyline><path d="M21 13v2a4 4 0 0 1-4 4H3"></path></svg>
+        <span class="repeat-badge" id="repeat-badge">1</span>
+      </button>
+    </div>
+
+    <div class="secondary-row">
+      <button class="btn-action btn-secondary" id="fav-btn" onclick="triggerCommand('toggle_favorite')" title="Favori">
+        <svg id="fav-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"></path></svg>
       </button>
     </div>
 
@@ -388,7 +536,7 @@
       <button class="btn-action btn-secondary" onclick="triggerCommand('toggle_mute')" style="width:32px;height:32px;">
         <svg id="vol-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon><path d="M19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07"></path></svg>
       </button>
-      <input type="range" class="volume-slider" id="vol-slider" min="0" max="1" step="0.01" value="0.85" oninput="handleVolumeInput(this.value)">
+      <input type="range" class="volume-slider" id="vol-slider" min="0" max="1" step="0.01" value="0.85">
     </div>
   </div>
 
@@ -401,86 +549,327 @@
     <div id="queue-items"></div>
   </div>
 
+  <!-- PIN Authentication Modal -->
+  <div class="pin-overlay" id="pin-overlay">
+    <div class="glass-card pin-card">
+      <h3 style="font-size:17px;font-weight:800;margin-bottom:6px;">Code PIN requis</h3>
+      <p style="font-size:12px;color:#9ca3af;">Saisissez le code PIN affiché dans FlowLuna sur votre PC</p>
+      <input type="password" inputmode="numeric" maxlength="12" class="pin-input" id="pin-input" placeholder="••••">
+      <button class="pin-submit" onclick="submitPin()">Déverrouiller</button>
+      <div class="pin-error" id="pin-error"></div>
+    </div>
+  </div>
+
   <script>
-    // Extract token from query params or localStorage
     const urlParams = new URLSearchParams(window.location.search);
-    const token = urlParams.get('token') || localStorage.getItem('flowluna_remote_token') || '';
-    if (token) localStorage.setItem('flowluna_remote_token', token);
+    let token = urlParams.get('token') || localStorage.getItem('flowluna_remote_token') || '';
+    if (token) {
+      localStorage.setItem('flowluna_remote_token', token);
+    }
 
     let currentState = null;
     let isSeeking = false;
+    let isDraggingVolume = false;
+    let isFetchingState = false;
+    let lastQueueSignature = '';
+    let lastVolumeSendAt = 0;
+    let pendingVolumeTimer = null;
+    let wakeLockSentinel = null;
+
+    const coverImg = document.getElementById('track-cover');
+    const coverPlaceholder = document.getElementById('art-placeholder');
+    coverImg.addEventListener('load', () => {
+      coverImg.style.display = 'block';
+      coverPlaceholder.style.display = 'none';
+    });
+    coverImg.addEventListener('error', () => {
+      coverImg.style.display = 'none';
+      coverPlaceholder.style.display = 'flex';
+    });
 
     function formatTime(sec) {
       if (!sec || isNaN(sec) || sec < 0) return '0:00';
       const m = Math.floor(sec / 60);
       const s = Math.floor(sec % 60);
-      return `${m}:${s < 10 ? '0' : ''}${s}`;
+      return m + ':' + (s < 10 ? '0' : '') + s;
     }
 
-    async function triggerCommand(type, value) {
-      if (navigator.vibrate) navigator.vibrate(12);
+    function showPinModal(msg) {
+      document.getElementById('pin-overlay').classList.add('visible');
+      if (msg) document.getElementById('pin-error').textContent = msg;
+    }
+
+    async function submitPin() {
+      const pinVal = document.getElementById('pin-input').value.trim();
+      if (!pinVal) return;
       try {
-        await fetch('/api/remote/command', {
+        const res = await fetch('/api/remote/auth', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ pin: pinVal })
+        });
+        const data = await res.json();
+        if (res.ok && data.token) {
+          token = data.token;
+          localStorage.setItem('flowluna_remote_token', token);
+          document.getElementById('pin-overlay').classList.remove('visible');
+          document.getElementById('pin-error').textContent = '';
+          fetchState();
+        } else {
+          document.getElementById('pin-error').textContent = data.error || 'Code PIN incorrect';
+        }
+      } catch {
+        document.getElementById('pin-error').textContent = 'Erreur réseau';
+      }
+    }
+
+    document.getElementById('pin-input').addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') submitPin();
+    });
+
+    async function triggerCommand(type, value, skipVibrate) {
+      if (!skipVibrate && navigator.vibrate) navigator.vibrate(10);
+      try {
+        const res = await fetch('/api/remote/command', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'X-Remote-Token': token
+          },
           body: JSON.stringify({ type, value, token })
         });
-        fetchState();
+        if (res.status === 401 || res.status === 403) {
+          showPinModal('Session expirée ou PIN requis');
+          return;
+        }
+        setTimeout(fetchState, 60);
       } catch (err) {
         console.warn('Failed to send remote command:', err);
       }
     }
 
-    function handleSeekClick(e) {
-      if (!currentState || !currentState.duration) return;
-      const rect = e.currentTarget.getBoundingClientRect();
-      const clickX = e.clientX - rect.left;
-      const pct = Math.max(0, Math.min(1, clickX / rect.width));
-      const targetTime = pct * currentState.duration;
-      triggerCommand('seek', targetTime);
+    // Touch & Pointer Scrubbing on Timeline
+    const timelineEl = document.getElementById('timeline');
+    const progressBarEl = document.getElementById('progress-bar');
+    const progressFillEl = document.getElementById('progress-fill');
+    const currentTimeEl = document.getElementById('current-time');
+    let scrubTargetTime = 0;
+
+    function computeScrubFromClientX(clientX) {
+      if (!currentState || !currentState.duration) return 0;
+      const rect = progressBarEl.getBoundingClientRect();
+      const pct = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width));
+      progressFillEl.style.width = (pct * 100) + '%';
+      scrubTargetTime = pct * currentState.duration;
+      currentTimeEl.textContent = formatTime(scrubTargetTime);
+      return scrubTargetTime;
     }
 
-    function handleVolumeInput(val) {
-      triggerCommand('volume', parseFloat(val));
+    timelineEl.addEventListener('pointerdown', (e) => {
+      if (!currentState || !currentState.duration) return;
+      isSeeking = true;
+      timelineEl.classList.add('seeking');
+      if (timelineEl.setPointerCapture) timelineEl.setPointerCapture(e.pointerId);
+      computeScrubFromClientX(e.clientX);
+    });
+
+    timelineEl.addEventListener('pointermove', (e) => {
+      if (!isSeeking) return;
+      computeScrubFromClientX(e.clientX);
+    });
+
+    function finishSeeking() {
+      if (!isSeeking) return;
+      isSeeking = false;
+      timelineEl.classList.remove('seeking');
+      if (currentState) currentState.currentTime = scrubTargetTime;
+      triggerCommand('seek', scrubTargetTime);
     }
+
+    timelineEl.addEventListener('pointerup', finishSeeking);
+    timelineEl.addEventListener('pointercancel', () => {
+      isSeeking = false;
+      timelineEl.classList.remove('seeking');
+    });
+
+    // Throttled & Lock-Protected Volume Slider
+    const volSlider = document.getElementById('vol-slider');
+    volSlider.addEventListener('pointerdown', () => { isDraggingVolume = true; });
+    volSlider.addEventListener('touchstart', () => { isDraggingVolume = true; }, { passive: true });
+
+    function endVolumeDrag() {
+      if (!isDraggingVolume) return;
+      isDraggingVolume = false;
+      if (pendingVolumeTimer) {
+        clearTimeout(pendingVolumeTimer);
+        pendingVolumeTimer = null;
+      }
+      triggerCommand('volume', parseFloat(volSlider.value), true);
+    }
+
+    window.addEventListener('pointerup', endVolumeDrag);
+    window.addEventListener('touchend', endVolumeDrag);
+    window.addEventListener('touchcancel', endVolumeDrag);
+
+    volSlider.addEventListener('input', () => {
+      const val = parseFloat(volSlider.value);
+      const now = Date.now();
+      if (now - lastVolumeSendAt >= 120) {
+        lastVolumeSendAt = now;
+        triggerCommand('volume', val, true);
+      } else {
+        if (pendingVolumeTimer) clearTimeout(pendingVolumeTimer);
+        pendingVolumeTimer = setTimeout(() => {
+          lastVolumeSendAt = Date.now();
+          triggerCommand('volume', parseFloat(volSlider.value), true);
+        }, 120);
+      }
+    });
 
     function toggleQueue() {
       const q = document.getElementById('queue-drawer');
       q.classList.toggle('open');
     }
 
-    async function fetchState() {
+    // Screen Wake Lock API
+    async function toggleWakeLock() {
+      if (!('wakeLock' in navigator)) return;
       try {
-        const res = await fetch('/api/remote/state?token=' + encodeURIComponent(token));
-        if (!res.ok) {
-          document.getElementById('status-text').textContent = 'Hors ligne';
-          document.getElementById('status-badge').style.color = '#ef4444';
+        if (wakeLockSentinel) {
+          await wakeLockSentinel.release();
+          wakeLockSentinel = null;
+          document.getElementById('wake-btn').classList.remove('active');
+        } else {
+          wakeLockSentinel = await navigator.wakeLock.request('screen');
+          document.getElementById('wake-btn').classList.add('active');
+          wakeLockSentinel.addEventListener('release', () => {
+            document.getElementById('wake-btn').classList.remove('active');
+          });
+        }
+      } catch {}
+    }
+
+    async function fetchState() {
+      if (!token) {
+        showPinModal();
+        return;
+      }
+      if (isFetchingState) return;
+      isFetchingState = true;
+
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 2500);
+
+      try {
+        const res = await fetch('/api/remote/state?token=' + encodeURIComponent(token), {
+          headers: { 'X-Remote-Token': token },
+          signal: controller.signal
+        });
+        clearTimeout(timeoutId);
+
+        if (res.status === 401 || res.status === 403) {
+          showPinModal('Code PIN requis');
           return;
         }
+
+        if (!res.ok) {
+          const badge = document.getElementById('status-badge');
+          badge.classList.add('offline');
+          document.getElementById('status-text').textContent = 'Hors ligne';
+          return;
+        }
+
         const state = await res.json();
         currentState = state;
         updateUI(state);
-      } catch (err) {
-        document.getElementById('status-text').textContent = 'Connexion...';
+      } catch {
+        const badge = document.getElementById('status-badge');
+        badge.classList.add('offline');
+        document.getElementById('status-text').textContent = 'Reconnexion...';
+      } finally {
+        clearTimeout(timeoutId);
+        isFetchingState = false;
       }
     }
 
-    function updateUI(s) {
-      document.getElementById('status-text').textContent = 'En ligne';
-      document.getElementById('status-badge').style.color = '#34d399';
-
-      if (s.currentTrack) {
-        document.getElementById('track-title').textContent = s.currentTrack.title || 'Sans titre';
-        document.getElementById('track-artist').textContent = (s.currentTrack.artist || 'Artiste inconnu') + (s.currentTrack.album ? ' • ' + s.currentTrack.album : '');
-        if (s.currentTrack.coverUrl) {
-          document.getElementById('track-cover').src = s.currentTrack.coverUrl;
+    function renderQueueSafe(queueList, currentIndex) {
+      const qContainer = document.getElementById('queue-items');
+      const sig = queueList.map((it) => (it.id || '') + ':' + (it.title || '')).join('|');
+      if (sig === lastQueueSignature) {
+        // Only update active index highlight without destroying DOM or scroll position
+        const children = qContainer.children;
+        for (let i = 0; i < children.length; i++) {
+          children[i].classList.toggle('active', i === currentIndex);
         }
-        document.getElementById('fav-btn').classList.toggle('active', !!s.currentTrack.isFavorite);
-        document.getElementById('fav-icon').setAttribute('fill', s.currentTrack.isFavorite ? '#f43f5e' : 'none');
-        document.getElementById('fav-icon').setAttribute('stroke', s.currentTrack.isFavorite ? '#f43f5e' : 'currentColor');
+        return;
+      }
+
+      lastQueueSignature = sig;
+      qContainer.textContent = '';
+      const frag = document.createDocumentFragment();
+
+      queueList.forEach((item, idx) => {
+        const row = document.createElement('div');
+        row.className = 'queue-item' + (idx === currentIndex ? ' active' : '');
+        row.addEventListener('click', () => triggerCommand('play_queue_index', idx));
+
+        const metaWrap = document.createElement('div');
+        metaWrap.style.cssText = 'overflow:hidden;text-overflow:ellipsis;white-space:nowrap;margin-right:8px;';
+
+        const titleDiv = document.createElement('div');
+        titleDiv.style.cssText = 'overflow:hidden;text-overflow:ellipsis;white-space:nowrap;';
+        titleDiv.textContent = item.title || 'Sans titre';
+
+        const artistDiv = document.createElement('div');
+        artistDiv.style.cssText = 'font-size:11px;color:#9ca3af;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;';
+        artistDiv.textContent = item.artist || 'Artiste';
+
+        metaWrap.appendChild(titleDiv);
+        metaWrap.appendChild(artistDiv);
+
+        const durSpan = document.createElement('span');
+        durSpan.style.cssText = 'font-size:11px;color:#6b7280;flex-shrink:0;';
+        durSpan.textContent = formatTime(item.duration);
+
+        row.appendChild(metaWrap);
+        row.appendChild(durSpan);
+        frag.appendChild(row);
+      });
+
+      qContainer.appendChild(frag);
+    }
+
+    function updateUI(s) {
+      const badge = document.getElementById('status-badge');
+      badge.classList.remove('offline');
+      document.getElementById('status-text').textContent = 'En ligne';
+
+      const track = s.currentTrack || s.track || null;
+      if (track) {
+        document.getElementById('track-title').textContent = track.title || 'Sans titre';
+        document.getElementById('track-artist').textContent =
+          (track.artist || 'Artiste inconnu') + (track.album ? ' • ' + track.album : '');
+
+        if (track.coverUrl && !track.coverUrl.startsWith('blob:')) {
+          if (coverImg.getAttribute('data-src') !== track.coverUrl) {
+            coverImg.setAttribute('data-src', track.coverUrl);
+            coverImg.src = track.coverUrl;
+          }
+        } else {
+          coverImg.removeAttribute('data-src');
+          coverImg.style.display = 'none';
+          coverPlaceholder.style.display = 'flex';
+        }
+
+        document.getElementById('fav-btn').classList.toggle('active', !!track.isFavorite);
+        document.getElementById('fav-icon').setAttribute('fill', track.isFavorite ? '#f43f5e' : 'none');
+        document.getElementById('fav-icon').setAttribute('stroke', track.isFavorite ? '#f43f5e' : 'currentColor');
       } else {
         document.getElementById('track-title').textContent = 'Aucune lecture';
         document.getElementById('track-artist').textContent = 'FlowLuna';
+        coverImg.removeAttribute('data-src');
+        coverImg.style.display = 'none';
+        coverPlaceholder.style.display = 'flex';
       }
 
       // Play/Pause icon
@@ -494,47 +883,51 @@
         artWrap.classList.remove('playing');
       }
 
-      // Timeline
-      const cur = s.currentTime || 0;
-      const dur = s.duration || 0;
-      document.getElementById('current-time').textContent = formatTime(cur);
-      document.getElementById('duration-time').textContent = formatTime(dur);
-      const pct = dur > 0 ? (cur / dur) * 100 : 0;
-      document.getElementById('progress-fill').style.width = pct + '%';
+      // Timeline (only update if user is not actively dragging the scrubber)
+      if (!isSeeking) {
+        const cur = s.currentTime || 0;
+        const dur = s.duration || 0;
+        currentTimeEl.textContent = formatTime(cur);
+        document.getElementById('duration-time').textContent = formatTime(dur);
+        const pct = dur > 0 ? Math.min(100, (cur / dur) * 100) : 0;
+        progressFillEl.style.width = pct + '%';
+      }
 
-      // Volume
-      document.getElementById('vol-slider').value = s.volume !== undefined ? s.volume : 0.85;
+      // Volume (only update if user is not actively dragging the volume slider)
+      if (!isDraggingVolume && s.volume !== undefined) {
+        volSlider.value = s.isMuted ? 0 : s.volume;
+      }
 
       // Shuffle & Repeat
       document.getElementById('shuffle-btn').classList.toggle('active', !!s.shuffle);
+      const repeatBtn = document.getElementById('repeat-btn');
+      const repeatBadge = document.getElementById('repeat-badge');
+      repeatBtn.classList.toggle('active', s.repeatMode === 'all' || s.repeatMode === 'one');
+      repeatBadge.style.display = s.repeatMode === 'one' ? 'block' : 'none';
 
       // Skip Opening banner
       const skipBtn = document.getElementById('skip-btn');
       if (s.isOpButtonVisible) {
         skipBtn.style.display = 'flex';
-        if (s.opInterval && s.opInterval.title) {
-          document.getElementById('skip-label').textContent = s.opInterval.title;
-        } else {
-          document.getElementById('skip-label').textContent = "Passer l'opening";
-        }
+        document.getElementById('skip-label').textContent =
+          (s.opInterval && s.opInterval.title) ? s.opInterval.title : "Passer l'opening";
       } else {
         skipBtn.style.display = 'none';
       }
 
-      // Queue
-      const queueList = s.queue || [];
+      // Queue (safe DOM diffing)
+      const queueList = Array.isArray(s.queue) ? s.queue : [];
       document.getElementById('queue-count').textContent = queueList.length;
-      const qContainer = document.getElementById('queue-items');
-      qContainer.innerHTML = queueList.map((item, idx) => `
-        <div class="queue-item ${idx === s.currentTrackIndex ? 'active' : ''}" onclick="triggerCommand('play_queue_index', ${idx})">
-          <div style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;margin-right:8px;">
-            <div>${item.title || 'Sans titre'}</div>
-            <div style="font-size:11px;color:#9ca3af;">${item.artist || 'Artiste'}</div>
-          </div>
-          <span style="font-size:11px;color:#6b7280;">${formatTime(item.duration)}</span>
-        </div>
-      `).join('');
+      renderQueueSafe(queueList, s.currentTrackIndex ?? -1);
     }
+
+    // Immediate reconnection & WakeLock recovery when unlocking phone screen
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'visible') {
+        fetchState();
+      }
+    });
+    window.addEventListener('online', fetchState);
 
     // Polling loop
     fetchState();

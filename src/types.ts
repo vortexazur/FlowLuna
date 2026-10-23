@@ -1,5 +1,5 @@
 declare const __APP_VERSION__: string | undefined;
-export const APP_VERSION = typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__ : '1.23.8';
+export const APP_VERSION = typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__ : '1.23.9';
 
 export type MediaFormat =
   | 'mp3'
@@ -333,16 +333,19 @@ export const DEFAULT_REMOTE_SETTINGS: RemoteControlSettings = {
   allowLan: true,
 };
 
+export interface RemoteTrackSummary {
+  id: string;
+  title: string;
+  artist: string;
+  album: string;
+  duration: number;
+  coverUrl?: string;
+  isVideo?: boolean;
+  isFavorite: boolean;
+}
+
 export interface RemotePlaybackState {
-  track: {
-    id: string;
-    title: string;
-    artist: string;
-    album?: string;
-    duration: number;
-    coverUrl?: string;
-    isFavorite?: boolean;
-  } | null;
+  currentTrack: RemoteTrackSummary | null;
   isPlaying: boolean;
   currentTime: number;
   duration: number;
@@ -350,28 +353,33 @@ export interface RemotePlaybackState {
   isMuted: boolean;
   shuffle: boolean;
   repeatMode: 'off' | 'all' | 'one';
-  queueLength: number;
-  hasOpening?: boolean;
-  openingSkipped?: boolean;
-  openingStart?: number;
-  openingEnd?: number;
+  queue: Array<{ id: string; title: string; artist: string; duration: number }>;
+  currentTrackIndex: number;
+  isOpButtonVisible: boolean;
+  opInterval: SkipInterval | null;
   lastUpdated: number;
 }
 
+export type RemoteCommandType =
+  | 'play'
+  | 'pause'
+  | 'toggle_play'
+  | 'next'
+  | 'prev'
+  | 'seek'
+  | 'volume'
+  | 'mute'
+  | 'toggle_mute'
+  | 'toggle_favorite'
+  | 'toggle_shuffle'
+  | 'cycle_repeat'
+  | 'skip_opening'
+  | 'play_queue_index';
+
 export interface RemoteCommand {
   id: string;
-  action:
-    | 'play'
-    | 'pause'
-    | 'togglePlay'
-    | 'prev'
-    | 'next'
-    | 'seek'
-    | 'setVolume'
-    | 'toggleMute'
-    | 'toggleFavorite'
-    | 'skipOpening';
-  payload?: any;
+  type: RemoteCommandType;
+  value?: any;
   timestamp: number;
 }
 
