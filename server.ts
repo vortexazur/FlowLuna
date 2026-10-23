@@ -300,14 +300,29 @@ export const VIDEO_EXTENSIONS = new Set([
 export const ALL_MEDIA_EXTENSIONS = new Set([...AUDIO_EXTENSIONS, ...VIDEO_EXTENSIONS]);
 export const SUBTITLE_EXTENSIONS = new Set(['.srt', '.vtt', '.ass', '.ssa', '.sub']);
 
+let customScannedDirsCache: { dirs: string[]; expiresAt: number } | null = null;
+
+export function invalidateCustomScannedDirsCache(): void {
+  customScannedDirsCache = null;
+}
+
 export function getCustomScannedDirs(): string[] {
+  const now = Date.now();
+  if (customScannedDirsCache && now < customScannedDirsCache.expiresAt) {
+    return customScannedDirsCache.dirs;
+  }
   try {
     const configPath = path.join(getFlowLunaDataDir(), 'custom_folders.json');
     if (fs.existsSync(configPath)) {
       const data = JSON.parse(fs.readFileSync(configPath, 'utf-8'));
-      if (Array.isArray(data)) return data.filter((p) => typeof p === 'string' && fs.existsSync(p));
+      if (Array.isArray(data)) {
+        const dirs = data.filter((p) => typeof p === 'string' && fs.existsSync(p));
+        customScannedDirsCache = { dirs, expiresAt: now + 15000 };
+        return dirs;
+      }
     }
   } catch {}
+  customScannedDirsCache = { dirs: [], expiresAt: now + 15000 };
   return [];
 }
 
@@ -3673,12 +3688,14 @@ interface ScannedAudioTrack {
 function saveCustomScannedDir(dirPath: string): string[] {
   try {
     if (!isSafeScanDirectory(dirPath)) return getCustomScannedDirs();
+    invalidateCustomScannedDirsCache();
     const current = getCustomScannedDirs();
     const resolved = path.resolve(dirPath);
     if (!current.includes(resolved) && fs.existsSync(resolved)) {
       current.push(resolved);
       const configPath = path.join(getFlowLunaDataDir(), 'custom_folders.json');
       fs.writeFileSync(configPath, JSON.stringify(current, null, 2), 'utf-8');
+      invalidateCustomScannedDirsCache();
     }
     return current;
   } catch {
@@ -3728,26 +3745,67 @@ function scanDirectoryForAudio(dirPath: string, maxDepth: number = 4, currentDep
   return results;
 }
 
-async function probeAudioFile(filePath: string): Promise<any> {
-  const ffprobePath = getFfprobePath();
-  if (fs.existsSync(ffprobePath)) {
-    const res = await new Promise<any>((resolve) => {
-      execFile(
-        ffprobePath,
-        ['-v', 'quiet', '-print_format', 'json', '-show_format', '-show_streams', filePath],
-        { timeout: 9000 },
-        (err, stdout) => {
-          if (err || !stdout) return resolve(null);
-          try {
-            resolve(JSON.parse(stdout));
-          } catch {
-            resolve(null);
-          }
-        }
-      );
-    });
-    if (res) return res;
+const ffprobeCache = new Map<string, { mtimeMs: number; size: number; data: any }>();
+const ffprobeInFlight = new Map<string, Promise<any>>();
+const MAX_FFPROBE_CACHE_ENTRIES = 128;
+
+export async function getCachedFfprobeData(filePath: string): Promise<any> {
+  const key = path.resolve(filePath).toLowerCase();
+  let stat: fs.Stats | null = null;
+  try {
+    stat = await fs.promises.stat(filePath);
+  } catch {
+    return null;
   }
+
+  const cached = ffprobeCache.get(key);
+  if (cached && cached.mtimeMs === stat.mtimeMs && cached.size === stat.size) {
+    // Refresh LRU order
+    ffprobeCache.delete(key);
+    ffprobeCache.set(key, cached);
+    return cached.data;
+  }
+
+  const existingPromise = ffprobeInFlight.get(key);
+  if (existingPromise) {
+    return existingPromise;
+  }
+
+  const ffprobePath = getFfprobePath();
+  if (!fs.existsSync(ffprobePath)) {
+    return null;
+  }
+
+  const probePromise = new Promise<any>((resolve) => {
+    execFile(
+      ffprobePath,
+      ['-v', 'quiet', '-print_format', 'json', '-show_format', '-show_streams', '-show_chapters', filePath],
+      { timeout: 9000 },
+      (err, stdout) => {
+        ffprobeInFlight.delete(key);
+        if (err || !stdout) return resolve(null);
+        try {
+          const parsed = JSON.parse(stdout);
+          if (ffprobeCache.size >= MAX_FFPROBE_CACHE_ENTRIES) {
+            const oldestKey = ffprobeCache.keys().next().value;
+            if (oldestKey) ffprobeCache.delete(oldestKey);
+          }
+          ffprobeCache.set(key, { mtimeMs: stat!.mtimeMs, size: stat!.size, data: parsed });
+          resolve(parsed);
+        } catch {
+          resolve(null);
+        }
+      }
+    );
+  });
+
+  ffprobeInFlight.set(key, probePromise);
+  return probePromise;
+}
+
+async function probeAudioFile(filePath: string): Promise<any> {
+  const cachedProbe = await getCachedFfprobeData(filePath);
+  if (cachedProbe) return cachedProbe;
 
   // Fallback to ffmpeg -i
   const ffmpegPath = getFfmpegPath();
@@ -4236,8 +4294,19 @@ app.post('/api/library/add-files', requireInternalToken, express.json(), async (
       explicitlyAddedFiles.add(path.resolve(fp));
     }
 
-    const tasks = validPaths.map((fp: string) => buildTrackMetadataFromFile(fp, false, false, !!isTransient));
-    const results = await Promise.all(tasks);
+    const results: (ScannedAudioTrack | null)[] = new Array(validPaths.length).fill(null);
+    const concurrency = Math.min(3, validPaths.length);
+    let nextIdx = 0;
+
+    await Promise.all(
+      Array.from({ length: concurrency }, async () => {
+        while (nextIdx < validPaths.length) {
+          const i = nextIdx++;
+          results[i] = await buildTrackMetadataFromFile(validPaths[i], false, false, !!isTransient);
+        }
+      })
+    );
+
     const tracks = results.filter((t): t is ScannedAudioTrack => t !== null);
 
     res.json({
@@ -4257,6 +4326,9 @@ app.get('/api/library/folders', (_req, res) => {
   });
 });
 
+const streamPathStatCache = new Map<string, { realPath: string; stat: fs.Stats; expiresAt: number }>();
+const MAX_STREAM_PATH_CACHE = 64;
+
 // Secure Local Audio Streamer for non-public directories
 app.get('/api/library/stream', async (req, res) => {
   const reqFile = req.query.file as string;
@@ -4264,9 +4336,44 @@ app.get('/api/library/stream', async (req, res) => {
     return res.status(400).send('Fichier manquant');
   }
 
-  const realPath = await resolveAllowedPathAsync(reqFile, true);
-  if (!realPath) {
-    return res.status(403).send('Accès au fichier non autorisé ou format invalide');
+  const now = Date.now();
+  const cachedEntry = streamPathStatCache.get(reqFile);
+  let realPath: string | null = null;
+  let stat: fs.Stats | null = null;
+
+  if (cachedEntry && now < cachedEntry.expiresAt) {
+    const realPathLower = cachedEntry.realPath.toLowerCase();
+    const allowedDirs = getAllowedMediaDirs();
+    const isInAllowedDir = allowedDirs.some((dir) => {
+      const dirLower = dir.toLowerCase();
+      return realPathLower.startsWith(dirLower + path.sep) || realPathLower === dirLower;
+    });
+    const isExplicitlyAllowed = Array.from(explicitlyAddedFiles).some(
+      (f) => f.toLowerCase() === realPathLower
+    );
+    if (isInAllowedDir || isExplicitlyAllowed) {
+      realPath = cachedEntry.realPath;
+      stat = cachedEntry.stat;
+    } else {
+      streamPathStatCache.delete(reqFile);
+    }
+  }
+
+  if (!realPath || !stat) {
+    realPath = await resolveAllowedPathAsync(reqFile, true);
+    if (!realPath) {
+      return res.status(403).send('Accès au fichier non autorisé ou format invalide');
+    }
+    try {
+      stat = await fs.promises.stat(realPath);
+      if (streamPathStatCache.size >= MAX_STREAM_PATH_CACHE) {
+        const oldest = streamPathStatCache.keys().next().value;
+        if (oldest) streamPathStatCache.delete(oldest);
+      }
+      streamPathStatCache.set(reqFile, { realPath, stat, expiresAt: now + 30000 });
+    } catch {
+      return res.status(500).send('Erreur lecture fichier');
+    }
   }
 
   const ext = path.extname(realPath).toLowerCase();
@@ -4301,12 +4408,6 @@ app.get('/api/library/stream', async (req, res) => {
     '.ogv': 'video/ogg',
   };
 
-  let stat: fs.Stats;
-  try {
-    stat = await fs.promises.stat(realPath);
-  } catch {
-    return res.status(500).send('Erreur lecture fichier');
-  }
   const range = req.headers.range;
 
   if (range) {
@@ -4322,7 +4423,7 @@ app.get('/api/library/stream', async (req, res) => {
 
     const safeEnd = Math.min(end, stat.size - 1);
     const chunksize = safeEnd - start + 1;
-    const file = fs.createReadStream(realPath, { start, end: safeEnd, highWaterMark: 512 * 1024 });
+    const file = fs.createReadStream(realPath, { start, end: safeEnd, highWaterMark: 256 * 1024 });
 
     const cleanStream = () => {
       try {
@@ -4342,7 +4443,7 @@ app.get('/api/library/stream', async (req, res) => {
     });
     file.pipe(res);
   } else {
-    const file = fs.createReadStream(realPath, { highWaterMark: 512 * 1024 });
+    const file = fs.createReadStream(realPath, { highWaterMark: 256 * 1024 });
 
     const cleanStream = () => {
       try {
@@ -4401,8 +4502,8 @@ app.get('/api/metadata/search', async (req, res) => {
   }
 });
 
-// Video container chapters parser route (Niveau 1 : Inspection des chapitres intégrés)
-app.get('/api/video/chapters', requireInternalToken, (req, res) => {
+// Video container chapters parser route (Niveau 1 : Inspection des chapitres intégrés via cache ffprobe unifié)
+app.get('/api/video/chapters', requireInternalToken, async (req, res) => {
   try {
     const rawPath = (req.query.filePath as string) || '';
     const filePath = resolveAllowedPath(rawPath, true);
@@ -4410,34 +4511,19 @@ app.get('/api/video/chapters', requireInternalToken, (req, res) => {
       return res.status(403).json({ success: false, message: 'Chemin non autorisé ou introuvable', chapters: [] });
     }
 
-    const ffprobePath = getFfprobePath();
-    if (!fs.existsSync(ffprobePath)) {
+    const parsed = await getCachedFfprobeData(filePath);
+    if (!parsed) {
       return res.json({ success: false, chapters: [] });
     }
 
-    execFile(
-      ffprobePath,
-      ['-v', 'quiet', '-print_format', 'json', '-show_chapters', filePath],
-      { timeout: 8000 },
-      (err, stdout) => {
-        if (err || !stdout) {
-          return res.json({ success: false, chapters: [] });
-        }
-        try {
-          const parsed = JSON.parse(stdout);
-          const rawChapters = Array.isArray(parsed.chapters) ? parsed.chapters : [];
-          const chapters = rawChapters.map((ch: any, idx: number) => ({
-            id: ch.id ?? idx,
-            title: ch.tags?.title || ch.title || `Chapitre ${idx + 1}`,
-            startTime: parseFloat(ch.start_time || '0'),
-            endTime: parseFloat(ch.end_time || '0'),
-          }));
-          return res.json({ success: true, chapters });
-        } catch {
-          return res.json({ success: false, chapters: [] });
-        }
-      }
-    );
+    const rawChapters = Array.isArray(parsed.chapters) ? parsed.chapters : [];
+    const chapters = rawChapters.map((ch: any, idx: number) => ({
+      id: ch.id ?? idx,
+      title: ch.tags?.title || ch.title || `Chapitre ${idx + 1}`,
+      startTime: parseFloat(ch.start_time || '0'),
+      endTime: parseFloat(ch.end_time || '0'),
+    }));
+    return res.json({ success: true, chapters });
   } catch (err: any) {
     return res.json({ success: false, error: err?.message, chapters: [] });
   }
@@ -4518,8 +4604,78 @@ export function srtToWebVtt(content: string, offsetSeconds = 0): string {
   return vtt;
 }
 
-// Endpoint : Inspection des flux sous-titres (intégrés + sidecars) et pistes audio
-app.get('/api/video/tracks', requireInternalToken, (req, res) => {
+const embeddedVttCache = new Map<string, { mtimeMs: number; vtt: string }>();
+const embeddedVttInFlight = new Map<string, Promise<string | null>>();
+const MAX_EMBEDDED_VTT_CACHE = 24;
+
+async function extractEmbeddedWebVttCached(
+  filePath: string,
+  mapSpec: string
+): Promise<string | null> {
+  const ffmpegPath = getFfmpegPath();
+  if (!fs.existsSync(ffmpegPath)) return null;
+
+  let mtimeMs = 0;
+  try {
+    const st = await fs.promises.stat(filePath);
+    mtimeMs = st.mtimeMs;
+  } catch {
+    return null;
+  }
+
+  const cacheKey = `${path.resolve(filePath).toLowerCase()}::${mapSpec}`;
+  const cached = embeddedVttCache.get(cacheKey);
+  if (cached && cached.mtimeMs === mtimeMs) {
+    embeddedVttCache.delete(cacheKey);
+    embeddedVttCache.set(cacheKey, cached);
+    return cached.vtt;
+  }
+
+  const inFlight = embeddedVttInFlight.get(cacheKey);
+  if (inFlight) return inFlight;
+
+  const promise = new Promise<string | null>((resolve) => {
+    const args = ['-v', 'quiet', '-i', filePath, '-map', mapSpec, '-f', 'webvtt', 'pipe:1'];
+    const proc = spawn(ffmpegPath, args);
+    let out = '';
+    const timer = setTimeout(() => {
+      try {
+        proc.kill('SIGKILL');
+      } catch {}
+    }, 15000);
+
+    proc.stdout.on('data', (chunk) => {
+      out += chunk.toString('utf-8');
+    });
+
+    proc.on('close', (code) => {
+      clearTimeout(timer);
+      embeddedVttInFlight.delete(cacheKey);
+      if (code === 0 && out.trim().length > 0) {
+        if (embeddedVttCache.size >= MAX_EMBEDDED_VTT_CACHE) {
+          const oldest = embeddedVttCache.keys().next().value;
+          if (oldest) embeddedVttCache.delete(oldest);
+        }
+        embeddedVttCache.set(cacheKey, { mtimeMs, vtt: out });
+        resolve(out);
+      } else {
+        resolve(null);
+      }
+    });
+
+    proc.on('error', () => {
+      clearTimeout(timer);
+      embeddedVttInFlight.delete(cacheKey);
+      resolve(null);
+    });
+  });
+
+  embeddedVttInFlight.set(cacheKey, promise);
+  return promise;
+}
+
+// Endpoint : Inspection des flux sous-titres (intégrés + sidecars) et pistes audio via cache ffprobe unifié
+app.get('/api/video/tracks', requireInternalToken, async (req, res) => {
   try {
     const rawPath = (req.query.filePath as string) || '';
     const filePath = resolveAllowedPath(rawPath, true);
@@ -4570,77 +4726,62 @@ app.get('/api/video/tracks', requireInternalToken, (req, res) => {
       }
     } catch {}
 
-    // 2. Inspection des flux intégrés via ffprobe
-    const ffprobePath = getFfprobePath();
-    if (!fs.existsSync(ffprobePath)) {
+    // 2. Inspection des flux intégrés via cache ffprobe unifié
+    const parsed = await getCachedFfprobeData(filePath);
+    if (!parsed) {
       return res.json({ success: true, subtitles, audioTracks });
     }
 
-    execFile(
-      ffprobePath,
-      ['-v', 'quiet', '-print_format', 'json', '-show_streams', filePath],
-      { timeout: 8000 },
-      (err, stdout) => {
-        if (err || !stdout) {
-          return res.json({ success: true, subtitles, audioTracks });
-        }
-        try {
-          const parsed = JSON.parse(stdout);
-          const streams = Array.isArray(parsed.streams) ? parsed.streams : [];
-          let audioCount = 0;
-          let subCount = 0;
+    const streams = Array.isArray(parsed.streams) ? parsed.streams : [];
+    let audioCount = 0;
+    let subCount = 0;
 
-          for (const s of streams) {
-            const codecType = s.codec_type;
-            const idx = s.index;
-            const lang = (s.tags?.language || s.tags?.LANGUAGE || '').toLowerCase();
-            const title = s.tags?.title || s.tags?.TITLE || '';
-            const isDefault = s.disposition?.default === 1;
+    for (const s of streams) {
+      const codecType = s.codec_type;
+      const idx = s.index;
+      const lang = (s.tags?.language || s.tags?.LANGUAGE || '').toLowerCase();
+      const title = s.tags?.title || s.tags?.TITLE || '';
+      const isDefault = s.disposition?.default === 1;
 
-            if (codecType === 'subtitle') {
-              subCount++;
-              const langLabel = LANGUAGE_NAMES[lang] || (lang ? lang.toUpperCase() : `Piste ${subCount}`);
-              const label = title ? `${langLabel} - ${title}` : `${langLabel} (Intégré)`;
-              subtitles.push({
-                id: `embedded-${idx}`,
-                label,
-                language: lang || undefined,
-                format: s.codec_name || 'subrip',
-                type: 'embedded',
-                streamIndex: idx,
-                filePath,
-                isDefault: isDefault || (subtitles.length === 0 && subCount === 1),
-              });
-            } else if (codecType === 'audio') {
-              audioCount++;
-              const langLabel = LANGUAGE_NAMES[lang] || (lang ? lang.toUpperCase() : `Audio ${audioCount}`);
-              const channels = s.channels ? `${s.channels}.0` : '';
-              const codec = (s.codec_name || '').toUpperCase();
-              const label = title ? `${langLabel} - ${title} [${codec}]` : `${langLabel} [${codec} ${channels}]`.trim();
-              audioTracks.push({
-                id: `audio-${idx}`,
-                index: idx,
-                label,
-                language: lang || undefined,
-                codec: s.codec_name,
-                channels: s.channels,
-                isDefault: isDefault || audioCount === 1,
-              });
-            }
-          }
-          return res.json({ success: true, subtitles, audioTracks });
-        } catch {
-          return res.json({ success: true, subtitles, audioTracks });
-        }
+      if (codecType === 'subtitle') {
+        subCount++;
+        const langLabel = LANGUAGE_NAMES[lang] || (lang ? lang.toUpperCase() : `Piste ${subCount}`);
+        const label = title ? `${langLabel} - ${title}` : `${langLabel} (Intégré)`;
+        subtitles.push({
+          id: `embedded-${idx}`,
+          label,
+          language: lang || undefined,
+          format: s.codec_name || 'subrip',
+          type: 'embedded',
+          streamIndex: idx,
+          filePath,
+          isDefault: isDefault || (subtitles.length === 0 && subCount === 1),
+        });
+      } else if (codecType === 'audio') {
+        audioCount++;
+        const langLabel = LANGUAGE_NAMES[lang] || (lang ? lang.toUpperCase() : `Audio ${audioCount}`);
+        const channels = s.channels ? `${s.channels}.0` : '';
+        const codec = (s.codec_name || '').toUpperCase();
+        const label = title ? `${langLabel} - ${title} [${codec}]` : `${langLabel} [${codec} ${channels}]`.trim();
+        audioTracks.push({
+          id: `audio-${idx}`,
+          index: idx,
+          label,
+          language: lang || undefined,
+          codec: s.codec_name,
+          channels: s.channels,
+          isDefault: isDefault || audioCount === 1,
+        });
       }
-    );
+    }
+    return res.json({ success: true, subtitles, audioTracks });
   } catch (err: any) {
     return res.json({ success: false, error: err?.message, subtitles: [], audioTracks: [] });
   }
 });
 
-// Endpoint : Extraction ou conversion des sous-titres en flux WebVTT standard
-app.get('/api/video/subtitles/webvtt', requireInternalToken, (req, res) => {
+// Endpoint : Extraction ou conversion des sous-titres en flux WebVTT standard (avec cache et nettoyage process)
+app.get('/api/video/subtitles/webvtt', requireInternalToken, async (req, res) => {
   try {
     const rawPath = (req.query.filePath as string) || '';
     const filePath = resolveAllowedPath(rawPath, true);
@@ -4666,9 +4807,17 @@ app.get('/api/video/subtitles/webvtt', requireInternalToken, (req, res) => {
       }
 
       const ext = path.extname(sidecarPath).toLowerCase();
-      if (ext === '.vtt' && offset === 0) {
+      if ((ext === '.vtt' || ext === '.srt') && Math.abs(offset) < 0.001 && ext === '.vtt') {
         const stream = fs.createReadStream(sidecarPath);
+        res.on('close', () => {
+          try { stream.destroy(); } catch {}
+        });
         return stream.pipe(res);
+      }
+
+      if (ext === '.srt' || ext === '.vtt') {
+        const raw = await fs.promises.readFile(sidecarPath, 'utf-8');
+        return res.send(srtToWebVtt(raw, offset));
       }
 
       if (fs.existsSync(ffmpegPath)) {
@@ -4679,11 +4828,19 @@ app.get('/api/video/subtitles/webvtt', requireInternalToken, (req, res) => {
         args.push('-i', sidecarPath, '-f', 'webvtt', 'pipe:1');
 
         const proc = spawn(ffmpegPath, args);
+        const killProc = () => {
+          try {
+            if (!proc.killed) proc.kill('SIGKILL');
+          } catch {}
+        };
+        req.on('close', killProc);
+        res.on('close', killProc);
+
         proc.stdout.pipe(res);
         proc.on('error', () => {
           try {
             const raw = fs.readFileSync(sidecarPath, 'utf-8');
-            res.end(srtToWebVtt(raw));
+            res.end(srtToWebVtt(raw, offset));
           } catch {
             res.status(500).end();
           }
@@ -4691,8 +4848,8 @@ app.get('/api/video/subtitles/webvtt', requireInternalToken, (req, res) => {
         return;
       }
 
-      const raw = fs.readFileSync(sidecarPath, 'utf-8');
-      return res.send(srtToWebVtt(raw));
+      const raw = await fs.promises.readFile(sidecarPath, 'utf-8');
+      return res.send(srtToWebVtt(raw, offset));
     }
 
     // Cas 2 : Piste de sous-titres intégrée au conteneur vidéo (streamIndex)
@@ -4702,23 +4859,15 @@ app.get('/api/video/subtitles/webvtt', requireInternalToken, (req, res) => {
         return res.status(400).send('WEBVTT\n\nNOTE StreamIndex invalide');
       }
 
-      if (!fs.existsSync(ffmpegPath)) {
-        return res.status(500).send('WEBVTT\n\nNOTE ffmpeg requis pour extraire les sous-titres intégrés');
+      const rawVtt = await extractEmbeddedWebVttCached(filePath, `0:${streamIdx}`);
+      if (!rawVtt) {
+        return res.status(500).send('WEBVTT\n\nNOTE Erreur extraction sous-titres intégrés');
       }
 
-      const args = ['-v', 'quiet'];
-      if (offset !== 0) {
-        args.push('-itsoffset', offset.toString());
+      if (Math.abs(offset) >= 0.001) {
+        return res.send(srtToWebVtt(rawVtt, offset));
       }
-      args.push('-i', filePath, '-map', `0:${streamIdx}`, '-f', 'webvtt', 'pipe:1');
-
-      const proc = spawn(ffmpegPath, args);
-
-      proc.stdout.pipe(res);
-      proc.on('error', () => {
-        res.status(500).send('WEBVTT\n\nNOTE Erreur extraction ffmpeg');
-      });
-      return;
+      return res.send(rawVtt);
     }
 
     return res.status(400).send('WEBVTT\n\nNOTE Paramètres streamIndex ou sidecarPath requis');
@@ -4734,6 +4883,8 @@ const SNAP_SILENCE_DURATION = '0.15';
 const SNAP_BLACK_PIX_TH = '0.98';
 const SNAP_BLACK_MIN_D = '0.1';
 const SNAP_MIN_INTERVAL_DURATION = 15.0; // Même règle de cohérence que le C#
+const fineTuneMarkersCache = new Map<string, any>();
+const MAX_FINE_TUNE_CACHE = 64;
 
 app.get('/api/video/fine-tune-markers', requireInternalToken, (req, res) => {
   try {
@@ -4747,6 +4898,11 @@ app.get('/api/video/fine-tune-markers', requireInternalToken, (req, res) => {
       return res.status(400).json({ success: false, message: 'Paramètres filePath, start et end requis ou non autorisés' });
     }
 
+    const cacheKey = `${filePath.toLowerCase()}::${rawStart.toFixed(2)}::${rawEnd.toFixed(2)}::${searchWindow.toFixed(2)}`;
+    if (fineTuneMarkersCache.has(cacheKey)) {
+      return res.json(fineTuneMarkersCache.get(cacheKey));
+    }
+
     const ffmpegPath = getFfmpegPath();
     if (!fs.existsSync(ffmpegPath)) {
       return res.json({
@@ -4758,6 +4914,30 @@ app.get('/api/video/fine-tune-markers', requireInternalToken, (req, res) => {
         snapped: false,
         snapType: 'none',
         message: 'FFmpeg non disponible',
+      });
+    }
+
+    const activeProcs = new Set<ReturnType<typeof execFile>>();
+    let isClientClosed = false;
+    const cleanupProcs = () => {
+      isClientClosed = true;
+      activeProcs.forEach((p) => {
+        try {
+          p.kill('SIGKILL');
+        } catch {}
+      });
+      activeProcs.clear();
+    };
+    req.on('close', cleanupProcs);
+
+    function runFfmpegWindow(args: string[], timeoutMs: number): Promise<string> {
+      return new Promise((resolve) => {
+        if (isClientClosed) return resolve('');
+        const child = execFile(ffmpegPath, args, { timeout: timeoutMs }, (_err, _out, stderr) => {
+          activeProcs.delete(child);
+          resolve(stderr || '');
+        });
+        activeProcs.add(child);
       });
     }
 
@@ -4804,26 +4984,47 @@ app.get('/api/video/fine-tune-markers', requireInternalToken, (req, res) => {
       return best;
     }
 
-    // 1. Détecter silences autour de rawStart
-    const startRangeMin = Math.max(0, rawStart - searchWindow);
-    const startRangeDuration = searchWindow * 2.0;
-    const silenceArgsStart = [
-      '-v', 'info',
-      '-ss', startRangeMin.toFixed(2),
-      '-t', startRangeDuration.toFixed(2),
-      '-i', filePath,
-      '-vn', '-sn',
-      '-af', `silencedetect=noise=${SNAP_SILENCE_NOISE}:d=${SNAP_SILENCE_DURATION}`,
-      '-f', 'null', '-',
-    ];
+    (async () => {
+      const startRangeMin = Math.max(0, rawStart - searchWindow);
+      const startRangeDuration = searchWindow * 2.0;
+      const endRangeMin = Math.max(0, rawEnd - searchWindow);
+      const endRangeDuration = searchWindow * 2.0;
 
-    execFile(ffmpegPath, silenceArgsStart, { timeout: 7000 }, (err1, _out1, stderr1) => {
+      // 1 & 2. Détecter silences autour de rawStart et rawEnd
+      const [stderr1, stderr2] = await Promise.all([
+        runFfmpegWindow(
+          [
+            '-v', 'info',
+            '-ss', startRangeMin.toFixed(2),
+            '-t', startRangeDuration.toFixed(2),
+            '-i', filePath,
+            '-vn', '-sn',
+            '-af', `silencedetect=noise=${SNAP_SILENCE_NOISE}:d=${SNAP_SILENCE_DURATION}`,
+            '-f', 'null', '-',
+          ],
+          6000
+        ),
+        runFfmpegWindow(
+          [
+            '-v', 'info',
+            '-ss', endRangeMin.toFixed(2),
+            '-t', endRangeDuration.toFixed(2),
+            '-i', filePath,
+            '-vn', '-sn',
+            '-af', `silencedetect=noise=${SNAP_SILENCE_NOISE}:d=${SNAP_SILENCE_DURATION}`,
+            '-f', 'null', '-',
+          ],
+          6000
+        ),
+      ]);
+
+      if (isClientClosed) return;
+
       let adjustedStart = rawStart;
       let startSnapped = false;
-
-      if (!err1 && stderr1) {
+      if (stderr1) {
         const silences = parseSilences(stderr1, startRangeMin);
-        const points = silences.flatMap(s => [s.end, s.start]);
+        const points = silences.flatMap((s) => [s.end, s.start]);
         const candidate = nearestPoint(points, rawStart, searchWindow);
         if (candidate !== null) {
           adjustedStart = Math.round(candidate * 100) / 100;
@@ -4831,125 +5032,103 @@ app.get('/api/video/fine-tune-markers', requireInternalToken, (req, res) => {
         }
       }
 
-      // 2. Détecter silences autour de rawEnd
-      const endRangeMin = Math.max(0, rawEnd - searchWindow);
-      const endRangeDuration = searchWindow * 2.0;
-      const silenceArgsEnd = [
-        '-v', 'info',
-        '-ss', endRangeMin.toFixed(2),
-        '-t', endRangeDuration.toFixed(2),
-        '-i', filePath,
-        '-vn', '-sn',
-        '-af', `silencedetect=noise=${SNAP_SILENCE_NOISE}:d=${SNAP_SILENCE_DURATION}`,
-        '-f', 'null', '-',
-      ];
-
-      execFile(ffmpegPath, silenceArgsEnd, { timeout: 7000 }, (err2, _out2, stderr2) => {
-        let adjustedEnd = rawEnd;
-        let endSnapped = false;
-
-        if (!err2 && stderr2) {
-          const silences = parseSilences(stderr2, endRangeMin);
-          // Le début du silence est le moment idéal où la musique se termine
-          const points = silences.flatMap(s => [s.start, s.end]);
-          const candidate = nearestPoint(points, rawEnd, searchWindow);
-          if (candidate !== null) {
-            adjustedEnd = Math.round(candidate * 100) / 100;
-            endSnapped = true;
-          }
+      let adjustedEnd = rawEnd;
+      let endSnapped = false;
+      if (stderr2) {
+        const silences = parseSilences(stderr2, endRangeMin);
+        const points = silences.flatMap((s) => [s.start, s.end]);
+        const candidate = nearestPoint(points, rawEnd, searchWindow);
+        if (candidate !== null) {
+          adjustedEnd = Math.round(candidate * 100) / 100;
+          endSnapped = true;
         }
+      }
 
-        // 3. Fallback blackdetect si aucun silence n'a snappé — parité avec DetectBlackFramesAsync C#
-        if (!startSnapped || !endSnapped) {
-          const blackRangeMin = startRangeMin;
-          const blackRangeDuration = Math.min(120, startRangeDuration + (rawEnd - rawStart));
-          const blackArgs = [
+      let snapType = startSnapped || endSnapped ? 'silence' : 'none';
+
+      // 3. Fallback blackdetect ciblé uniquement sur la courte fenêtre de 7s (avec downscale 160x90 ultra-léger)
+      if (!startSnapped) {
+        const stderrBlackStart = await runFfmpegWindow(
+          [
             '-v', 'info',
-            '-ss', blackRangeMin.toFixed(2),
-            '-t', blackRangeDuration.toFixed(2),
+            '-ss', startRangeMin.toFixed(2),
+            '-t', startRangeDuration.toFixed(2),
             '-i', filePath,
             '-an', '-sn',
-            `-vf`, `blackdetect=d=${SNAP_BLACK_MIN_D}:pic_th=${SNAP_BLACK_PIX_TH}`,
+            '-vf', `scale=160:90,blackdetect=d=${SNAP_BLACK_MIN_D}:pic_th=${SNAP_BLACK_PIX_TH}`,
             '-f', 'null', '-',
-          ];
-
-          execFile(ffmpegPath, blackArgs, { timeout: 8000 }, (err3, _out3, stderr3) => {
-            let snapType = (startSnapped || endSnapped) ? 'silence' : 'none';
-
-            if (!err3 && stderr3) {
-              const blacks = parseBlackFrames(stderr3, blackRangeMin);
-              if (blacks.length > 0) {
-                if (!startSnapped) {
-                  // Fin de black = début idéal de l'opening (même logique C#)
-                  const pts = blacks.flatMap(b => [b.end, b.start]);
-                  const c = nearestPoint(pts, rawStart, searchWindow);
-                  if (c !== null) {
-                    adjustedStart = Math.round(c * 100) / 100;
-                    startSnapped = true;
-                    if (snapType === 'none') snapType = 'black';
-                  }
-                }
-                if (!endSnapped) {
-                  const pts = blacks.flatMap(b => [b.start, b.end]);
-                  const c = nearestPoint(pts, rawEnd, searchWindow);
-                  if (c !== null) {
-                    adjustedEnd = Math.round(c * 100) / 100;
-                    endSnapped = true;
-                    if (snapType === 'none') snapType = 'black';
-                  }
-                }
-              }
-            }
-
-            // Valider cohérence (≥ 15s) — même règle C#
-            if (adjustedEnd - adjustedStart < SNAP_MIN_INTERVAL_DURATION) {
-              adjustedStart = rawStart;
-              adjustedEnd = rawEnd;
-              startSnapped = false;
-              endSnapped = false;
-              snapType = 'none';
-            }
-
-            const snapped = startSnapped || endSnapped;
-            return res.json({
-              success: true,
-              originalStart: rawStart,
-              adjustedStart,
-              originalEnd: rawEnd,
-              adjustedEnd,
-              snapped,
-              snapType: snapped ? snapType : 'none',
-              startOffset: Math.round((adjustedStart - rawStart) * 100) / 100,
-              endOffset: Math.round((adjustedEnd - rawEnd) * 100) / 100,
-              message: snapped ? `Calé avec succès (${snapType})` : 'Aucune coupure franche à proximité',
-            });
-          });
-          return; // attendre le callback blackdetect
+          ],
+          5000
+        );
+        if (stderrBlackStart) {
+          const blacks = parseBlackFrames(stderrBlackStart, startRangeMin);
+          const pts = blacks.flatMap((b) => [b.end, b.start]);
+          const c = nearestPoint(pts, rawStart, searchWindow);
+          if (c !== null) {
+            adjustedStart = Math.round(c * 100) / 100;
+            startSnapped = true;
+            if (snapType === 'none') snapType = 'black';
+          }
         }
+      }
 
-        // Silences trouvés pour les deux marqueurs : on valide directement
-        if (adjustedEnd - adjustedStart < SNAP_MIN_INTERVAL_DURATION) {
-          adjustedStart = rawStart;
-          adjustedEnd = rawEnd;
-          startSnapped = false;
-          endSnapped = false;
+      if (!endSnapped && !isClientClosed) {
+        const stderrBlackEnd = await runFfmpegWindow(
+          [
+            '-v', 'info',
+            '-ss', endRangeMin.toFixed(2),
+            '-t', endRangeDuration.toFixed(2),
+            '-i', filePath,
+            '-an', '-sn',
+            '-vf', `scale=160:90,blackdetect=d=${SNAP_BLACK_MIN_D}:pic_th=${SNAP_BLACK_PIX_TH}`,
+            '-f', 'null', '-',
+          ],
+          5000
+        );
+        if (stderrBlackEnd) {
+          const blacks = parseBlackFrames(stderrBlackEnd, endRangeMin);
+          const pts = blacks.flatMap((b) => [b.start, b.end]);
+          const c = nearestPoint(pts, rawEnd, searchWindow);
+          if (c !== null) {
+            adjustedEnd = Math.round(c * 100) / 100;
+            endSnapped = true;
+            if (snapType === 'none') snapType = 'black';
+          }
         }
+      }
 
-        const snapped = startSnapped || endSnapped;
-        return res.json({
-          success: true,
-          originalStart: rawStart,
-          adjustedStart,
-          originalEnd: rawEnd,
-          adjustedEnd,
-          snapped,
-          snapType: snapped ? 'silence' : 'none',
-          startOffset: Math.round((adjustedStart - rawStart) * 100) / 100,
-          endOffset: Math.round((adjustedEnd - rawEnd) * 100) / 100,
-          message: snapped ? 'Calé avec succès (silence)' : 'Aucune coupure franche à proximité',
-        });
-      });
-    });
+      if (isClientClosed) return;
+
+      // Valider cohérence (≥ 15s) — même règle C#
+      if (adjustedEnd - adjustedStart < SNAP_MIN_INTERVAL_DURATION) {
+        adjustedStart = rawStart;
+        adjustedEnd = rawEnd;
+        startSnapped = false;
+        endSnapped = false;
+        snapType = 'none';
+      }
+
+      const snapped = startSnapped || endSnapped;
+      const payload = {
+        success: true,
+        originalStart: rawStart,
+        adjustedStart,
+        originalEnd: rawEnd,
+        adjustedEnd,
+        snapped,
+        snapType: snapped ? snapType : 'none',
+        startOffset: Math.round((adjustedStart - rawStart) * 100) / 100,
+        endOffset: Math.round((adjustedEnd - rawEnd) * 100) / 100,
+        message: snapped ? `Calé avec succès (${snapType})` : 'Aucune coupure franche à proximité',
+      };
+
+      if (fineTuneMarkersCache.size >= MAX_FINE_TUNE_CACHE) {
+        const oldest = fineTuneMarkersCache.keys().next().value;
+        if (oldest) fineTuneMarkersCache.delete(oldest);
+      }
+      fineTuneMarkersCache.set(cacheKey, payload);
+      return res.json(payload);
+    })();
   } catch (err: any) {
     return res.json({
       success: false,
@@ -4965,7 +5144,7 @@ app.get('/api/video/fine-tune-markers', requireInternalToken, (req, res) => {
 });
 
 // Intro Skipper Endpoint 2 : Analyse multilingue des sous-titres (Recap / Preview)
-app.get('/api/video/subtitles/analyze', requireInternalToken, (req, res) => {
+app.get('/api/video/subtitles/analyze', requireInternalToken, async (req, res) => {
   try {
     const rawPath = (req.query.filePath as string) || '';
     const filePath = resolveAllowedPath(rawPath, true);
@@ -5018,7 +5197,7 @@ app.get('/api/video/subtitles/analyze', requireInternalToken, (req, res) => {
     // Tester les fichiers sidecars
     for (const subFile of sidecars) {
       try {
-        const content = fs.readFileSync(subFile, 'utf-8');
+        const content = await fs.promises.readFile(subFile, 'utf-8');
         const { recap, preview } = parseCues(content);
         if (recap || preview) {
           return res.json({
@@ -5033,31 +5212,29 @@ app.get('/api/video/subtitles/analyze', requireInternalToken, (req, res) => {
       } catch {}
     }
 
-    // Tester flux sous-titre intégré via ffmpeg
-    const ffmpegPath = getFfmpegPath();
-    if (fs.existsSync(ffmpegPath)) {
-      execFile(
-        ffmpegPath,
-        ['-v', 'quiet', '-i', filePath, '-map', '0:s:0?', '-f', 'webvtt', '-'],
-        { timeout: 6000 },
-        (err, stdout) => {
-          if (!err && stdout) {
-            const { recap, preview } = parseCues(stdout);
-            if (recap || preview) {
-              return res.json({
-                success: true,
-                recapStart: recap?.start ?? null,
-                recapEnd: recap?.end ?? null,
-                previewStart: preview?.start ?? null,
-                previewEnd: preview?.end ?? null,
-                source: 'embedded',
-              });
-            }
-          }
-          return res.json({ success: true, recapStart: null, recapEnd: null, previewStart: null, previewEnd: null });
-        }
-      );
-      return;
+    // Vérifier via le cache ffprobe si une piste de sous-titre intégrée existe avant tout spawn ffmpeg
+    const probeData = await getCachedFfprobeData(filePath);
+    const streams = Array.isArray(probeData?.streams) ? probeData.streams : [];
+    const firstSubStream = streams.find((s: any) => s.codec_type === 'subtitle');
+
+    if (probeData && !firstSubStream) {
+      return res.json({ success: true, recapStart: null, recapEnd: null, previewStart: null, previewEnd: null });
+    }
+
+    const mapSpec = firstSubStream && typeof firstSubStream.index === 'number' ? `0:${firstSubStream.index}` : '0:s:0?';
+    const stdout = await extractEmbeddedWebVttCached(filePath, mapSpec);
+    if (stdout) {
+      const { recap, preview } = parseCues(stdout);
+      if (recap || preview) {
+        return res.json({
+          success: true,
+          recapStart: recap?.start ?? null,
+          recapEnd: recap?.end ?? null,
+          previewStart: preview?.start ?? null,
+          previewEnd: preview?.end ?? null,
+          source: 'embedded',
+        });
+      }
     }
 
     return res.json({ success: true, recapStart: null, recapEnd: null, previewStart: null, previewEnd: null });
@@ -5074,6 +5251,10 @@ const ACOUSTIC_SAMPLE_RATE_HZ = 20;      // Après sous-échantillonnage (200 Hz
 const ACOUSTIC_OP_MIN_DURATION_S = 60;   // Durée minimale raisonnable d'un OP
 const ACOUSTIC_OP_MAX_DURATION_S = 120;  // Durée maximale raisonnable d'un OP
 const ACOUSTIC_ENVELOPE_DURATION_S = 240; // Plage d'extraction (4 minutes)
+
+const acousticEnvelopeCache = new Map<string, { mtimeMs: number; env: Float32Array }>();
+const acousticEnvelopeInFlight = new Map<string, Promise<Float32Array>>();
+const MAX_ACOUSTIC_ENVELOPE_CACHE = 24;
 
 /** Choisit les épisodes frères les plus pertinents (même préfixe, épisode voisin), max 2 */
 function chooseSiblings(filePath: string, allSiblings: string[]): string[] {
@@ -5133,14 +5314,39 @@ app.get('/api/video/acoustic-match', requireInternalToken, (req, res) => {
       return res.json({ success: false, message: 'FFmpeg non disponible' });
     }
 
-    // Extraction 240s PCM float à 200 Hz → enveloppe RMS à 20 Hz
-    function extractEnvelope(target: string): Promise<Float32Array> {
-      return new Promise((resolve) => {
+    let isRequestAborted = false;
+    req.on('close', () => {
+      isRequestAborted = true;
+    });
+
+    // Extraction 240s PCM float à 200 Hz → enveloppe RMS à 20 Hz (avec cache LRU par fichier)
+    async function extractEnvelope(target: string): Promise<Float32Array> {
+      const key = path.resolve(target).toLowerCase();
+      let mtimeMs = 0;
+      try {
+        const st = await fs.promises.stat(target);
+        mtimeMs = st.mtimeMs;
+      } catch {
+        return new Float32Array(0);
+      }
+
+      const cached = acousticEnvelopeCache.get(key);
+      if (cached && cached.mtimeMs === mtimeMs) {
+        acousticEnvelopeCache.delete(key);
+        acousticEnvelopeCache.set(key, cached);
+        return cached.env;
+      }
+
+      const inFlight = acousticEnvelopeInFlight.get(key);
+      if (inFlight) return inFlight;
+
+      const promise = new Promise<Float32Array>((resolve) => {
         const args = [
           '-v', 'quiet', '-ss', '0', '-t', String(ACOUSTIC_ENVELOPE_DURATION_S),
           '-i', target, '-vn', '-sn', '-ac', '1', '-ar', '200', '-f', 'f32le', '-',
         ];
         execFile(ffmpegPath, args, { encoding: 'buffer', maxBuffer: 10 * 1024 * 1024, timeout: 10000 }, (err, stdout) => {
+          acousticEnvelopeInFlight.delete(key);
           if (err || !stdout || stdout.length === 0) return resolve(new Float32Array(0));
           const floatCount = Math.floor(stdout.length / 4);
           const raw = new Float32Array(stdout.buffer, stdout.byteOffset, floatCount);
@@ -5151,9 +5357,17 @@ app.get('/api/video/acoustic-match', requireInternalToken, (req, res) => {
             for (let k = 0; k < 10; k++) { const v = raw[i * 10 + k]; sumSq += v * v; }
             env[i] = Math.sqrt(sumSq / 10.0);
           }
+          if (acousticEnvelopeCache.size >= MAX_ACOUSTIC_ENVELOPE_CACHE) {
+            const oldest = acousticEnvelopeCache.keys().next().value;
+            if (oldest) acousticEnvelopeCache.delete(oldest);
+          }
+          acousticEnvelopeCache.set(key, { mtimeMs, env });
           resolve(env);
         });
       });
+
+      acousticEnvelopeInFlight.set(key, promise);
+      return promise;
     }
 
     function pearson(a: Float32Array, oA: number, b: Float32Array, oB: number, len: number): number {
@@ -5168,70 +5382,79 @@ app.get('/api/video/acoustic-match', requireInternalToken, (req, res) => {
       return (sAB / len - mA * mB) / Math.sqrt(vA * vB);
     }
 
-    // Essai des candidats frères dans l'ordre
-    const tryNext = (idx: number): void => {
+    // Essai des candidats frères dans l'ordre sans jamais bloquer l'Event Loop Node.js
+    const tryNext = async (idx: number): Promise<void> => {
+      if (isRequestAborted) return;
       if (idx >= siblings.length) {
         res.json({ success: false, message: 'Corrélation sonore insuffisante sur tous les candidats' });
         return;
       }
       const sibling = siblings[idx];
 
-      Promise.all([extractEnvelope(filePath), extractEnvelope(sibling)]).then(([env1, env2]) => {
-        if (env1.length < 100 || env2.length < 100) {
-          return tryNext(idx + 1);
+      const [env1, env2] = await Promise.all([extractEnvelope(filePath), extractEnvelope(sibling)]);
+      if (isRequestAborted) return;
+
+      if (env1.length < 100 || env2.length < 100) {
+        return tryNext(idx + 1);
+      }
+
+      let bestScore = 0;
+      let bestT1 = -1;
+      let bestT2 = -1;
+      let outerCount = 0;
+
+      for (let t1 = 200; t1 <= env1.length - ACOUSTIC_WINDOW_SAMPLES; t1 += 20) {
+        if (++outerCount % 12 === 0) {
+          // Céder l'Event Loop régulièrement pour laisser passer les requêtes HTTP Range du lecteur vidéo
+          await new Promise<void>((r) => setImmediate(r));
+          if (isRequestAborted) return;
         }
-
-        let bestScore = 0;
-        let bestT1 = -1;
-        let bestT2 = -1;
-
-        for (let t1 = 200; t1 <= env1.length - ACOUSTIC_WINDOW_SAMPLES; t1 += 20) {
-          for (let t2 = 200; t2 <= env2.length - ACOUSTIC_WINDOW_SAMPLES; t2 += 20) {
-            const corr = pearson(env1, t1, env2, t2, ACOUSTIC_WINDOW_SAMPLES);
-            if (corr > bestScore) {
-              bestScore = corr;
-              bestT1 = t1;
-              bestT2 = t2;
-            }
+        for (let t2 = 200; t2 <= env2.length - ACOUSTIC_WINDOW_SAMPLES; t2 += 20) {
+          const corr = pearson(env1, t1, env2, t2, ACOUSTIC_WINDOW_SAMPLES);
+          if (corr > bestScore) {
+            bestScore = corr;
+            bestT1 = t1;
+            bestT2 = t2;
           }
         }
+      }
 
-        if (bestScore >= ACOUSTIC_PEARSON_THRESHOLD && bestT1 >= 0) {
-          const opStart = Math.round((bestT1 / ACOUSTIC_SAMPLE_RATE_HZ) * 10) / 10;
+      if (bestScore >= ACOUSTIC_PEARSON_THRESHOLD && bestT1 >= 0) {
+        const opStart = Math.round((bestT1 / ACOUSTIC_SAMPLE_RATE_HZ) * 10) / 10;
 
-          // Estimer la fin de l'OP : étendre la fenêtre corrélée tant que Pearson ≥ seuil
-          // Pas de 1 seconde (20 échantillons à 20 Hz)
-          const stepSamples = ACOUSTIC_SAMPLE_RATE_HZ;
-          let extLen = ACOUSTIC_WINDOW_SAMPLES;
-          const maxExtLen = Math.round(ACOUSTIC_OP_MAX_DURATION_S * ACOUSTIC_SAMPLE_RATE_HZ);
-          while (
-            extLen + stepSamples <= maxExtLen &&
-            bestT1 + extLen + stepSamples <= env1.length &&
-            bestT2 + extLen + stepSamples <= env2.length
-          ) {
-            const extCorr = pearson(env1, bestT1, env2, bestT2, extLen + stepSamples);
-            if (extCorr < ACOUSTIC_PEARSON_THRESHOLD) break;
-            extLen += stepSamples;
-          }
-          const rawOpEnd = opStart + extLen / ACOUSTIC_SAMPLE_RATE_HZ;
-          // Bornes min/max
-          const opEnd = Math.round(
-            Math.max(opStart + ACOUSTIC_OP_MIN_DURATION_S, Math.min(rawOpEnd, opStart + ACOUSTIC_OP_MAX_DURATION_S)) * 10
-          ) / 10;
-
-          return res.json({
-            success: true,
-            start: opStart,
-            end: opEnd,
-            confidence: Math.round(bestScore * 100) / 100,
-            matchedSibling: path.basename(sibling),
-            message: `Générique corrélé avec succès contre ${path.basename(sibling)}`,
-          });
+        // Estimer la fin de l'OP : étendre la fenêtre corrélée tant que Pearson ≥ seuil
+        // Pas de 1 seconde (20 échantillons à 20 Hz)
+        const stepSamples = ACOUSTIC_SAMPLE_RATE_HZ;
+        let extLen = ACOUSTIC_WINDOW_SAMPLES;
+        const maxExtLen = Math.round(ACOUSTIC_OP_MAX_DURATION_S * ACOUSTIC_SAMPLE_RATE_HZ);
+        while (
+          extLen + stepSamples <= maxExtLen &&
+          bestT1 + extLen + stepSamples <= env1.length &&
+          bestT2 + extLen + stepSamples <= env2.length
+        ) {
+          const extCorr = pearson(env1, bestT1, env2, bestT2, extLen + stepSamples);
+          if (extCorr < ACOUSTIC_PEARSON_THRESHOLD) break;
+          extLen += stepSamples;
         }
+        const rawOpEnd = opStart + extLen / ACOUSTIC_SAMPLE_RATE_HZ;
+        // Bornes min/max
+        const opEnd = Math.round(
+          Math.max(opStart + ACOUSTIC_OP_MIN_DURATION_S, Math.min(rawOpEnd, opStart + ACOUSTIC_OP_MAX_DURATION_S)) * 10
+        ) / 10;
 
-        // Corrélation insuffisante sur ce candidat, essayer le suivant
-        tryNext(idx + 1);
-      });
+        res.json({
+          success: true,
+          start: opStart,
+          end: opEnd,
+          confidence: Math.round(bestScore * 100) / 100,
+          matchedSibling: path.basename(sibling),
+          message: `Générique corrélé avec succès contre ${path.basename(sibling)}`,
+        });
+        return;
+      }
+
+      // Corrélation insuffisante sur ce candidat, essayer le suivant
+      return tryNext(idx + 1);
     };
 
     tryNext(0);

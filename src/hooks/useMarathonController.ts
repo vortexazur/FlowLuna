@@ -12,6 +12,7 @@ import {
 } from '../services/openingDetectorService';
 import { getTrackPlayableUrl } from '../services/audioDb';
 import { isTrackVideo } from '../utils/fileAudioLoader';
+import { fetchVideoTracks } from '../services/videoTracksService';
 
 export interface UseMarathonControllerProps {
   track: Track | null;
@@ -117,7 +118,7 @@ export function useMarathonController({
     }
   }, []);
 
-  // Preload next episode in background (préchauffe le cache réseau / disque sans instancier de décodeur GPU concurrent)
+  // Preload next episode in background (préchauffe le cache réseau / disque + métadonnées pistes/marqueurs sans instancier de décodeur GPU concurrent)
   const preloadNextTrack = useCallback(async (target: Track) => {
     if (!target) return;
     try {
@@ -127,13 +128,13 @@ export function useMarathonController({
       // Nettoyer tout décodeur résiduel antérieur
       cleanupPreloadedElement();
 
-      // Précharger via une requête Range HTTP légère (2 Mo) pour amorcer le flux
-      // sans ouvrir de second pipeline de décodage matériel Direct3D 11 concurrent
+      // 1. Préchauffer les en-têtes du conteneur (64 Ko) pour alimenter le cache OS / stat serveur
+      // sans saturer le bus disque ni ouvrir de second pipeline Direct3D 11 concurrent
       try {
         const controller = new AbortController();
-        const timeout = setTimeout(() => controller.abort(), 4000);
+        const timeout = setTimeout(() => controller.abort(), 3000);
         await fetch(url, {
-          headers: { Range: 'bytes=0-2097151' },
+          headers: { Range: 'bytes=0-65535' },
           signal: controller.signal,
         });
         clearTimeout(timeout);
@@ -141,10 +142,17 @@ export function useMarathonController({
       } catch {
         // En cas d'interruption ou timeout, aucun impact sur la vidéo active
       }
+
+      // 2. Pré-résoudre en tâche de fond les pistes audio/sous-titres et les marqueurs OP/ED de l'épisode suivant
+      // afin qu'ils soient servis instantanément (0 ms) depuis les caches mémoire lors de la transition
+      if (target.filePath) {
+        fetchVideoTracks(target.filePath).catch(() => {});
+      }
+      resolveVideoMarkersCascade(null, target, target.duration || 0, enableSilenceSnapping).catch(() => {});
     } catch (err) {
       console.warn('[Marathon] Avertissement préchargement :', err);
     }
-  }, [cleanupPreloadedElement]);
+  }, [cleanupPreloadedElement, enableSilenceSnapping]);
 
   // Cleanup preloaded media element on unmount
   useEffect(() => {
@@ -329,14 +337,23 @@ export function useMarathonController({
     showToast(updated.enabled ? 'Mode Marathon activé' : 'Mode Marathon désactivé');
   }, [config, onUpdateConfig, showToast]);
 
-  // Listen for native 'ended' event on video element
+  // Listen for native 'ended' event on video element:
+  // lorsque le flux vidéo est réellement arrivé à son terme (EOF), enchaîner immédiatement
+  // vers l'épisode suivant sans imposer un compte à rebours de 5s sur un écran figé.
   useEffect(() => {
     const video = videoRef.current;
     if (!video) return;
 
     const handleEnded = () => {
-      if (config.enabled && hasNext && !hasTriggeredTransitionRef.current && !isCancelledRef.current) {
-        startTransition();
+      if (!hasNext) return;
+      if (countdownIntervalRef.current) {
+        clearInterval(countdownIntervalRef.current);
+        countdownIntervalRef.current = null;
+      }
+      setIsCountdownActive(false);
+      if (!hasTriggeredTransitionRef.current) {
+        hasTriggeredTransitionRef.current = true;
+        onNext();
       }
     };
 
@@ -344,7 +361,7 @@ export function useMarathonController({
     return () => {
       video.removeEventListener('ended', handleEnded);
     };
-  }, [videoRef, config.enabled, hasNext, startTransition]);
+  }, [videoRef, hasNext, onNext]);
 
   // Time Progression Inspector: Handles OP auto-skip, ED transition, preloading
   useEffect(() => {

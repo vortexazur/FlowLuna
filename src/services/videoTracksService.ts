@@ -138,30 +138,62 @@ export function getSubtitleWebVttUrl(filePath: string, track: SubtitleTrack, off
   return `/api/video/subtitles/webvtt?${params.toString()}`;
 }
 
+type VideoTracksPayload = { subtitles: SubtitleTrack[]; audioTracks: AudioStreamTrack[] };
+const videoTracksCache = new Map<string, VideoTracksPayload>();
+const videoTracksInFlight = new Map<string, Promise<VideoTracksPayload>>();
+const VIDEO_TRACKS_CACHE_MAX = 64;
+
 /**
  * Récupère les pistes de sous-titres et pistes audio d'une vidéo locale via le backend
+ * (avec mise en cache LRU et déduplication des requêtes concurrentes)
  */
 export async function fetchVideoTracks(
   filePath: string
-): Promise<{ subtitles: SubtitleTrack[]; audioTracks: AudioStreamTrack[] }> {
+): Promise<VideoTracksPayload> {
   if (!filePath) {
     return { subtitles: [], audioTracks: [] };
   }
 
-  try {
-    const params = new URLSearchParams({ filePath });
-    const res = await fetch(`/api/video/tracks?${params.toString()}`);
-    if (res.ok) {
-      const data = await res.json();
-      if (data.success) {
-        const subtitles: SubtitleTrack[] = Array.isArray(data.subtitles) ? data.subtitles : [];
-        const audioTracks: AudioStreamTrack[] = Array.isArray(data.audioTracks) ? data.audioTracks : [];
-        return { subtitles, audioTracks };
-      }
-    }
-  } catch (err) {
-    console.warn('[videoTracksService] Erreur lors de la récupération des pistes vidéo:', err);
+  const cached = videoTracksCache.get(filePath);
+  if (cached) {
+    return {
+      subtitles: [...cached.subtitles],
+      audioTracks: [...cached.audioTracks],
+    };
   }
 
-  return { subtitles: [], audioTracks: [] };
+  const inflight = videoTracksInFlight.get(filePath);
+  if (inflight) {
+    return inflight;
+  }
+
+  const task = (async (): Promise<VideoTracksPayload> => {
+    try {
+      const params = new URLSearchParams({ filePath });
+      const res = await fetch(`/api/video/tracks?${params.toString()}`);
+      if (res.ok) {
+        const data = await res.json();
+        if (data.success) {
+          const subtitles: SubtitleTrack[] = Array.isArray(data.subtitles) ? data.subtitles : [];
+          const audioTracks: AudioStreamTrack[] = Array.isArray(data.audioTracks) ? data.audioTracks : [];
+          const payload: VideoTracksPayload = { subtitles, audioTracks };
+          if (videoTracksCache.size >= VIDEO_TRACKS_CACHE_MAX) {
+            const firstKey = videoTracksCache.keys().next().value;
+            if (firstKey !== undefined) videoTracksCache.delete(firstKey);
+          }
+          videoTracksCache.set(filePath, payload);
+          return payload;
+        }
+      }
+    } catch (err) {
+      console.warn('[videoTracksService] Erreur lors de la récupération des pistes vidéo:', err);
+    } finally {
+      videoTracksInFlight.delete(filePath);
+    }
+
+    return { subtitles: [], audioTracks: [] };
+  })();
+
+  videoTracksInFlight.set(filePath, task);
+  return task;
 }

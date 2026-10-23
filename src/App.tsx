@@ -525,24 +525,27 @@ export default function App() {
         if (audioRef.current) {
           try {
             audioRef.current.pause();
-            audioRef.current.removeAttribute('src');
-            audioRef.current.load();
+            if (audioRef.current.getAttribute('src')) {
+              audioRef.current.removeAttribute('src');
+              audioRef.current.load();
+            }
           } catch {}
         }
-        // Clean eviction and reset of video element before loading the next video
+        // Pause the current video without destroying its Direct3D 11 hardware decoder pipeline:
+        // assigning activeMedia.src = playableUrl below reuses the warm GPU pipeline seamlessly
         if (videoRef.current) {
           try {
             videoRef.current.pause();
-            videoRef.current.removeAttribute('src');
-            videoRef.current.load();
           } catch {}
         }
       } else {
         if (videoRef.current) {
           try {
             videoRef.current.pause();
-            videoRef.current.removeAttribute('src');
-            videoRef.current.load();
+            if (videoRef.current.getAttribute('src')) {
+              videoRef.current.removeAttribute('src');
+              videoRef.current.load();
+            }
           } catch {}
         }
       }
@@ -1346,15 +1349,40 @@ export default function App() {
     [playTrackAt]
   );
 
-  // Open local files or folders (Screenbox batch mode)
+  // Open local files or folders (Screenbox batch mode with First-Play-First optimization)
   const handleImportFiles = useCallback(
     async (files: FileList | File[] | Track[]) => {
-      const imported = await resolveFilesToTracks(files);
-      if (imported.length > 0) {
-        applyImportedTracks(imported, true);
+      const fileList = Array.isArray(files) ? files : Array.from(files);
+      if (fileList.length === 0) return;
+
+      // Sort naturally if File objects so Episode 1 starts first
+      const sortedList = [...fileList].sort((a: any, b: any) => {
+        const nameA = a?.name || a?.title || '';
+        const nameB = b?.name || b?.title || '';
+        return String(nameA).localeCompare(String(nameB), undefined, { numeric: true, sensitivity: 'base' });
+      });
+
+      if (sortedList.length > 1) {
+        const firstResolved = await resolveFilesToTracks([sortedList[0]] as any);
+        if (firstResolved.length > 0) {
+          applyImportedTracks(firstResolved, true);
+        }
+        const restResolved = await resolveFilesToTracks(sortedList.slice(1) as any);
+        if (restResolved.length > 0) {
+          if (firstResolved.length > 0) {
+            handleAddTracksToQueue(restResolved);
+          } else {
+            applyImportedTracks(restResolved, true);
+          }
+        }
+      } else {
+        const imported = await resolveFilesToTracks(sortedList as any);
+        if (imported.length > 0) {
+          applyImportedTracks(imported, true);
+        }
       }
     },
-    [resolveFilesToTracks, applyImportedTracks]
+    [resolveFilesToTracks, applyImportedTracks, handleAddTracksToQueue]
   );
 
   // Add media (videos or songs) to the queue from the QueueDrawer '+' button
@@ -1598,16 +1626,53 @@ export default function App() {
       lastHandledKey = currentKey;
 
       try {
-        const resp = await fetch('/api/library/add-files', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ filePaths: uniqueFiles, isTransient: true }),
-        });
-        if (resp.ok && isMounted) {
-          const data = await resp.json();
-          if (data.success && Array.isArray(data.tracks) && data.tracks.length > 0) {
-            handleOpenExternalFiles(data.tracks);
+        const curQueue = queueRef.current;
+        const curIndex = currentTrackIndexRef.current;
+        const isAlreadyPlaying = isPlayingRef.current && curIndex >= 0 && curIndex < curQueue.length;
+
+        // First-Play-First: if multiple files are opened and nothing is playing yet,
+        // probe & launch Episode 1 immediately so the user gets instant playback ($T_0$),
+        // then resolve Episodes 2..N in the background and append them to the queue.
+        if (!isAlreadyPlaying && uniqueFiles.length > 1) {
+          const firstResp = await fetch('/api/library/add-files', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ filePaths: [uniqueFiles[0]], isTransient: true }),
+          });
+          if (firstResp.ok && isMounted) {
+            const firstData = await firstResp.json();
+            if (firstData.success && Array.isArray(firstData.tracks) && firstData.tracks.length > 0) {
+              handleOpenExternalFiles(firstData.tracks);
+            }
+          }
+
+          const restFiles = uniqueFiles.slice(1);
+          const restResp = await fetch('/api/library/add-files', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ filePaths: restFiles, isTransient: true }),
+          });
+          if (restResp.ok && isMounted) {
+            const restData = await restResp.json();
+            if (restData.success && Array.isArray(restData.tracks) && restData.tracks.length > 0) {
+              handleOpenExternalFiles(restData.tracks);
+            }
+          }
+          if (isMounted) {
             window.electronAPI?.ackOpenFiles?.(uniqueFiles);
+          }
+        } else {
+          const resp = await fetch('/api/library/add-files', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ filePaths: uniqueFiles, isTransient: true }),
+          });
+          if (resp.ok && isMounted) {
+            const data = await resp.json();
+            if (data.success && Array.isArray(data.tracks) && data.tracks.length > 0) {
+              handleOpenExternalFiles(data.tracks);
+              window.electronAPI?.ackOpenFiles?.(uniqueFiles);
+            }
           }
         }
       } catch (err) {
