@@ -10,8 +10,10 @@ import {
 import {
   formatLrcTimestamp,
   convertWhisperSegmentsToLrc,
+  resolveWhisperModelName,
 } from '../src/services/whisperLyricsService';
 import { parseLrc } from '../src/services/lyricsService';
+import { audioEngine } from '../src/services/audioEngine';
 
 console.log('===============================================================');
 console.log(' TESTS PHASE 2 : AUTOEQ & WHISPER SYNCHRONIZED LYRICS         ');
@@ -111,17 +113,65 @@ assert.strictEqual(parsed1.bands.length, 10, 'Doit produire exactement 10 bandes
 assert.strictEqual(parsed1.bands[0], 4.5, 'La bande 31.25 Hz doit valoir 4.5 dB');
 assert.strictEqual(parsed1.bands[7], -3.0, 'La bande 4000 Hz doit valoir -3.0 dB');
 
-// Format sans préfixe GraphicEQ explicite
-const rawPairsText = `31.25 2.0; 62.5 1.0; 125 0.0; 250 0.0; 500 0.0; 1000 0.0; 2000 0.0; 4000 0.0; 8000 0.0; 16000 0.0`;
+// Format sans préfixe GraphicEQ explicite (avec calcul automatique du preamp anti-clipping)
+const rawPairsText = `31.25 6.5; 62.5 1.0; 125 0.0; 250 0.0; 500 0.0; 1000 0.0; 2000 0.0; 4000 0.0; 8000 0.0; 16000 0.0`;
 const parsed2 = parseAutoEqGraphicEq(rawPairsText);
 assert(parsed2 !== null, 'Le parsing brut doit réussir');
-assert.strictEqual(parsed2.bands[0], 2.0);
+assert.strictEqual(parsed2.bands[0], 6.5);
+assert.strictEqual(parsed2.preamp, -6.5, 'Le préampli auto-calculé doit compenser le gain positif max (-6.5 dB)');
+
+// Format EqualizerAPO ParametricEQ
+const parametricText = `
+Preamp: -6.2 dB
+Filter 1: ON PK Fc 31.25 Hz Gain -5.0 dB Q 1.41
+Filter 2: ON PK Fc 62.5 Hz Gain -3.5 dB Q 1.41
+Filter 3: ON PK Fc 125 Hz Gain -1.0 dB Q 1.41
+Filter 4: ON PK Fc 250 Hz Gain 0.5 dB Q 1.41
+Filter 5: ON PK Fc 500 Hz Gain 1.0 dB Q 1.41
+Filter 6: ON PK Fc 1000 Hz Gain 1.5 dB Q 1.41
+Filter 7: ON PK Fc 2000 Hz Gain 2.0 dB Q 1.41
+Filter 8: ON PK Fc 4000 Hz Gain -1.0 dB Q 1.41
+Filter 9: ON PK Fc 8000 Hz Gain 3.5 dB Q 1.41
+Filter 10: ON PK Fc 16000 Hz Gain 1.0 dB Q 1.41
+`;
+const parsedParam = parseAutoEqGraphicEq(parametricText);
+assert(parsedParam !== null, 'Le parsing ParametricEQ doit réussir');
+assert.strictEqual(parsedParam.preamp, -6.2);
+assert.strictEqual(parsedParam.bands[0], -5.0);
+assert.strictEqual(parsedParam.bands[8], 3.5);
 
 // Texte invalide ou vide
 assert.strictEqual(parseAutoEqGraphicEq(''), null, 'Chaîne vide doit renvoyer null');
 assert.strictEqual(parseAutoEqGraphicEq('Ceci nest pas un profil audio valide'), null, 'Texte non numérique doit renvoyer null');
 
-console.log('✓ Test 3 passé : Parseur de profils AutoEq (GraphicEQ & Preamp) opérationnel et robuste.');
+// Test bypass à chaud du Preamp dans audioEngine
+audioEngine.applyEqualizer({
+  enabled: true,
+  preset: 'AutoEq',
+  preampGain: -6.5,
+  bassBoost: 0,
+  trebleBoost: 0,
+  surroundEffect: false,
+  bands: AUTOEQ_FREQUENCIES.map((f) => ({ frequency: f, gain: 2.0, label: `${f}` })),
+});
+assert.strictEqual((audioEngine.getLibVLCPlayer() as any).equalizer.preamp, -6.5, 'Preamp actif doit être -6.5 dB');
+
+audioEngine.applyEqualizer({
+  enabled: false,
+  preset: 'AutoEq',
+  preampGain: -6.5,
+  bassBoost: 0,
+  trebleBoost: 0,
+  surroundEffect: false,
+  bands: AUTOEQ_FREQUENCIES.map((f) => ({ frequency: f, gain: 2.0, label: `${f}` })),
+});
+assert.strictEqual(
+  (audioEngine.getLibVLCPlayer() as any).equalizer.preamp,
+  0,
+  'Lorsque l’égaliseur est désactivé à chaud, le préampli doit être bypassé à 0 dB'
+);
+
+console.log('✓ Test 3 passé : Parseur AutoEq (GraphicEQ, ParametricEQ, Preamp & Bypass à chaud) opérationnel et robuste.');
 
 // -------------------------------------------------------------
 // Test 4 : Horodatage et Formattage LRC Haute Précision
@@ -129,12 +179,23 @@ console.log('✓ Test 3 passé : Parseur de profils AutoEq (GraphicEQ & Preamp) 
 console.log('\n--- Test 4 : Horodatage et Formattage LRC Haute Précision ---');
 
 assert.strictEqual(formatLrcTimestamp(0), '[00:00.00]');
+assert.strictEqual(formatLrcTimestamp(1.15), '[00:01.15]', 'Aucune troncature flottante IEEE-754 sur 1.15s');
+assert.strictEqual(formatLrcTimestamp(19.55), '[00:19.55]', 'Aucune troncature flottante IEEE-754 sur 19.55s');
+assert.strictEqual(formatLrcTimestamp(59.999), '[01:00.00]', 'Rollover propre vers la minute suivante sans .100');
 assert.strictEqual(formatLrcTimestamp(5.25), '[00:05.25]');
 assert.strictEqual(formatLrcTimestamp(65.5), '[01:05.50]');
 assert.strictEqual(formatLrcTimestamp(194.08), '[03:14.08]');
 assert.strictEqual(formatLrcTimestamp(-10), '[00:00.00]', 'Les temps négatifs doivent être bornés à 0');
+assert.strictEqual(formatLrcTimestamp(NaN), '[00:00.00]', 'NaN doit être géré gracieusement');
 
-console.log('✓ Test 4 passé : Formatage des timecodes [mm:ss.xx] conforme.');
+// Vérification du parsing des dixièmes (.x), centièmes (.xx), millièmes (.xxx) et virgules
+const multiFormatLrc = `[00:12.5] Dixième exact\n[00:14,25] Virgule SRT\n[01:02.125] Millième exact`;
+const parsedMulti = parseLrc(multiFormatLrc);
+assert.strictEqual(parsedMulti[0].time, 12.5, '[00:12.5] doit valoir 12.5s (500ms) et non 12.005s');
+assert.strictEqual(parsedMulti[1].time, 14.25, '[00:14,25] doit valoir 14.25s');
+assert.strictEqual(parsedMulti[2].time, 62.125, '[01:02.125] doit valoir 62.125s');
+
+console.log('✓ Test 4 passé : Formatage et parsing des timecodes [mm:ss.xx] sans dérive flottante.');
 
 // -------------------------------------------------------------
 // Test 5 : Convertisseur de Segments Whisper vers LRC
@@ -142,22 +203,27 @@ console.log('✓ Test 4 passé : Formatage des timecodes [mm:ss.xx] conforme.');
 console.log('\n--- Test 5 : Convertisseur de Segments Whisper vers LRC ---');
 
 const mockWhisperSegments = [
-  { start: 12.4, end: 15.2, text: ' Première phrase du couplet ' },
   { start: 16.0, end: 19.5, text: 'Deuxième ligne de chant' },
+  { start: 12.4, end: 15.2, text: ' Première phrase du couplet ' },
   { start: 20.1, end: 24.8, text: 'Refrain entraînant et mélodieux' },
   { start: 25.0, end: 26.0, text: '   ' }, // Segment vide à filtrer
+  { start: 27.0, end: 29.0, text: 'Sous-titres réalisés par la communauté d\'Amara.org' }, // Hallucination Whisper à filtrer
 ];
 
 const generatedLrc = convertWhisperSegmentsToLrc(mockWhisperSegments);
 const parsedLrc = parseLrc(generatedLrc);
 
-assert.strictEqual(parsedLrc.length, 3, 'Doit contenir exactement 3 lignes valides (la ligne vide étant ignorée)');
+assert.strictEqual(parsedLrc.length, 3, 'Doit contenir exactement 3 lignes valides triées (vides et hallucinations filtrés)');
 assert.strictEqual(parsedLrc[0].text, 'Première phrase du couplet');
 assert.strictEqual(parsedLrc[0].time, 12.4);
 assert.strictEqual(parsedLrc[1].text, 'Deuxième ligne de chant');
 assert.strictEqual(parsedLrc[1].time, 16.0);
 assert.strictEqual(parsedLrc[2].text, 'Refrain entraînant et mélodieux');
 assert.strictEqual(parsedLrc[2].time, 20.1);
+
+assert.strictEqual(resolveWhisperModelName('gpt-4o-mini'), 'whisper-1');
+assert.strictEqual(resolveWhisperModelName('gemini-flash-latest'), 'whisper-1');
+assert.strictEqual(resolveWhisperModelName('whisper-large-v3'), 'whisper-large-v3');
 
 console.log('✓ Test 5 passé : Segments Whisper convertis en LRC standard et vérifiés avec parseLrc.');
 

@@ -280,13 +280,13 @@ export const AllPlaylistsView: React.FC<AllPlaylistsViewProps> = ({
           </div>
           <div>
             <h1 className="text-2xl font-black text-white tracking-tight flex items-center gap-2.5">
-              <span>Toutes les Playlists</span>
+              <span>{t.allPlaylists}</span>
               <span className="text-xs font-mono font-semibold px-2 py-0.5 rounded-full bg-amber-950 border border-amber-500/30 text-amber-400">
-                {playlists.length} {playlists.length > 1 ? 'playlists' : 'playlist'}
+                {playlists.length} {t.playlists.toLowerCase()}
               </span>
             </h1>
             <p className="text-xs text-neutral-400 mt-0.5">
-              Explorez vos collections, personnalisez les icônes et organisez vos morceaux
+              {t.allPlaylistsSubtitle}
             </p>
           </div>
         </div>
@@ -297,7 +297,7 @@ export const AllPlaylistsView: React.FC<AllPlaylistsViewProps> = ({
             <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-neutral-400" />
             <input
               type="text"
-              placeholder="Filtrer une playlist..."
+              placeholder={t.filterPlaylistPlaceholder}
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               className="w-full pl-9 pr-3 py-2 rounded-xl bg-neutral-900 border border-neutral-800 text-white text-xs placeholder-neutral-500 focus:outline-none focus:border-neutral-700"
@@ -472,14 +472,14 @@ export const AllPlaylistsView: React.FC<AllPlaylistsViewProps> = ({
                       <h3 className={`font-bold text-sm text-white truncate transition-colors ${
                         ACCENT_GROUP_HOVER_TEXT[accent] || 'group-hover:text-emerald-400'
                       }`}>
-                        {pl.title}
+                        {pl.id === 'playlist-favorites' ? t.favorites : pl.title}
                       </h3>
                     </div>
                     <p className="text-xs text-neutral-400 truncate mt-1">
-                      {pl.description || `${plTracks.length} morceau${plTracks.length > 1 ? 'x' : ''}`}
+                      {pl.description || `${plTracks.length} ${t.playlistTracksCount}`}
                     </p>
                     <div className="flex items-center justify-between text-[10px] font-mono text-neutral-500 mt-2">
-                      <span>{plTracks.length} pistes • {formatDuration(totalSecs)}</span>
+                      <span>{plTracks.length} {t.playlistTracksCount} • {formatDuration(totalSecs)}</span>
                       {pl.id === 'playlist-favorites' ? (
                         <span className="text-rose-400 font-sans font-medium">{t.favorites}</span>
                       ) : isPinned ? (
@@ -501,13 +501,13 @@ export const AllPlaylistsView: React.FC<AllPlaylistsViewProps> = ({
         <div className="space-y-4 pt-4 border-t border-neutral-800/80">
           <h2 className="text-lg font-bold text-white flex items-center gap-2">
             <Sparkles className="w-5 h-5 text-amber-400" />
-            <span>Playlists Intelligentes & Automatiques</span>
+            <span>{t.smartPlaylistsSectionTitle}</span>
           </h2>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
             {filteredSmart.map((pl) => {
               const plTracks = getPlaylistTracks(pl);
-              const totalSecs = plTracks.reduce((acc, t) => acc + t.duration, 0);
+              const totalSecs = plTracks.reduce((acc, tr) => acc + tr.duration, 0);
 
               return (
                 <div
@@ -540,10 +540,10 @@ export const AllPlaylistsView: React.FC<AllPlaylistsViewProps> = ({
                       </span>
                     </div>
                     <p className="text-xs text-neutral-400 line-clamp-1 mt-0.5">
-                      {pl.description || 'Générée automatiquement par FlowLuna'}
+                      {pl.description || t.autoUpdatedBadge}
                     </p>
                     <div className="flex items-center gap-2 text-[11px] font-mono text-neutral-500 mt-2">
-                      <span>{plTracks.length} titres</span>
+                      <span>{plTracks.length} {t.playlistTracksCount}</span>
                       <span>•</span>
                       <span>{formatDuration(totalSecs)}</span>
                     </div>
@@ -621,6 +621,7 @@ export const AllPlaylistsView: React.FC<AllPlaylistsViewProps> = ({
           onCreatePlaylist={onCreatePlaylist}
           onNavigate={(tab, id) => onNavigate(tab, id)}
           accent={accent}
+          language={settings?.language}
         />
       )}
     </div>

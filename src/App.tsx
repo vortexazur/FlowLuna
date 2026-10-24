@@ -3106,6 +3106,7 @@ export default function App() {
         onCreatePlaylist={() => setIsCreatePlaylistModalOpen(true)}
         onNavigate={handleNavigate}
         accent={playerSettings.accent}
+        language={playerSettings.language}
       />
 
 
@@ -3221,6 +3222,7 @@ export default function App() {
         onOpenMerger={() => setIsMergerOpen(true)}
         onOpenStats={() => setIsStatsOpen(true)}
         accent={playerSettings.accent}
+        language={playerSettings.language}
       />
     </div>
   );

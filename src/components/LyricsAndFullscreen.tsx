@@ -26,6 +26,7 @@ import { AudioVisualizer } from './AudioVisualizer';
 import { fetchLyricsForTrack, parseLrc, LyricLine } from '../services/lyricsService';
 import { generateSyncedLyricsMaster } from '../services/whisperLyricsService';
 import { saveTrack } from '../services/audioDb';
+import { getT } from '../i18n';
 
 interface LyricsAndFullscreenProps {
   isOpen: boolean;
@@ -139,6 +140,14 @@ export const LyricsAndFullscreen: React.FC<LyricsAndFullscreenProps> = ({
   settings,
   onUpdateSettings,
 }) => {
+  const t = getT(settings?.language);
+  const VISUALIZER_NAMES: Record<string, string> = {
+    bars: t.vizBars,
+    wave: t.vizWave,
+    pillars: t.vizPillars,
+    circle: t.vizCircle,
+    minimal: t.vizMinimal,
+  };
   const [lyricsLines, setLyricsLines] = useState<LyricLine[]>([]);
   const [isSynced, setIsSynced] = useState(false);
   const [isInstrumental, setIsInstrumental] = useState(false);
@@ -153,14 +162,26 @@ export const LyricsAndFullscreen: React.FC<LyricsAndFullscreenProps> = ({
   const [aiGenerationStatus, setAiGenerationStatus] = useState<string>('');
   const [aiError, setAiError] = useState<string | null>(null);
 
+  const activeTrackIdRef = useRef<string | undefined>(currentTrack?.id);
+
   useEffect(() => {
+    activeTrackIdRef.current = currentTrack?.id;
     setSyncOffset(currentTrack?.lyricsOffset ?? 0);
+    setAiError(null);
+    setIsGeneratingAi(false);
+    setAiGenerationStatus('');
   }, [currentTrack?.id, currentTrack?.lyricsOffset]);
 
   const lyricsContainerRef = useRef<HTMLDivElement | null>(null);
   const lineRefs = useRef<(HTMLParagraphElement | null)[]>([]);
   const scrollTimeoutRef = useRef<any>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (scrollTimeoutRef.current) clearTimeout(scrollTimeoutRef.current);
+    };
+  }, []);
 
   // Auto-fetch or parse lyrics whenever the current track changes or view opens
   useEffect(() => {
@@ -296,6 +317,7 @@ export const LyricsAndFullscreen: React.FC<LyricsAndFullscreenProps> = ({
     if (!currentTrack) return;
     const newOffset = Math.round((syncOffset + delta) * 10) / 10;
     setSyncOffset(newOffset);
+    currentTrack.lyricsOffset = newOffset;
     const updated = { ...currentTrack, lyricsOffset: newOffset };
     saveTrack(updated).catch(() => {});
   };
@@ -470,6 +492,8 @@ export const LyricsAndFullscreen: React.FC<LyricsAndFullscreenProps> = ({
   const handleGenerateWithWhisper = async () => {
     if (!currentTrack || isGeneratingAi) return;
 
+    const targetTrack = currentTrack;
+    const targetTrackId = currentTrack.id;
     setIsGeneratingAi(true);
     setAiError(null);
     setAiGenerationStatus('Analyse audio et synchronisation Whisper IA en cours...');
@@ -481,24 +505,21 @@ export const LyricsAndFullscreen: React.FC<LyricsAndFullscreenProps> = ({
       }
 
       const res = await generateSyncedLyricsMaster(
-        currentTrack,
+        targetTrack,
         settings.aiSettings,
         plainText
       );
 
       if (res.success && res.lines && res.lines.length > 0) {
-        setLyricsLines(res.lines);
-        setIsSynced(res.isSynced);
-        setIsInstrumental(!!res.isInstrumental);
-        setLyricsSource(res.source);
-
         if (res.syncedLyrics) {
+          const splitLyrics = res.syncedLyrics.split(/\r?\n/).filter(Boolean);
+          targetTrack.lyrics = splitLyrics;
           const updated: Track = {
-            ...currentTrack,
-            lyrics: res.syncedLyrics.split(/\r?\n/).filter(Boolean),
+            ...targetTrack,
+            lyrics: splitLyrics,
           };
           saveTrack(updated).catch(() => {});
-          const filePath = (currentTrack as any).filePath;
+          const filePath = (targetTrack as any).filePath;
           if (filePath) {
             fetch('/api/lyrics/cache', {
               method: 'POST',
@@ -507,14 +528,26 @@ export const LyricsAndFullscreen: React.FC<LyricsAndFullscreenProps> = ({
             }).catch(() => {});
           }
         }
-      } else {
+
+        // Ne mettre à jour l'état visuel que si le morceau actif n'a pas changé pendant l'inférence
+        if (activeTrackIdRef.current === targetTrackId) {
+          setLyricsLines(res.lines);
+          setIsSynced(res.isSynced);
+          setIsInstrumental(!!res.isInstrumental);
+          setLyricsSource(res.source);
+        }
+      } else if (activeTrackIdRef.current === targetTrackId) {
         setAiError(res.error || 'Impossible de synchroniser les paroles avec l\'IA.');
       }
     } catch (err: any) {
-      setAiError(err?.message || 'Erreur lors de la génération des paroles.');
+      if (activeTrackIdRef.current === targetTrackId) {
+        setAiError(err?.message || 'Erreur lors de la génération des paroles.');
+      }
     } finally {
-      setIsGeneratingAi(false);
-      setAiGenerationStatus('');
+      if (activeTrackIdRef.current === targetTrackId) {
+        setIsGeneratingAi(false);
+        setAiGenerationStatus('');
+      }
     }
   };
 
@@ -958,9 +991,9 @@ export const LyricsAndFullscreen: React.FC<LyricsAndFullscreenProps> = ({
                     }}
                     onClick={() => {
                       if (isSynced) {
-                        onSeek(line.time);
+                        onSeek(Math.max(0, line.time - syncOffset));
                         setIsUserScrolling(false);
-                      } else {
+                      } else if (lyricsLines.length > 0 && duration > 0) {
                         const targetSec = (idx / lyricsLines.length) * duration;
                         onSeek(targetSec);
                       }

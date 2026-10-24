@@ -58,6 +58,12 @@ export const EqualizerModal: React.FC<EqualizerModalProps> = ({
   const [customImportText, setCustomImportText] = React.useState('');
   const [importError, setImportError] = React.useState<string | null>(null);
 
+  React.useEffect(() => {
+    if (settings.preset === 'AutoEq') {
+      setShowAutoEq(true);
+    }
+  }, [settings.preset]);
+
   const brands = React.useMemo(() => getAutoEqBrands(), []);
 
   const filteredAutoEqProfiles = React.useMemo(() => {
@@ -84,6 +90,9 @@ export const EqualizerModal: React.FC<EqualizerModalProps> = ({
       ...settings,
       preset: 'Custom',
       bands: newBands,
+      autoEqProfileId: undefined,
+      autoEqProfileName: undefined,
+      autoEqBrand: undefined,
     };
     onChange(updated);
     audioEngine.applyEqualizer(updated);
@@ -144,14 +153,18 @@ export const EqualizerModal: React.FC<EqualizerModalProps> = ({
     const gains = EQ_PRESETS[preset] || [0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
     const newBands = DEFAULT_EQ_FREQUENCIES.map((freq, idx) => ({
       frequency: freq,
-      gain: gains[idx] || 0,
+      gain: gains[idx] ?? 0,
       label: freq >= 1000 ? `${freq / 1000}k` : `${freq}`,
     }));
+
+    // Réinitialiser le préampli négatif d'AutoEq lorsqu'on bascule vers un preset standard ou Flat
+    const shouldResetPreamp = settings.preset === 'AutoEq' || preset === 'Flat';
 
     const updated: EqualizerSettings = {
       ...settings,
       preset,
       bands: newBands,
+      preampGain: shouldResetPreamp ? 0 : settings.preampGain,
       autoEqProfileId: undefined,
       autoEqProfileName: undefined,
       autoEqBrand: undefined,
@@ -170,7 +183,24 @@ export const EqualizerModal: React.FC<EqualizerModalProps> = ({
   };
 
   const handleReset = () => {
-    handlePresetSelect('Flat');
+    const newBands = DEFAULT_EQ_FREQUENCIES.map((freq) => ({
+      frequency: freq,
+      gain: 0,
+      label: freq >= 1000 ? `${freq / 1000}k` : `${freq}`,
+    }));
+    const updated: EqualizerSettings = {
+      ...settings,
+      preset: 'Flat',
+      bands: newBands,
+      preampGain: 0,
+      bassBoost: 0,
+      trebleBoost: 0,
+      autoEqProfileId: undefined,
+      autoEqProfileName: undefined,
+      autoEqBrand: undefined,
+    };
+    onChange(updated);
+    audioEngine.applyEqualizer(updated);
   };
 
   const formatFrequencyLabel = (freq: number) => {

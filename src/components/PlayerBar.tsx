@@ -174,11 +174,11 @@ export const PlayerBar: React.FC<PlayerBarProps> = ({
   };
 
   const STYLE_LABELS: Record<string, string> = {
-    minimal: 'LEDs Micro',
-    bars: 'Barres Spectre',
-    wave: 'Oscilloscope',
-    pillars: 'Piliers Stéréo',
-    circle: 'Radar Circulaire',
+    minimal: t.vizMinimal,
+    bars: t.vizBars,
+    wave: t.vizWave,
+    pillars: t.vizPillars,
+    circle: t.vizCircle,
   };
 
   return (
@@ -205,7 +205,7 @@ export const PlayerBar: React.FC<PlayerBarProps> = ({
                 type="button"
                 onClick={isTrackVideo(currentTrack) && onToggleVideo ? onToggleVideo : onToggleFullscreen}
                 className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 flex items-center justify-center text-white transition-opacity"
-                title={isTrackVideo(currentTrack) ? "Ouvrir le lecteur vidéo" : "Plein écran & Paroles"}
+                title={isTrackVideo(currentTrack) ? t.videoPlayer : `${t.fullscreen} & ${t.lyrics}`}
               >
                 {isTrackVideo(currentTrack) ? <Film className="w-4 h-4 text-sky-400" /> : <Maximize2 className="w-4 h-4" />}
               </button>
@@ -266,7 +266,7 @@ export const PlayerBar: React.FC<PlayerBarProps> = ({
                   id="player-trim-btn"
                   onClick={() => onOpenTrimmer(currentTrack)}
                   className="p-1.5 rounded-full text-neutral-500 hover:text-sky-400 hover:bg-neutral-800 transition-all hover:scale-110"
-                  title="Découper / Éditer cette piste audio (Rognage, Fondus, Extrait)"
+                  title={t.trimEditAudioMenu}
                 >
                   <Scissors className="w-4 h-4" />
                 </button>

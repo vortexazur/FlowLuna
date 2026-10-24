@@ -6132,7 +6132,7 @@ app.get('/api/audio/autoeq/profiles', requireInternalToken, (req, res) => {
 // 🎙️ Whisper Audio Transcription Route
 // ==========================================
 app.post('/api/lyrics/transcribe', requireInternalToken, express.json(), async (req, res) => {
-  const { filePath: rawPath, endpoint, apiKey, model } = req.body;
+  const { filePath: rawPath, endpoint, apiKey, model } = req.body || {};
   if (!rawPath || typeof rawPath !== 'string') {
     return res.status(400).json({ error: 'Chemin de fichier requis.' });
   }
@@ -6154,34 +6154,62 @@ app.post('/api/lyrics/transcribe', requireInternalToken, express.json(), async (
   const tmpOut = path.join(os.tmpdir(), `flowluna_whisper_${Date.now()}_${Math.random().toString(36).slice(2)}.mp3`);
 
   try {
-    // Extraire un flux audio ultra-léger 16kHz mono (optimisé pour la précision de Whisper)
+    // Extraire un flux audio ultra-léger 16kHz mono (plafonné à 10 min et protégé par timeout de 45s)
     await new Promise<void>((resolve, reject) => {
       const proc = spawn(ffmpeg, [
         '-y',
         '-i', filePath,
+        '-t', '600',
         '-vn',
         '-ac', '1',
         '-ar', '16000',
         '-b:a', '64k',
         tmpOut,
       ]);
+      const killTimer = setTimeout(() => {
+        try {
+          proc.kill('SIGKILL');
+        } catch {}
+        reject(new Error('Délai dépassé lors de l\'extraction audio FFmpeg (45s).'));
+      }, 45000);
+
       proc.on('close', (code) => {
+        clearTimeout(killTimer);
         if (code === 0) resolve();
         else reject(new Error(`FFmpeg a quitté avec le code ${code}`));
       });
-      proc.on('error', reject);
+      proc.on('error', (err) => {
+        clearTimeout(killTimer);
+        reject(err);
+      });
     });
 
-    let whisperUrl = endpoint || 'https://api.openai.com/v1/audio/transcriptions';
+    let whisperUrl = (typeof endpoint === 'string' && endpoint.trim())
+      ? endpoint.trim()
+      : 'https://api.openai.com/v1/audio/transcriptions';
     if (!whisperUrl.includes('/audio/transcriptions')) {
       whisperUrl = `${whisperUrl.replace(/\/+$/, '')}/audio/transcriptions`;
     }
 
-    const whisperModel = model || 'whisper-1';
+    let parsedUrl: URL;
+    try {
+      parsedUrl = new URL(whisperUrl);
+      if (parsedUrl.protocol !== 'http:' && parsedUrl.protocol !== 'https:') {
+        return res.status(400).json({ error: 'Protocole URL Whisper non supporté.' });
+      }
+    } catch {
+      return res.status(400).json({ error: 'URL de l\'endpoint Whisper invalide.' });
+    }
+
+    const rawModelStr = typeof model === 'string' ? model.trim() : '';
+    const whisperModel =
+      !rawModelStr || /^(gpt-|gemini-|claude-|mistral-|pixtral-|codestral-|o1-|o3-|deepseek-|qwen|llama)/i.test(rawModelStr)
+        ? 'whisper-1'
+        : rawModelStr;
     const authKey = apiKey || process.env.OPENAI_API_KEY || '';
 
-    // Envoi multipart vers l'endpoint Whisper
-    const fileBytes = fs.readFileSync(tmpOut);
+    // Lecture asynchrone non-bloquante et envoi multipart vers l'endpoint Whisper
+    const fileBytes = await fs.promises.readFile(tmpOut);
     const formBlob = new Blob([fileBytes], { type: 'audio/mpeg' });
     const formData = new FormData();
     formData.append('file', formBlob, 'audio.mp3');
@@ -6193,11 +6221,20 @@ app.post('/api/lyrics/transcribe', requireInternalToken, express.json(), async (
       headers['Authorization'] = `Bearer ${authKey}`;
     }
 
-    const whisperRes = await fetch(whisperUrl, {
-      method: 'POST',
-      headers,
-      body: formData,
-    });
+    const fetchController = new AbortController();
+    const fetchTimeout = setTimeout(() => fetchController.abort(), 60000);
+
+    let whisperRes: Response;
+    try {
+      whisperRes = await fetch(whisperUrl, {
+        method: 'POST',
+        headers,
+        body: formData,
+        signal: fetchController.signal,
+      });
+    } finally {
+      clearTimeout(fetchTimeout);
+    }
 
     if (!whisperRes.ok) {
       const errText = await whisperRes.text().catch(() => '');
@@ -6208,21 +6245,21 @@ app.post('/api/lyrics/transcribe', requireInternalToken, express.json(), async (
     let syncedLyrics = '';
     if (Array.isArray(whisperData.segments) && whisperData.segments.length > 0) {
       syncedLyrics = convertWhisperSegmentsToLrc(whisperData.segments);
-    } else if (whisperData.text) {
-      syncedLyrics = `[00:00.00] ${whisperData.text}`;
+    } else if (typeof whisperData.text === 'string' && whisperData.text.trim()) {
+      syncedLyrics = `[00:00.00] ${whisperData.text.trim()}`;
     }
 
     return res.json({
       success: true,
       syncedLyrics,
-      isLocal: whisperUrl.includes('localhost') || whisperUrl.includes('127.0.0.1'),
+      isLocal: parsedUrl.hostname === 'localhost' || parsedUrl.hostname === '127.0.0.1',
       model: whisperModel,
     });
   } catch (err: any) {
     return res.status(500).json({ error: err?.message || 'Erreur lors de la transcription Whisper.' });
   } finally {
     try {
-      if (fs.existsSync(tmpOut)) fs.unlinkSync(tmpOut);
+      if (fs.existsSync(tmpOut)) await fs.promises.unlink(tmpOut);
     } catch {}
   }
 });

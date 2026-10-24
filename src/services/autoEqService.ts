@@ -453,38 +453,61 @@ export function getAutoEqBrands(): string[] {
 }
 
 /**
- * Parseur de profil AutoEq personnalisé au format standard "GraphicEQ: ..." ou liste de fréquences/gains
+ * Parseur de profil AutoEq personnalisé au format standard "GraphicEQ: ...",
+ * format "ParametricEQ" (EqualizerAPO: Filter N: ON PK Fc ... Hz Gain ... dB),
+ * ou liste de couples fréquences/gains.
  */
 export function parseAutoEqGraphicEq(rawText: string): { preamp: number; bands: number[] } | null {
   if (!rawText || typeof rawText !== 'string') return null;
 
-  let preamp = -4.0; // Fallback sûr
-  const preampMatch = rawText.match(/preamp\s*[:=]\s*([+-]?\d+(?:\.\d+)?)\s*dB/i);
+  let explicitPreamp: number | null = null;
+  const preampMatch = rawText.match(/preamp\s*[:=]\s*([+-]?\d+(?:[.,]\d+)?)\s*dB/i);
   if (preampMatch) {
-    preamp = parseFloat(preampMatch[1]);
+    const parsedPreamp = parseFloat(preampMatch[1].replace(',', '.'));
+    if (Number.isFinite(parsedPreamp)) {
+      explicitPreamp = Math.max(-20, Math.min(20, Math.round(parsedPreamp * 10) / 10));
+    }
   }
 
-  // Cherche la ligne GraphicEQ si présente
-  const graphicEqMatch = rawText.match(/GraphicEQ\s*:\s*([^\r\n]+)/i);
-  const eqData = graphicEqMatch ? graphicEqMatch[1] : rawText;
-
-  // Extraire les couples (fréquence, gain)
-  // Format standard AutoEq: "31.25 1.5; 62.5 -0.5; 125 0.0; ..."
   const pairs: { freq: number; gain: number }[] = [];
-  const regex = /([0-9]+(?:\.[0-9]+)?)\s+([+-]?[0-9]+(?:\.[0-9]+)?)/g;
-  let match;
-  while ((match = regex.exec(eqData)) !== null) {
-    pairs.push({
-      freq: parseFloat(match[1]),
-      gain: parseFloat(match[2]),
-    });
+
+  // 1. Format EqualizerAPO ParametricEQ: "Filter 1: ON PK Fc 31.25 Hz Gain -3.5 dB Q 1.41"
+  const parametricRegex = /Filter\s+\d+\s*:\s*ON\s+[A-Z0-9_]+\s+Fc\s+([0-9]+(?:[.,][0-9]+)?)\s*Hz\s+Gain\s+([+-]?[0-9]+(?:[.,][0-9]+)?)\s*dB/gi;
+  let paramMatch;
+  while ((paramMatch = parametricRegex.exec(rawText)) !== null) {
+    const freq = parseFloat(paramMatch[1].replace(',', '.'));
+    const gain = parseFloat(paramMatch[2].replace(',', '.'));
+    if (Number.isFinite(freq) && freq > 0 && freq <= 24000 && Number.isFinite(gain)) {
+      pairs.push({ freq, gain });
+    }
+  }
+
+  // 2. Format GraphicEQ: "GraphicEQ: 31.25 1.5; 62.5 -0.5; ..." ou paires brutes
+  if (pairs.length === 0) {
+    const graphicEqMatch = rawText.match(/GraphicEQ\s*:\s*([^\r\n]+)/i);
+    // Retirer la ligne Preamp pour éviter toute collision numérique
+    const eqData = graphicEqMatch
+      ? graphicEqMatch[1]
+      : rawText.replace(/preamp\s*[:=]\s*[+-]?\d+(?:[.,]\d+)?\s*dB/gi, '');
+
+    const regex = /([0-9]+(?:\.[0-9]+)?)\s+([+-]?[0-9]+(?:\.[0-9]+)?)/g;
+    let match;
+    while ((match = regex.exec(eqData)) !== null) {
+      const freq = parseFloat(match[1]);
+      const gain = parseFloat(match[2]);
+      if (Number.isFinite(freq) && freq > 0 && freq <= 24000 && Number.isFinite(gain)) {
+        pairs.push({ freq, gain });
+      }
+    }
   }
 
   if (pairs.length === 0) return null;
 
-  // Mapper aux 10 fréquences fixes de FlowLuna [31.25, 62.5, 125, 250, 500, 1000, 2000, 4000, 8000, 16000]
+  // Trier par fréquence croissante
+  pairs.sort((a, b) => a.freq - b.freq);
+
+  // Mapper aux 10 fréquences normalisées ISO de FlowLuna [31.25, 62.5, 125, 250, 500, 1000, 2000, 4000, 8000, 16000]
   const targetBands = AUTOEQ_FREQUENCIES.map((targetFreq) => {
-    // Trouver la fréquence la plus proche dans les données extraites
     let closest = pairs[0];
     let minDiff = Math.abs(Math.log10(pairs[0].freq) - Math.log10(targetFreq));
 
@@ -496,8 +519,17 @@ export function parseAutoEqGraphicEq(rawText: string): { preamp: number; bands: 
       }
     }
 
-    return closest ? Math.round(closest.gain * 10) / 10 : 0;
+    const rawGain = closest ? closest.gain : 0;
+    const clampedGain = Math.max(-20, Math.min(20, rawGain));
+    return Math.round(clampedGain * 10) / 10;
   });
+
+  // Calcul anti-clipping automatique si aucun Preamp n'était spécifié
+  const maxPositiveGain = Math.max(0, ...targetBands);
+  const preamp =
+    explicitPreamp !== null
+      ? explicitPreamp
+      : Math.round(-Math.max(4.0, maxPositiveGain) * 10) / 10;
 
   return { preamp, bands: targetBands };
 }

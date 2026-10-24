@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { ChevronDown, Folder, FolderOpen, FolderArchive } from 'lucide-react';
-import { AccentColor } from '../types';
+import { AccentColor, LanguageCode } from '../types';
+import { getT } from '../i18n';
 
 interface OpenFileDropdownProps {
   onOpenFiles: (files: FileList | File[] | any[]) => void;
@@ -8,6 +9,7 @@ interface OpenFileDropdownProps {
   className?: string;
   placement?: 'auto' | 'up' | 'down';
   accent?: AccentColor;
+  language?: LanguageCode;
 }
 
 export const OpenFileDropdown: React.FC<OpenFileDropdownProps> = ({
@@ -16,7 +18,9 @@ export const OpenFileDropdown: React.FC<OpenFileDropdownProps> = ({
   className = '',
   placement = 'auto',
   accent = 'emerald',
+  language,
 }) => {
+  const t = getT(language);
   const [isOpen, setIsOpen] = useState(false);
   const [computedPlacement, setComputedPlacement] = useState<'up' | 'down'>('up');
   const containerRef = useRef<HTMLDivElement>(null);
@@ -254,7 +258,7 @@ export const OpenFileDropdown: React.FC<OpenFileDropdownProps> = ({
           >
             <path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 8 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z" />
           </svg>
-          <span className="whitespace-nowrap font-semibold">Ouvrir un fichier</span>
+          <span className="whitespace-nowrap font-semibold">{t.openFileBtn}</span>
         </button>
 
         {/* Vertical divider */}
@@ -265,6 +269,7 @@ export const OpenFileDropdown: React.FC<OpenFileDropdownProps> = ({
           type="button"
           onClick={() => setIsOpen((prev) => !prev)}
           aria-expanded={isOpen}
+          title={t.openFileMenuTooltip}
           className="px-2.5 flex items-center justify-center text-neutral-600 dark:text-neutral-400 hover:text-neutral-900 dark:hover:text-white hover:bg-black/5 dark:hover:bg-white/10 rounded-r-xl transition-colors cursor-pointer select-none"
         >
           <ChevronDown
@@ -312,8 +317,8 @@ export const OpenFileDropdown: React.FC<OpenFileDropdownProps> = ({
               <path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 8 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z" />
             </svg>
             <div className="flex flex-col">
-              <span className="font-bold text-neutral-950 dark:text-neutral-100 text-xs">Ouvrir un fichier</span>
-              <span className="text-[11px] text-neutral-700 dark:text-neutral-400 font-medium">Audio (MP3, FLAC...) ou Vidéo (MP4, MKV...)</span>
+              <span className="font-bold text-neutral-950 dark:text-neutral-100 text-xs">{t.openFileBtn}</span>
+              <span className="text-[11px] text-neutral-700 dark:text-neutral-400 font-medium">{t.openFileFormatsSub}</span>
             </div>
           </button>
 
@@ -338,8 +343,8 @@ export const OpenFileDropdown: React.FC<OpenFileDropdownProps> = ({
               <path d="M8 14h5" />
             </svg>
             <div className="flex flex-col">
-              <span className="font-bold text-neutral-950 dark:text-neutral-100 text-xs">Ouvrir un dossier</span>
-              <span className="text-[11px] text-neutral-700 dark:text-neutral-400 font-medium">Scanner et ajouter tout un répertoire</span>
+              <span className="font-bold text-neutral-950 dark:text-neutral-100 text-xs">{t.openFolderBtn}</span>
+              <span className="text-[11px] text-neutral-700 dark:text-neutral-400 font-medium">{t.openFolderSub}</span>
             </div>
           </button>
         </div>

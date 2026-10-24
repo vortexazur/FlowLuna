@@ -273,7 +273,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 id="manage-sidebar-playlists-btn"
                 onClick={handleOpenManageSidebar}
                 className="p-1 rounded text-neutral-500 hover:text-neutral-900 dark:text-neutral-400 dark:hover:text-white hover:bg-black/5 dark:hover:bg-neutral-800 transition-colors"
-                title="Gérer les playlists affichées dans le menu latéral"
+                title={t.manageSidebarTooltip}
               >
                 <SlidersHorizontal className="w-3.5 h-3.5" />
               </button>
@@ -282,7 +282,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 id="new-playlist-btn"
                 onClick={onCreatePlaylist}
                 className="p-1 rounded text-neutral-500 hover:text-neutral-900 dark:text-neutral-400 dark:hover:text-white hover:bg-black/5 dark:hover:bg-neutral-800 transition-colors"
-                title="Créer une nouvelle playlist"
+                title={t.createPlaylistBtn}
               >
                 <Plus className="w-3.5 h-3.5" />
               </button>
@@ -306,7 +306,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                   <Heart className="w-3.5 h-3.5 fill-rose-500/50 text-rose-500" />
                 </div>
                 <span className="truncate font-semibold group-hover:text-neutral-950 dark:group-hover:text-white transition-colors">
-                  Favoris
+                  {t.favorites}
                 </span>
               </div>
               <span className="text-[10px] font-mono text-neutral-600 dark:text-neutral-400 font-semibold flex-shrink-0">
@@ -316,13 +316,13 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
             {visiblePlaylists.length === 0 && userPlaylists.length > 0 ? (
               <div className="px-3 py-2 text-center text-neutral-700 dark:text-neutral-400 text-[11px] bg-white/40 dark:bg-neutral-900/40 rounded-lg border border-neutral-300/60 dark:border-neutral-800/40 flex flex-col items-center gap-1.5 my-1">
-                <span>Aucune playlist personnalisée épinglée</span>
+                <span>{t.noPinnedPlaylists}</span>
                 <button
                   type="button"
                   onClick={handleOpenManageSidebar}
                   className="text-[10px] text-sky-600 dark:text-sky-400 hover:underline font-medium"
                 >
-                  Choisir les playlists visibles
+                  {t.chooseVisiblePlaylists}
                 </button>
               </div>
             ) : (
@@ -366,6 +366,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
           onOpenFolder={onImportFiles}
           placement="up"
           accent={accent}
+          language={settings?.language}
           className="w-full [&>div]:w-full [&>div>button:first-child]:flex-1 [&>div>button:first-child]:justify-center"
         />
 
@@ -412,6 +413,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
           onCreatePlaylist={onCreatePlaylist}
           onNavigate={onNavigate}
           accent={accent}
+          language={settings?.language}
         />
       )}
     </aside>

@@ -247,7 +247,7 @@ export const PlaylistView: React.FC<PlaylistViewProps> = ({
           {!playlist.isSmart && onUpdatePlaylist && (
             <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex flex-col items-center justify-center gap-1.5 text-white">
               <Palette className={`w-6 h-6 ${ACCENT_TEXT[accent] || 'text-emerald-400'}`} />
-              <span className="text-xs font-bold text-center px-2">Personnaliser l'icône & style</span>
+              <span className="text-xs font-bold text-center px-2">{t.customizePlaylist}</span>
             </div>
           )}
         </div>
@@ -257,15 +257,15 @@ export const PlaylistView: React.FC<PlaylistViewProps> = ({
             <PlaylistIcon playlist={playlist} size="xs" />
             <span className="text-xs uppercase tracking-wider font-bold text-neutral-400">
               {playlist.id === 'playlist-favorites'
-                ? 'Playlist'
+                ? t.playlists
                 : playlist.isSmart
-                ? 'Playlist Intelligente ⚡'
-                : 'Playlist Personnalisée'}
+                ? `${t.smartPlaylistBadge} ⚡`
+                : t.customPlaylistBadge}
             </span>
             {playlist.isSmart && (
               <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-amber-500/15 border border-amber-500/30 text-amber-300 text-[10px] font-semibold">
                 <Zap className="w-2.5 h-2.5 text-amber-400" />
-                Auto-actualisée
+                {t.autoUpdatedBadge}
               </span>
             )}
           </div>
@@ -283,13 +283,13 @@ export const PlaylistView: React.FC<PlaylistViewProps> = ({
                 type="submit"
                 className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-neutral-800 text-white hover:bg-neutral-700"
               >
-                Enregistrer
+                {t.saveBtn}
               </button>
             </form>
           ) : (
             <div className="flex items-center gap-3">
               <h1 className="text-2xl md:text-4xl font-extrabold text-white tracking-tight truncate">
-                {playlist.title}
+                {playlist.id === 'playlist-favorites' ? t.favorites : playlist.title}
               </h1>
               {playlist.id !== 'playlist-favorites' && onUpdatePlaylistTitle && (
                 <button
@@ -299,7 +299,7 @@ export const PlaylistView: React.FC<PlaylistViewProps> = ({
                     setIsEditingTitle(true);
                   }}
                   className="p-1.5 rounded-lg text-neutral-400 hover:text-white hover:bg-neutral-800 transition-colors"
-                  title="Renommer"
+                  title={t.renamePlaylistMenu}
                 >
                   <Edit2 className="w-4 h-4" />
                 </button>
@@ -438,7 +438,7 @@ export const PlaylistView: React.FC<PlaylistViewProps> = ({
                 className="w-full text-left px-3 py-2 rounded-lg text-xs hover:bg-neutral-800 text-neutral-300 font-medium flex items-center gap-2.5 transition-colors cursor-pointer"
               >
                 <Download className="w-4 h-4 text-neutral-400" />
-                <span>Exporter en playlist (.m3u)</span>
+                <span>{t.exportM3uMenu}</span>
               </button>
 
               {playlist.id !== 'playlist-favorites' && onDeletePlaylist && (
@@ -453,7 +453,7 @@ export const PlaylistView: React.FC<PlaylistViewProps> = ({
                     className="w-full text-left px-3 py-2 rounded-lg text-xs hover:bg-red-950/60 text-red-400 font-medium flex items-center gap-2.5 transition-colors cursor-pointer"
                   >
                     <Trash2 className="w-4 h-4 text-red-400" />
-                    <span>Supprimer cette playlist</span>
+                    <span>{t.deleteThisPlaylistMenu}</span>
                   </button>
                 </>
               )}
@@ -466,9 +466,9 @@ export const PlaylistView: React.FC<PlaylistViewProps> = ({
       {tracks.length === 0 ? (
         <div className="flex flex-col items-center justify-center p-12 text-center border border-dashed border-neutral-800 rounded-2xl">
           <Music className="w-12 h-12 text-neutral-600 mb-3" />
-          <h3 className="text-base font-semibold text-neutral-300 mb-1">Cette playlist est encore vide</h3>
+          <h3 className="text-base font-semibold text-neutral-300 mb-1">{t.noTracksFound}</h3>
           <p className="text-xs text-neutral-500 max-w-sm">
-            Ajoutez des titres depuis la bibliothèque ou téléchargez des morceaux depuis YouTube pour les écouter ici.
+            {t.noTracksDesc}
           </p>
         </div>
       ) : (
@@ -647,7 +647,7 @@ export const PlaylistView: React.FC<PlaylistViewProps> = ({
               className="w-full text-left px-3 py-2 rounded-lg text-xs hover:bg-neutral-800 text-neutral-200 flex items-center gap-2.5 transition-colors cursor-pointer"
             >
               <ListPlus className="w-4 h-4 text-neutral-400" />
-              <span>Ajouter à la file d'attente</span>
+              <span>{t.addToQueueMenu}</span>
             </button>
           )}
 
@@ -656,14 +656,14 @@ export const PlaylistView: React.FC<PlaylistViewProps> = ({
             <button
               type="button"
               onClick={() => {
-                const t = menuAnchor.track;
+                const targetTrack = menuAnchor.track;
                 setMenuAnchor(null);
-                setAddToPlaylistTrack(t);
+                setAddToPlaylistTrack(targetTrack);
               }}
               className="w-full text-left px-3 py-2 rounded-lg text-xs hover:bg-neutral-800 text-neutral-200 flex items-center gap-2.5 transition-colors cursor-pointer"
             >
               <FolderPlus className="w-4 h-4 text-purple-400" />
-              <span>Ajouter à une playlist</span>
+              <span>{t.addToPlaylistMenu}</span>
             </button>
           )}
 
@@ -671,14 +671,14 @@ export const PlaylistView: React.FC<PlaylistViewProps> = ({
             <button
               type="button"
               onClick={() => {
-                const t = menuAnchor.track;
+                const targetTrack = menuAnchor.track;
                 setMenuAnchor(null);
-                onOpenTrimmer(t);
+                onOpenTrimmer(targetTrack);
               }}
               className="w-full text-left px-3 py-2 rounded-lg text-xs hover:bg-sky-950/40 text-sky-400 font-medium flex items-center gap-2.5 transition-colors cursor-pointer"
             >
               <Scissors className="w-4 h-4 text-sky-400" />
-              <span>Découper / Éditer l'audio...</span>
+              <span>{t.trimEditAudioMenu}</span>
             </button>
           )}
 
@@ -686,30 +686,30 @@ export const PlaylistView: React.FC<PlaylistViewProps> = ({
             <button
               type="button"
               onClick={() => {
-                const t = menuAnchor.track;
+                const targetTrack = menuAnchor.track;
                 setMenuAnchor(null);
-                onEditTrackTags(t);
+                onEditTrackTags(targetTrack);
               }}
               className="w-full text-left px-3 py-2 rounded-lg text-xs hover:bg-neutral-800 text-cyan-300 font-medium flex items-center gap-2.5 transition-colors cursor-pointer"
             >
               <Tag className="w-4 h-4 text-cyan-400" />
-              <span>Modifier tags & pochette...</span>
+              <span>{t.editTagsCoverMenu}</span>
             </button>
           )}
 
           <button
             type="button"
             onClick={() => {
-              const t = menuAnchor.track;
+              const targetTrack = menuAnchor.track;
               setMenuAnchor(null);
-              handleOpenExportSingle(t);
+              handleOpenExportSingle(targetTrack);
             }}
             className={`w-full text-left px-3 py-2 rounded-lg text-xs font-medium flex items-center gap-2.5 transition-colors cursor-pointer ${
               ACCENT_SUBTLE_HOVER_BG[accent] || 'hover:bg-emerald-950/40 text-emerald-400'
             }`}
           >
             <FolderDown className={`w-4 h-4 ${ACCENT_TEXT[accent] || 'text-emerald-400'}`} />
-            <span>Exporter ce morceau sur PC...</span>
+            <span>{t.exportTrackPcMenu}</span>
           </button>
 
           {!playlist.isSmart && onRemoveTrackFromPlaylist && (
@@ -718,14 +718,14 @@ export const PlaylistView: React.FC<PlaylistViewProps> = ({
               <button
                 type="button"
                 onClick={() => {
-                  const t = menuAnchor.track;
+                  const targetTrack = menuAnchor.track;
                   setMenuAnchor(null);
-                  onRemoveTrackFromPlaylist(playlist.id, t.id);
+                  onRemoveTrackFromPlaylist(playlist.id, targetTrack.id);
                 }}
                 className="w-full text-left px-3 py-2 rounded-lg text-xs hover:bg-red-950/60 text-red-400 font-medium flex items-center gap-2.5 transition-colors cursor-pointer"
               >
                 <Trash2 className="w-4 h-4 text-red-400" />
-                <span>Retirer de la playlist</span>
+                <span>{t.removeFromPlaylistMenu}</span>
               </button>
             </>
           )}
@@ -821,6 +821,7 @@ export const PlaylistView: React.FC<PlaylistViewProps> = ({
           onRemoveFromPlaylist={onRemoveTrackFromPlaylist}
           onCreatePlaylist={onCreatePlaylist}
           accent={accent}
+          language={settings?.language}
         />
       )}
     </div>

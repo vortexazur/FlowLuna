@@ -12,8 +12,9 @@ import {
   Info,
   AlertTriangle,
 } from 'lucide-react';
-import { Playlist, AccentColor } from '../types';
+import { Playlist, AccentColor, LanguageCode } from '../types';
 import { PlaylistIcon } from './PlaylistIcon';
+import { getT } from '../i18n';
 
 const MAX_SIDEBAR_PINNED = 3;
 
@@ -26,6 +27,7 @@ interface ManageSidebarPlaylistsModalProps {
   onCreatePlaylist?: () => void;
   onNavigate?: (view: string, playlistId?: string) => void;
   accent: AccentColor;
+  language?: LanguageCode;
 }
 
 const ACCENT_BG: Record<AccentColor, string> = {
@@ -73,7 +75,9 @@ export const ManageSidebarPlaylistsModal: React.FC<ManageSidebarPlaylistsModalPr
   onCreatePlaylist,
   onNavigate,
   accent,
+  language,
 }) => {
+  const t = getT(language);
   const [searchQuery, setSearchQuery] = useState('');
   const [warningMessage, setWarningMessage] = useState<string | null>(null);
 
@@ -164,9 +168,11 @@ export const ManageSidebarPlaylistsModal: React.FC<ManageSidebarPlaylistsModalPr
               <SlidersHorizontal className="w-5 h-5" />
             </div>
             <div>
-              <h3 className="font-bold text-base text-neutral-900 dark:text-white">Playlists du Menu Latéral</h3>
+              <h3 className="font-bold text-base text-neutral-900 dark:text-white">{t.manageSidebarModalTitle}</h3>
               <p className="text-xs text-neutral-600 dark:text-neutral-400">
-                Choisissez jusqu'à 3 playlists à afficher en plus des Favoris
+                {t.manageSidebarModalSubtitle
+                  .replace('{pinned}', String(visibleCount))
+                  .replace('{total}', String(MAX_SIDEBAR_PINNED))}
               </p>
             </div>
           </div>
@@ -174,7 +180,7 @@ export const ManageSidebarPlaylistsModal: React.FC<ManageSidebarPlaylistsModalPr
             type="button"
             onClick={onClose}
             className="p-1.5 text-neutral-500 hover:text-neutral-900 dark:text-neutral-400 dark:hover:text-white rounded-lg hover:bg-neutral-200/60 dark:hover:bg-neutral-800 transition-colors cursor-pointer"
-            title="Fermer"
+            title={t.closeBtn}
           >
             <X className="w-5 h-5" />
           </button>
@@ -186,7 +192,7 @@ export const ManageSidebarPlaylistsModal: React.FC<ManageSidebarPlaylistsModalPr
             <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-neutral-400" />
             <input
               type="text"
-              placeholder="Rechercher une playlist..."
+              placeholder={t.searchPlaylistPlaceholder}
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               className="w-full pl-9 pr-3 py-2 rounded-xl bg-neutral-100 dark:bg-neutral-900 border border-neutral-300 dark:border-neutral-800 text-xs text-neutral-900 dark:text-white placeholder-neutral-500 focus:outline-none focus:border-neutral-400 dark:focus:border-neutral-600 transition-colors"
@@ -199,7 +205,7 @@ export const ManageSidebarPlaylistsModal: React.FC<ManageSidebarPlaylistsModalPr
               <span>
                 <strong className={visibleCount >= MAX_SIDEBAR_PINNED ? 'text-amber-600 dark:text-amber-400 font-bold' : 'text-neutral-900 dark:text-white font-bold'}>
                   {visibleCount} / {MAX_SIDEBAR_PINNED}
-                </strong> épinglée{visibleCount > 1 ? 's' : ''} (max {MAX_SIDEBAR_PINNED} + Favoris)
+                </strong> ({t.favorites})
               </span>
             </div>
 
@@ -208,16 +214,16 @@ export const ManageSidebarPlaylistsModal: React.FC<ManageSidebarPlaylistsModalPr
                 type="button"
                 onClick={handleSelectFirst3}
                 className="px-2.5 py-1 rounded-lg bg-neutral-100 hover:bg-neutral-200 dark:bg-neutral-800 dark:hover:bg-neutral-700 text-[11px] text-neutral-800 dark:text-neutral-200 font-semibold transition-colors border border-neutral-300 dark:border-neutral-700/50 cursor-pointer"
-                title="Épingler les 3 premières playlists"
+                title={t.showAllBtn}
               >
-                3 premières
+                {t.showAllBtn}
               </button>
               <button
                 type="button"
                 onClick={handleDeselectAll}
                 className="px-2.5 py-1 rounded-lg bg-neutral-100 hover:bg-neutral-200 dark:bg-neutral-800 dark:hover:bg-neutral-700 text-[11px] text-neutral-800 dark:text-neutral-300 font-semibold transition-colors border border-neutral-300 dark:border-neutral-700/50 cursor-pointer"
               >
-                Tout masquer
+                {t.hideAllBtn}
               </button>
             </div>
           </div>
@@ -248,9 +254,9 @@ export const ManageSidebarPlaylistsModal: React.FC<ManageSidebarPlaylistsModalPr
                 <ListMusic className="w-6 h-6" />
               </div>
               <div className="flex flex-col items-center gap-1">
-                <p className="text-sm font-semibold text-neutral-900 dark:text-white">Aucune playlist créée</p>
+                <p className="text-sm font-semibold text-neutral-900 dark:text-white">{t.noCustomPlaylists}</p>
                 <p className="text-xs text-neutral-600 dark:text-neutral-400 max-w-xs leading-relaxed">
-                  Vous n'avez pas encore de playlist personnalisée. Créez-en une pour pouvoir l'épingler dans votre menu latéral.
+                  {t.noCustomPlaylistsDesc}
                 </p>
               </div>
               {onCreatePlaylist && (
@@ -263,14 +269,14 @@ export const ManageSidebarPlaylistsModal: React.FC<ManageSidebarPlaylistsModalPr
                   className={`mt-2 px-4 py-2 rounded-xl text-xs flex items-center gap-2 ${ACCENT_BG[accent]} transition-all active:scale-95 cursor-pointer`}
                 >
                   <FolderPlus className="w-4 h-4" />
-                  Créer une playlist
+                  {t.createPlaylistBtn}
                 </button>
               )}
             </div>
           ) : filteredPlaylists.length === 0 ? (
             <div className="py-10 text-center text-neutral-500 flex flex-col items-center gap-2">
               <Search className="w-8 h-8 text-neutral-400 dark:text-neutral-600" />
-              <p className="text-xs text-neutral-600 dark:text-neutral-400">Aucune playlist ne correspond à « {searchQuery} »</p>
+              <p className="text-xs text-neutral-600 dark:text-neutral-400">{t.cmdNoResults.replace('{query}', searchQuery)}</p>
             </div>
           ) : (
             filteredPlaylists.map((pl) => {
@@ -298,17 +304,17 @@ export const ManageSidebarPlaylistsModal: React.FC<ManageSidebarPlaylistsModalPr
                             ACCENT_BADGE[accent] || 'text-emerald-600 bg-emerald-500/15 border-emerald-500/30'
                           }`}>
                             <Pin className="w-2.5 h-2.5" />
-                            Épinglée
+                            {t.pinMenuBadge}
                           </span>
                         ) : (
                           <span className="flex items-center gap-1 text-[10px] font-medium text-neutral-600 dark:text-neutral-400 px-1.5 py-0.5 rounded bg-neutral-100 dark:bg-neutral-800 border border-neutral-300 dark:border-neutral-700">
                             <PinOff className="w-2.5 h-2.5" />
-                            Masquée
+                            {t.hiddenMenuBadge}
                           </span>
                         )}
                       </div>
                       <span className="text-[10px] text-neutral-600 dark:text-neutral-400 font-medium truncate">
-                        {pl.trackIds.length} morceau{pl.trackIds.length > 1 ? 'x' : ''}
+                        {pl.trackIds.length} {t.playlistTracksCount}
                         {pl.description ? ` • ${pl.description}` : ''}
                       </span>
                     </div>
@@ -356,7 +362,7 @@ export const ManageSidebarPlaylistsModal: React.FC<ManageSidebarPlaylistsModalPr
                 className="text-xs text-neutral-700 hover:text-neutral-950 dark:text-neutral-400 dark:hover:text-white flex items-center gap-1.5 transition-colors group cursor-pointer font-semibold"
               >
                 <ListMusic className="w-4 h-4 text-sky-600 dark:text-sky-400 group-hover:scale-110 transition-transform" />
-                <span className="group-hover:underline">Voir toutes les playlists</span>
+                <span className="group-hover:underline">{t.allPlaylists}</span>
               </button>
             ) : (
               <div />
@@ -373,7 +379,7 @@ export const ManageSidebarPlaylistsModal: React.FC<ManageSidebarPlaylistsModalPr
                   className="px-3 py-2 rounded-xl text-xs bg-neutral-200/80 hover:bg-neutral-200 dark:bg-neutral-800 dark:hover:bg-neutral-700 text-neutral-900 dark:text-neutral-200 transition-colors flex items-center gap-1.5 border border-neutral-300 dark:border-neutral-700/50 cursor-pointer font-semibold"
                 >
                   <FolderPlus className="w-3.5 h-3.5" />
-                  Nouvelle playlist
+                  {t.createPlaylistBtn}
                 </button>
               )}
               <button
@@ -381,7 +387,7 @@ export const ManageSidebarPlaylistsModal: React.FC<ManageSidebarPlaylistsModalPr
                 onClick={onClose}
                 className={`px-5 py-2 rounded-xl text-xs ${ACCENT_BG[accent]} transition-all active:scale-95 cursor-pointer`}
               >
-                Terminé
+                {t.doneBtn}
               </button>
             </div>
           </div>

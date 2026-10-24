@@ -574,7 +574,7 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
             <h1 className="text-2xl font-black text-white tracking-tight flex items-center gap-2.5 flex-wrap">
               <span>{t.libraryTitle}</span>
               <span className={`text-xs font-mono font-semibold px-2 py-0.5 rounded-full border ${ACCENT_BADGE[accent] || ACCENT_BADGE.emerald}`}>
-                {musicTracks.length} {musicTracks.length > 1 ? (settings?.language === 'fr' ? 'morceaux' : 'tracks') : (settings?.language === 'fr' ? 'morceau' : 'track')}
+                {musicTracks.length} {t.playlistTracksCount}
               </span>
             </h1>
             <p className="text-xs text-neutral-400 mt-0.5">
@@ -593,7 +593,7 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
             className={`px-3.5 py-2.5 rounded-xl text-xs font-semibold flex items-center gap-2 border transition-all shadow-xs cursor-pointer disabled:opacity-50 ${
               ACCENT_SUBTLE_BTN[accent] || ACCENT_SUBTLE_BTN.emerald
             }`}
-            title="Analyser le PC à la recherche de fichiers audio (Musique, OneDrive, Téléchargements)"
+            title={t.resyncAll}
           >
             <RefreshCw className={`w-3.5 h-3.5 ${isScanningPc ? 'animate-spin' : ''} ${ACCENT_TEXT[accent] || 'text-emerald-400'}`} />
             <span>{isScanningPc ? t.scanningPc : t.scanPcBtn}</span>
@@ -629,7 +629,7 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
                   className="w-full text-left px-3 py-2 rounded-lg text-xs hover:bg-neutral-800 text-cyan-300 font-medium flex items-center gap-2.5 transition-colors cursor-pointer"
                 >
                   <FolderPlus className="w-4 h-4 text-cyan-400" />
-                  <span>Ajouter un dossier musical...</span>
+                  <span>{t.addFolder}</span>
                 </button>
 
                 <button
@@ -641,7 +641,7 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
                   className={`w-full text-left px-3 py-2 rounded-lg text-xs hover:bg-neutral-800 font-medium flex items-center gap-2.5 transition-colors cursor-pointer ${ACCENT_TEXT[accent] || 'text-emerald-300'}`}
                 >
                   <RefreshCw className={`w-4 h-4 ${ACCENT_TEXT[accent] || 'text-emerald-400'}`} />
-                  <span>Resynchroniser tout le PC</span>
+                  <span>{t.resyncAll}</span>
                 </button>
 
                 <div className="h-px bg-neutral-800 my-0.5" />
@@ -655,7 +655,7 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
                     className="w-full text-left px-3 py-2 rounded-lg text-xs hover:bg-neutral-800 text-emerald-400 font-medium flex items-center gap-2.5 transition-colors cursor-pointer"
                   >
                     <FolderDown className="w-4 h-4 text-emerald-400" />
-                    <span>Exporter sur PC ({musicTracks.length})</span>
+                    <span>{t.exportToPc.replace('{count}', String(musicTracks.length))}</span>
                   </button>
                 )}
 
@@ -669,7 +669,7 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
                   className="w-full text-left px-3 py-2 rounded-lg text-xs hover:bg-neutral-800 text-neutral-200 font-medium flex items-center gap-2.5 transition-colors cursor-pointer"
                 >
                   <CheckSquare className="w-4 h-4 text-neutral-400" />
-                  <span>{isSelectionMode ? 'Quitter la sélection' : 'Mode sélection multiple'}</span>
+                  <span>{isSelectionMode ? t.exitSelectionMode : t.selectionMode}</span>
                 </button>
 
                 {musicTracks.length > 0 && (
@@ -684,7 +684,7 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
                       className="w-full text-left px-3 py-2 rounded-lg text-xs hover:bg-neutral-800 text-neutral-200 font-medium flex items-center gap-2.5 transition-colors cursor-pointer"
                     >
                       <Play className={`w-4 h-4 fill-current ${ACCENT_TEXT[accent] || 'text-emerald-400'}`} />
-                      <span>Tout lire</span>
+                      <span>{t.playAll}</span>
                     </button>
 
                     <button
@@ -697,7 +697,7 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
                       className="w-full text-left px-3 py-2 rounded-lg text-xs hover:bg-neutral-800 text-neutral-200 font-medium flex items-center gap-2.5 transition-colors cursor-pointer"
                     >
                       <Shuffle className="w-4 h-4 text-amber-400" />
-                      <span>Tout lire en aléatoire</span>
+                      <span>{t.shufflePlay}</span>
                     </button>
                   </>
                 )}
@@ -714,7 +714,7 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
                     className="w-full text-left px-3 py-2 rounded-lg text-xs hover:bg-neutral-800 text-amber-300 font-medium flex items-center gap-2.5 transition-colors cursor-pointer"
                   >
                     <Copy className="w-4 h-4 text-amber-400" />
-                    <span>Détecteur de doublons...</span>
+                    <span>{t.duplicateFinderMenu}</span>
                   </button>
                 )}
 
@@ -728,7 +728,7 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
                     className="w-full text-left px-3 py-2 rounded-lg text-xs hover:bg-neutral-800 text-indigo-300 font-medium flex items-center gap-2.5 transition-colors cursor-pointer"
                   >
                     <Layers className="w-4 h-4 text-indigo-400" />
-                    <span>Assembler & Fusionner pistes...</span>
+                    <span>{t.audioMergerMenu}</span>
                   </button>
                 )}
 
@@ -742,7 +742,7 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
                     className="w-full text-left px-3 py-2 rounded-lg text-xs hover:bg-neutral-800 text-teal-300 font-medium flex items-center gap-2.5 transition-colors cursor-pointer"
                   >
                     <BarChart3 className="w-4 h-4 text-teal-400" />
-                    <span>Statistiques d'écoute...</span>
+                    <span>{t.listeningStatsMenu}</span>
                   </button>
                 )}
               </div>
@@ -765,11 +765,11 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
               ) : (
                 <Square className="w-4 h-4 text-neutral-500" />
               )}
-              <span>{isAllFilteredSelected ? 'Tout désélectionner' : `Tout sélectionner (${filtered.length})`}</span>
+              <span>{isAllFilteredSelected ? t.deselectAll : t.selectAllWithCount.replace('{count}', String(filtered.length))}</span>
             </button>
             <span className="text-neutral-600">|</span>
             <span className="font-semibold text-white">
-              {selectedTrackIds.size} morceau{selectedTrackIds.size > 1 ? 'x' : ''} sélectionné{selectedTrackIds.size > 1 ? 's' : ''}
+              {selectedTrackIds.size} {t.playlistTracksCount}
             </span>
           </div>
 
@@ -781,16 +781,16 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
                   id="lib-bulk-export-btn"
                   onClick={handleOpenExportBulk}
                   className="px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-neutral-950 font-bold flex items-center gap-1.5 transition-colors shadow-sm"
-                  title="Exporter les morceaux sélectionnés sur votre PC avec choix du format"
+                  title={t.exportToPc.replace('{count}', String(selectedTrackIds.size))}
                 >
                   <FolderDown className="w-3.5 h-3.5" />
-                  <span>Exporter ({selectedTrackIds.size})</span>
+                  <span>{t.exportToPc.replace('{count}', String(selectedTrackIds.size))}</span>
                 </button>
 
                 <button
                   type="button"
                   onClick={() => {
-                    const selectedTracks = musicTracks.filter((t) => selectedTrackIds.has(t.id));
+                    const selectedTracks = musicTracks.filter((tr) => selectedTrackIds.has(tr.id));
                     if (onPlayTracksBatch) {
                       onPlayTracksBatch(selectedTracks, 0);
                     } else if (onPlayAll) {
@@ -800,23 +800,23 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
                   className={`px-3 py-1.5 rounded-lg font-bold flex items-center gap-1.5 transition-colors shadow-sm ${
                     ACCENT_BTN[accent] || ACCENT_BTN.emerald
                   }`}
-                  title="Lire immédiatement les morceaux sélectionnés dans l'ordre"
+                  title={t.playSelection.replace('{count}', String(selectedTrackIds.size))}
                 >
                   <Play className="w-3.5 h-3.5 fill-current" />
-                  <span>Lire ({selectedTrackIds.size})</span>
+                  <span>{t.playSelection.replace('{count}', String(selectedTrackIds.size))}</span>
                 </button>
 
                 <button
                   type="button"
                   onClick={() => {
-                    const selectedTracks = musicTracks.filter((t) => selectedTrackIds.has(t.id));
+                    const selectedTracks = musicTracks.filter((tr) => selectedTrackIds.has(tr.id));
                     if (onAddTracksToQueue) {
                       onAddTracksToQueue(selectedTracks);
                     } else {
-                      selectedTracks.forEach((t) => onAddToQueue(t));
+                      selectedTracks.forEach((tr) => onAddToQueue(tr));
                     }
                     setNotification({
-                      message: `${selectedTracks.length} morceau(x) ajouté(s) à la file d'attente`,
+                      message: `${selectedTracks.length} ${t.playlistTracksCount} -> ${t.queue}`,
                       type: 'info',
                     });
                     setTimeout(() => setNotification(null), 3000);
@@ -824,17 +824,17 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
                   className="px-3 py-1.5 rounded-lg bg-neutral-800 hover:bg-neutral-700 text-neutral-200 font-medium flex items-center gap-1.5 transition-colors"
                 >
                   <ListPlus className="w-3.5 h-3.5" />
-                  <span>Ajouter à la file ({selectedTrackIds.size})</span>
+                  <span>{t.addToQueueSelection.replace('{count}', String(selectedTrackIds.size))}</span>
                 </button>
 
                 <button
                   type="button"
                   onClick={() => setIsBulkDeleteModalOpen(true)}
                   className="px-3 py-1.5 rounded-lg bg-red-600 hover:bg-red-500 text-white font-bold flex items-center gap-1.5 transition-colors shadow-sm"
-                  title="Supprimer les morceaux sélectionnés"
+                  title={t.deleteSelection.replace('{count}', String(selectedTrackIds.size))}
                 >
                   <Trash2 className="w-3.5 h-3.5" />
-                  <span>Supprimer ({selectedTrackIds.size})</span>
+                  <span>{t.deleteSelection.replace('{count}', String(selectedTrackIds.size))}</span>
                 </button>
               </>
             )}
@@ -843,7 +843,7 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
               type="button"
               onClick={handleClearSelection}
               className="p-1 text-neutral-400 hover:text-neutral-200 transition-colors"
-              title="Fermer"
+              title={t.closeSelection}
             >
               <X className="w-4 h-4" />
             </button>
@@ -861,7 +861,7 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
             type="text"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder="Rechercher par titre, artiste, album..."
+            placeholder={t.searchPlaceholder}
             className="w-full pl-10 pr-4 py-2 bg-neutral-900/80 border border-neutral-800 rounded-xl text-xs text-neutral-100 placeholder-neutral-500 focus:outline-none focus:border-neutral-700"
           />
         </div>
@@ -878,10 +878,10 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
                   ? 'bg-neutral-800 text-white shadow-xs'
                   : 'text-neutral-400 hover:text-neutral-200'
               }`}
-              title="Vue Liste"
+              title={t.viewList}
             >
               <List className="w-3.5 h-3.5" />
-              <span>Liste</span>
+              <span>{t.viewList}</span>
             </button>
             <button
               type="button"
@@ -892,10 +892,10 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
                   ? 'bg-neutral-800 text-white shadow-xs'
                   : 'text-neutral-400 hover:text-neutral-200'
               }`}
-              title="Vue Grille"
+              title={t.viewGrid}
             >
               <LayoutGrid className="w-3.5 h-3.5" />
-              <span>Grille</span>
+              <span>{t.viewGrid}</span>
             </button>
           </div>
 
@@ -912,7 +912,7 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
                     : 'text-neutral-400 hover:text-neutral-200'
                 }`}
               >
-                {fmt === 'all' ? 'Tous' : fmt}
+                {fmt === 'all' ? t.allFormats : fmt}
               </button>
             ))}
           </div>
@@ -923,11 +923,11 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
             onChange={(e) => setSortBy(e.target.value as any)}
             className="bg-neutral-900/80 border border-neutral-800 text-neutral-300 text-xs rounded-xl px-3 py-2 focus:outline-none cursor-pointer flex-shrink-0"
           >
-            <option value="title">Trier : Titre (A-Z)</option>
-            <option value="artist">Trier : Artiste</option>
-            <option value="added">Trier : Ajout récent</option>
-            <option value="plays">Trier : Les plus écoutés</option>
-            <option value="duration">Trier : Durée</option>
+            <option value="title">{t.sortByTitle}</option>
+            <option value="artist">{t.sortByArtist}</option>
+            <option value="added">{t.sortByAdded}</option>
+            <option value="plays">{t.sortByPlays}</option>
+            <option value="duration">{t.sortByDuration}</option>
           </select>
         </div>
       </div>
@@ -936,9 +936,9 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
       {filtered.length === 0 && (
         <div className="flex flex-col items-center justify-center p-12 text-center border border-dashed border-neutral-800 rounded-2xl">
           <Music className="w-12 h-12 text-neutral-600 mb-3" />
-          <h3 className="text-base font-semibold text-neutral-300 mb-1">Aucun morceau trouvé</h3>
+          <h3 className="text-base font-semibold text-neutral-300 mb-1">{t.noTracksFound}</h3>
           <p className="text-xs text-neutral-500 max-w-sm">
-            Glissez-déposez des fichiers audio depuis votre ordinateur ou téléchargez des musiques depuis YouTube.
+            {t.noTracksDesc}
           </p>
         </div>
       )}
@@ -1306,21 +1306,21 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
             className="w-full text-left px-3 py-2 rounded-lg text-xs hover:bg-neutral-800 text-neutral-200 flex items-center gap-2.5 transition-colors cursor-pointer"
           >
             <ListPlus className="w-4 h-4 text-neutral-400" />
-            <span>Ajouter à la file d'attente</span>
+            <span>{t.addToQueueMenu}</span>
           </button>
 
           {/* Ajouter à une playlist */}
           <button
             type="button"
             onClick={() => {
-              const t = menuAnchor.track;
+              const targetTrack = menuAnchor.track;
               setMenuAnchor(null);
-              setAddToPlaylistTrack(t);
+              setAddToPlaylistTrack(targetTrack);
             }}
             className="w-full text-left px-3 py-2 rounded-lg text-xs hover:bg-neutral-800 text-neutral-200 flex items-center gap-2.5 transition-colors cursor-pointer"
           >
             <FolderPlus className="w-4 h-4 text-purple-400" />
-            <span>Ajouter à une playlist</span>
+            <span>{t.addToPlaylistMenu}</span>
           </button>
 
           {/* Studio & Découpe */}
@@ -1328,14 +1328,14 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
             <button
               type="button"
               onClick={() => {
-                const t = menuAnchor.track;
+                const targetTrack = menuAnchor.track;
                 setMenuAnchor(null);
-                onOpenTrimmer(t);
+                onOpenTrimmer(targetTrack);
               }}
               className="w-full text-left px-3 py-2 rounded-lg text-xs hover:bg-sky-950/40 text-sky-400 font-medium flex items-center gap-2.5 transition-colors cursor-pointer"
             >
               <Scissors className="w-4 h-4 text-sky-400" />
-              <span>Découper / Éditer l'audio...</span>
+              <span>{t.trimEditAudioMenu}</span>
             </button>
           )}
 
@@ -1344,14 +1344,14 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
             <button
               type="button"
               onClick={() => {
-                const t = menuAnchor.track;
+                const targetTrack = menuAnchor.track;
                 setMenuAnchor(null);
-                onEditTrackTags(t);
+                onEditTrackTags(targetTrack);
               }}
               className="w-full text-left px-3 py-2 rounded-lg text-xs hover:bg-neutral-800 text-cyan-300 font-medium flex items-center gap-2.5 transition-colors cursor-pointer"
             >
               <Tag className="w-4 h-4 text-cyan-400" />
-              <span>Modifier tags & pochette...</span>
+              <span>{t.editTagsCoverMenu}</span>
             </button>
           )}
 
@@ -1361,27 +1361,27 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
           <button
             type="button"
             onClick={() => {
-              const t = menuAnchor.track;
+              const targetTrack = menuAnchor.track;
               setMenuAnchor(null);
-              handleOpenExportSingle(t);
+              handleOpenExportSingle(targetTrack);
             }}
             className="w-full text-left px-3 py-2 rounded-lg text-xs hover:bg-emerald-950/40 text-emerald-400 font-medium flex items-center gap-2.5 transition-colors cursor-pointer"
           >
             <FolderDown className="w-4 h-4 text-emerald-400" />
-            <span>Exporter sur PC (Choix format)...</span>
+            <span>{t.exportTrackPcMenu}</span>
           </button>
 
           <button
             type="button"
             onClick={() => {
-              const t = menuAnchor.track;
+              const targetTrack = menuAnchor.track;
               setMenuAnchor(null);
-              handleSaveTrackToPC(t);
+              handleSaveTrackToPC(targetTrack);
             }}
             className="w-full text-left px-3 py-2 rounded-lg text-xs hover:bg-neutral-800 text-neutral-300 flex items-center gap-2.5 transition-colors cursor-pointer"
           >
             <Download className="w-4 h-4 text-neutral-400" />
-            <span>Téléchargement direct (.wav)</span>
+            <span>{t.directDownloadWavMenu}</span>
           </button>
 
           {/* Suppression */}
@@ -1389,14 +1389,14 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
           <button
             type="button"
             onClick={() => {
-              const t = menuAnchor.track;
+              const targetTrack = menuAnchor.track;
               setMenuAnchor(null);
-              setTrackToDelete(t);
+              setTrackToDelete(targetTrack);
             }}
             className="w-full text-left px-3 py-2 rounded-lg text-xs hover:bg-red-950/60 text-red-400 font-medium flex items-center gap-2.5 transition-colors cursor-pointer"
           >
             <Trash2 className="w-4 h-4 text-red-400" />
-            <span>Supprimer de la bibliothèque</span>
+            <span>{t.deleteFromLibraryMenu}</span>
           </button>
         </div>
       )}
@@ -1562,6 +1562,7 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
         onRemoveFromPlaylist={onRemoveFromPlaylist}
         onCreatePlaylist={onCreatePlaylist}
         accent={accent}
+        language={settings?.language}
       />
     </div>
   );

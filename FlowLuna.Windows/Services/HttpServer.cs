@@ -600,23 +600,40 @@ public class HttpServer
                     var psi = new ProcessStartInfo
                     {
                         FileName = ffmpeg,
-                        Arguments = $"-y -i \"{rawPath}\" -vn -ac 1 -ar 16000 -b:a 64k \"{tmpOut}\"",
+                        Arguments = $"-y -i \"{rawPath}\" -t 600 -vn -ac 1 -ar 16000 -b:a 64k \"{tmpOut}\"",
                         UseShellExecute = false,
                         CreateNoWindow = true
                     };
                     using var p = Process.Start(psi);
-                    if (p != null) await p.WaitForExitAsync();
+                    if (p != null)
+                    {
+                        using var ffmpegCts = new CancellationTokenSource(TimeSpan.FromSeconds(45));
+                        try
+                        {
+                            await p.WaitForExitAsync(ffmpegCts.Token);
+                        }
+                        catch (OperationCanceledException)
+                        {
+                            try { p.Kill(entireProcessTree: true); } catch { }
+                            return Results.Json(new { error = "Délai dépassé lors de l'extraction audio FFmpeg (45s)." }, statusCode: 504);
+                        }
+                    }
 
                     if (!File.Exists(tmpOut))
                     {
                         return Results.Json(new { error = "Échec de l'extraction audio." }, statusCode: 500);
                     }
 
-                    var whisperUrl = endpoint ?? "https://api.openai.com/v1/audio/transcriptions";
+                    var whisperUrl = string.IsNullOrWhiteSpace(endpoint) ? "https://api.openai.com/v1/audio/transcriptions" : endpoint.Trim();
                     if (!whisperUrl.Contains("/audio/transcriptions", StringComparison.OrdinalIgnoreCase))
                     {
                         whisperUrl = whisperUrl.TrimEnd('/') + "/audio/transcriptions";
                     }
+
+                    var normalizedModel = string.IsNullOrWhiteSpace(model) ||
+                        System.Text.RegularExpressions.Regex.IsMatch(model.Trim(), @"^(gpt-|gemini-|claude-|mistral-|pixtral-|codestral-|o1-|o3-|deepseek-|qwen|llama)", System.Text.RegularExpressions.RegexOptions.IgnoreCase)
+                        ? "whisper-1"
+                        : model.Trim();
 
                     using var request = new HttpRequestMessage(HttpMethod.Post, whisperUrl);
                     if (!string.IsNullOrWhiteSpace(apiKey))
@@ -629,7 +646,7 @@ public class HttpServer
                     var fileContent = new ByteArrayContent(fileBytes);
                     fileContent.Headers.ContentType = new MediaTypeHeaderValue("audio/mpeg");
                     form.Add(fileContent, "file", "audio.mp3");
-                    form.Add(new StringContent(model ?? "whisper-1"), "model");
+                    form.Add(new StringContent(normalizedModel), "model");
                     form.Add(new StringContent("verbose_json"), "response_format");
                     request.Content = form;
 
@@ -652,9 +669,10 @@ public class HttpServer
                             var text = seg.TryGetProperty("text", out var tEl) ? tEl.GetString()?.Trim() : null;
                             if (string.IsNullOrWhiteSpace(text)) continue;
                             var startSec = seg.TryGetProperty("start", out var sEl) ? sEl.GetDouble() : 0;
-                            var m = (int)(startSec / 60);
-                            var s = (int)(startSec % 60);
-                            var xx = (int)((startSec - Math.Truncate(startSec)) * 100);
+                            var totalHundredths = (int)Math.Round(Math.Max(0, double.IsFinite(startSec) ? startSec : 0) * 100);
+                            var m = totalHundredths / 6000;
+                            var s = (totalHundredths % 6000) / 100;
+                            var xx = totalHundredths % 100;
                             lines.Add($"[{m:D2}:{s:D2}.{xx:D2}] {text}");
                         }
                         syncedLyrics = string.Join("\n", lines);
@@ -665,7 +683,7 @@ public class HttpServer
                     }
 
                     var isLocal = whisperUrl.Contains("localhost", StringComparison.OrdinalIgnoreCase) || whisperUrl.Contains("127.0.0.1", StringComparison.OrdinalIgnoreCase);
-                    return Results.Json(new { success = true, syncedLyrics, isLocal, model });
+                    return Results.Json(new { success = true, syncedLyrics, isLocal, model = normalizedModel });
                 }
                 finally
                 {

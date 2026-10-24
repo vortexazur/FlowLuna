@@ -25,6 +25,7 @@ import {
 } from 'lucide-react';
 import { Track, Playlist, AccentColor, PlayerSettings } from '../types';
 import { AudioVisualizer } from './AudioVisualizer';
+import { getT } from '../i18n';
 
 interface MiniPlayerProps {
   currentTrack: Track | null;
@@ -148,6 +149,7 @@ export const MiniPlayer: React.FC<MiniPlayerProps> = ({
   onToggleMinimizeApp,
   isStandalone = false,
 }) => {
+  const t = getT(settings?.language);
   // 1. Persistent Ghost / Transparency Mode
   const [isGhostMode, setIsGhostMode] = useState<boolean>(() => {
     if (typeof settings?.compactPlayerGhost === 'boolean') return settings.compactPlayerGhost;
@@ -442,16 +444,16 @@ export const MiniPlayer: React.FC<MiniPlayerProps> = ({
               type="button"
               onClick={() => setIsPlaylistMenuOpen(false)}
               className={`flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider ${ACCENT_TEXT[accent]} hover:opacity-80 transition-opacity cursor-pointer`}
-              title="Retour aux commandes de lecture"
+              title={t.closeBtn}
             >
               <ArrowLeft className="w-4 h-4" />
-              <span>Ajouter à une playlist</span>
+              <span>{t.addToPlaylistModalTitle}</span>
             </button>
             <button
               type="button"
               onClick={() => setIsPlaylistMenuOpen(false)}
               className="p-1 rounded text-neutral-400 hover:text-white hover:bg-neutral-800/80 transition-colors cursor-pointer"
-              title="Fermer et revenir au lecteur"
+              title={t.closeBtn}
             >
               <X className="w-4 h-4" />
             </button>
@@ -462,7 +464,7 @@ export const MiniPlayer: React.FC<MiniPlayerProps> = ({
             <Search className="w-3.5 h-3.5 text-neutral-500 absolute left-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
             <input
               type="text"
-              placeholder="Filtrer les playlists..."
+              placeholder={t.filterPlaylistPlaceholder}
               value={playlistSearch}
               onChange={(e) => setPlaylistSearch(e.target.value)}
               className="w-full pl-8 pr-2.5 py-1 text-xs bg-neutral-900/90 border border-neutral-800 rounded-lg text-neutral-200 placeholder:text-neutral-500 focus:outline-none focus:border-neutral-700 transition-colors"
@@ -474,11 +476,11 @@ export const MiniPlayer: React.FC<MiniPlayerProps> = ({
           <div className="flex-1 min-h-0 overflow-y-auto flex flex-col gap-1 pr-0.5 scrollbar-thin">
             {customPlaylists.length === 0 ? (
               <div className="py-4 text-xs text-neutral-400 text-center">
-                Aucune playlist disponible
+                {t.noCustomPlaylists}
               </div>
             ) : filteredPlaylists.length === 0 ? (
               <div className="py-4 text-xs text-neutral-400 text-center">
-                Aucune playlist trouvée
+                {t.noCustomPlaylists}
               </div>
             ) : (
               filteredPlaylists.map((pl) => {
@@ -493,13 +495,13 @@ export const MiniPlayer: React.FC<MiniPlayerProps> = ({
                         ? `${ACCENT_ROW_ACTIVE[accent]} hover:bg-rose-500/15 hover:border-rose-500/30 hover:text-rose-300`
                         : 'bg-neutral-900/40 border-neutral-800/60 text-neutral-200 hover:bg-neutral-800/80 hover:border-neutral-700'
                     }`}
-                    title={isPresent ? `Cliquer pour retirer de "${pl.title}"` : `Cliquer pour ajouter à "${pl.title}"`}
+                    title={isPresent ? t.removeFromPlaylistMenu : t.addBtn}
                   >
                     <span className="truncate flex-1 font-medium">{pl.title}</span>
                     {isPresent ? (
                       <span className="flex items-center gap-1 flex-shrink-0">
                         <Check className={`w-3.5 h-3.5 ${ACCENT_TEXT[accent]} group-hover:hidden`} />
-                        <span className="text-[10px] text-rose-400 font-semibold hidden group-hover:inline">Retirer</span>
+                        <span className="text-[10px] text-rose-400 font-semibold hidden group-hover:inline">{t.removeFromPlaylistMenu}</span>
                       </span>
                     ) : (
                       <Plus className="w-3.5 h-3.5 text-neutral-500 group-hover:text-white flex-shrink-0" />
@@ -517,7 +519,7 @@ export const MiniPlayer: React.FC<MiniPlayerProps> = ({
                 <input
                   ref={inlineInputRef}
                   type="text"
-                  placeholder="Nom de la playlist..."
+                  placeholder={t.newPlaylistInputPlaceholder}
                   value={newPlaylistTitle}
                   onChange={(e) => setNewPlaylistTitle(e.target.value)}
                   className="flex-1 min-w-0 px-2.5 py-1.5 text-xs bg-neutral-900 border border-neutral-700 rounded-lg text-white placeholder-neutral-500 focus:outline-none"
@@ -535,7 +537,7 @@ export const MiniPlayer: React.FC<MiniPlayerProps> = ({
                   className={`px-2.5 py-1.5 rounded-lg text-xs font-bold transition-colors cursor-pointer ${
                     newPlaylistTitle.trim() ? ACCENT_BG[accent] : 'bg-neutral-800 text-neutral-500 cursor-not-allowed'
                   }`}
-                  title="Créer"
+                  title={t.createBtn}
                 >
                   <Check className="w-3.5 h-3.5" />
                 </button>
@@ -546,7 +548,7 @@ export const MiniPlayer: React.FC<MiniPlayerProps> = ({
                     setNewPlaylistTitle('');
                   }}
                   className="p-1.5 rounded-lg text-neutral-400 hover:text-white hover:bg-neutral-800 transition-colors cursor-pointer"
-                  title="Annuler"
+                  title={t.clearCacheCancel}
                 >
                   <X className="w-3.5 h-3.5" />
                 </button>
@@ -567,7 +569,7 @@ export const MiniPlayer: React.FC<MiniPlayerProps> = ({
                   className={`w-full px-3 py-1.5 rounded-xl text-xs font-semibold flex items-center justify-center gap-2 border transition-all cursor-pointer shadow-md ${ACCENT_BG_SUBTLE[accent]}`}
                 >
                   <Plus className="w-3.5 h-3.5" />
-                  <span>Créer une playlist</span>
+                  <span>{t.createPlaylistBtn}</span>
                 </button>
               </div>
             )
@@ -600,10 +602,10 @@ export const MiniPlayer: React.FC<MiniPlayerProps> = ({
                 onClick={onRestore}
                 title={currentTrack ? currentTrack.title : ''}
               >
-                {currentTrack ? currentTrack.title : 'Sélectionnez un titre'}
+                {currentTrack ? currentTrack.title : t.selectTrack}
               </h4>
               <p className="text-[11px] text-neutral-400 truncate">
-                {currentTrack ? currentTrack.artist : 'Lecteur en veille'}
+                {currentTrack ? currentTrack.artist : t.noMediaPlaying}
               </p>
             </div>
 
@@ -615,7 +617,7 @@ export const MiniPlayer: React.FC<MiniPlayerProps> = ({
                   className={`p-1.5 rounded-full transition-colors cursor-pointer ${
                     isFavorite ? 'text-rose-500 fill-current' : 'text-neutral-500 hover:text-white'
                   }`}
-                  title={isFavorite ? 'Retirer des favoris' : 'Ajouter aux favoris'}
+                  title={t.favorites}
                 >
                   <Heart className={`w-4 h-4 ${isFavorite ? 'fill-rose-500' : ''}`} />
                 </button>
@@ -626,7 +628,7 @@ export const MiniPlayer: React.FC<MiniPlayerProps> = ({
                   type="button"
                   onClick={() => setIsPlaylistMenuOpen(true)}
                   className="p-1.5 rounded-full text-neutral-400 hover:text-white hover:bg-neutral-800 transition-colors cursor-pointer"
-                  title="Ajouter à une playlist"
+                  title={t.addToPlaylistModalTitle}
                 >
                   <ListPlus className="w-4 h-4" />
                 </button>

@@ -84,12 +84,14 @@ export class VLCEqualizer {
 
   public setBand(index: number, gain: number) {
     if (index >= 0 && index < 10) {
-      this.bands[index] = Math.max(-20, Math.min(20, gain));
+      const safeGain = Number.isFinite(gain) ? gain : 0;
+      this.bands[index] = Math.max(-20, Math.min(20, safeGain));
     }
   }
 
   public setPreamp(gain: number) {
-    this.preamp = Math.max(-20, Math.min(20, gain));
+    const safePreamp = Number.isFinite(gain) ? gain : 0;
+    this.preamp = Math.max(-20, Math.min(20, safePreamp));
   }
 }
 
@@ -153,6 +155,7 @@ export class VLCMediaPlayer {
   }
 
   private initAudioContext() {
+    if (typeof window === 'undefined') return;
     try {
       const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
       if (AudioCtx) {
@@ -173,18 +176,51 @@ export class VLCMediaPlayer {
 
     if (this.audioEl && this.audioEl !== element) {
       this.removeMediaEventListeners();
-      if (this.sourceNode) {
-        try {
-          this.sourceNode.disconnect();
-        } catch {}
-        this.sourceNode = null;
-      }
-      this.isConnected = false;
+      this.disconnectDspNodes();
     }
 
     this.audioEl = element;
     this.setupMediaEventListeners();
     this.buildDspPipeline();
+  }
+
+  private disconnectDspNodes() {
+    const nodes: Array<AudioNode | null> = [
+      this.sourceNode,
+      this.preampGainNode,
+      ...this.eqFilters,
+      this.normalizerGainNode,
+      this.dynamicsCompressorNode,
+      this.limiterNode,
+      this.splitterNode,
+      this.mergerNode,
+      this.llGainNode,
+      this.lrGainNode,
+      this.rlGainNode,
+      this.rrGainNode,
+      this.analyserNode,
+    ];
+    for (const node of nodes) {
+      if (node) {
+        try {
+          node.disconnect();
+        } catch {}
+      }
+    }
+    this.sourceNode = null;
+    this.preampGainNode = null;
+    this.eqFilters = [];
+    this.normalizerGainNode = null;
+    this.dynamicsCompressorNode = null;
+    this.limiterNode = null;
+    this.splitterNode = null;
+    this.mergerNode = null;
+    this.llGainNode = null;
+    this.lrGainNode = null;
+    this.rlGainNode = null;
+    this.rrGainNode = null;
+    this.analyserNode = null;
+    this.isConnected = false;
   }
 
   private removeMediaEventListeners() {
@@ -390,9 +426,9 @@ export class VLCMediaPlayer {
       if (this.audioContext.state === 'suspended') {
         await this.audioContext.resume().catch(() => {});
       } else if (this.audioContext.state === 'closed') {
+        this.disconnectDspNodes();
         this.initAudioContext();
         if (this.audioEl) {
-          this.isConnected = false;
           this.buildDspPipeline();
         }
       }
@@ -501,13 +537,19 @@ export class VLCMediaPlayer {
 
     // Apply Preamp
     if (this.preampGainNode) {
-      const linear = Math.pow(10, this.equalizer.preamp / 20);
-      this.preampGainNode.gain.setTargetAtTime(linear, now, 0.05);
+      const safePreamp = Number.isFinite(this.equalizer.preamp)
+        ? Math.max(-20, Math.min(20, this.equalizer.preamp))
+        : 0;
+      const linear = Math.pow(10, safePreamp / 20);
+      if (Number.isFinite(linear)) {
+        this.preampGainNode.gain.setTargetAtTime(linear, now, 0.05);
+      }
     }
 
     // Apply 10 Bands
     this.eqFilters.forEach((filter, i) => {
-      const gain = this.equalizer.bands[i] || 0;
+      const rawGain = this.equalizer.bands[i];
+      const gain = Number.isFinite(rawGain) ? Math.max(-20, Math.min(20, rawGain)) : 0;
       filter.gain.setTargetAtTime(gain, now, 0.05);
     });
   }

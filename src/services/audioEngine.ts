@@ -62,17 +62,21 @@ class AudioEngine {
 
   public applyEqualizer(settings: EqualizerSettings) {
     const vlcEq = new VLCEqualizer();
-    vlcEq.setPreamp(settings.preampGain || 0);
+    const isEnabled = Boolean(settings?.enabled);
+    const rawPreamp = Number.isFinite(settings?.preampGain) ? settings.preampGain : 0;
 
-    if (settings.enabled && settings.bands) {
+    // Bypass total du préampli lorsque l'égaliseur est désactivé à chaud
+    vlcEq.setPreamp(isEnabled ? rawPreamp : 0);
+
+    if (isEnabled && Array.isArray(settings.bands)) {
       settings.bands.forEach((b, i) => {
-        let gain = b.gain || 0;
+        let gain = Number.isFinite(b?.gain) ? b.gain : 0;
         // Apply bass & treble boosts seamlessly into VLC EQ bands
         if (i < 2 && settings.bassBoost) {
-          gain += (settings.bassBoost || 0) * 1.2;
+          gain += (Number(settings.bassBoost) || 0) * 1.2;
         }
         if (i >= 7 && settings.trebleBoost) {
-          gain += (settings.trebleBoost || 0) * 1.2;
+          gain += (Number(settings.trebleBoost) || 0) * 1.2;
         }
         vlcEq.setBand(i, gain);
       });
@@ -80,10 +84,10 @@ class AudioEngine {
 
     this.vlcPlayer.setEqualizer(vlcEq);
 
-    if (settings.stereoWidth !== undefined) {
+    if (settings?.stereoWidth !== undefined && Number.isFinite(settings.stereoWidth)) {
       this.vlcPlayer.setStereoWidth(settings.stereoWidth);
     }
-    if (settings.playbackSpeed !== undefined) {
+    if (settings?.playbackSpeed !== undefined && Number.isFinite(settings.playbackSpeed)) {
       this.vlcPlayer.setRate(settings.playbackSpeed);
     }
   }

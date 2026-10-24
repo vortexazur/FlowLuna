@@ -17,6 +17,8 @@ export interface LyricsResult {
  * Parses a standard LRC text string into an array of time-stamped LyricLine objects.
  */
 export function parseLrc(lrcText: string): LyricLine[] {
+  if (!lrcText || typeof lrcText !== 'string') return [];
+
   const lines: LyricLine[] = [];
   const rawLines = lrcText.split(/\r?\n/);
 
@@ -30,8 +32,8 @@ export function parseLrc(lrcText: string): LyricLine[] {
     }
   }
 
-  // Match [mm:ss.xx] or [mm:ss.xxx] or [mm:ss]
-  const timeRegex = /\[(\d{1,2}):(\d{2})(?:\.(\d{1,3}))?\]/g;
+  // Match [mm:ss.xx], [mm:ss.xxx], [mm:ss.x], [mm:ss:xx], [mm:ss,xx] or [mm:ss]
+  const timeRegex = /\[(\d{1,3}):(\d{2})(?:[.:,](\d{1,3}))?\]/g;
 
   for (const rawLine of rawLines) {
     const trimmed = rawLine.trim();
@@ -49,9 +51,10 @@ export function parseLrc(lrcText: string): LyricLine[] {
       const sec = parseInt(match[2], 10);
       let ms = 0;
       if (match[3]) {
-        ms = match[3].length === 2 ? parseInt(match[3], 10) * 10 : parseInt(match[3], 10);
+        ms = parseInt(match[3].padEnd(3, '0').slice(0, 3), 10);
       }
-      const timeInSec = Math.max(0, min * 60 + sec + ms / 1000 + globalOffset);
+      const rawTime = Math.max(0, min * 60 + sec + ms / 1000 + globalOffset);
+      const timeInSec = Math.round(rawTime * 1000) / 1000;
       lines.push({ time: timeInSec, text });
     }
   }

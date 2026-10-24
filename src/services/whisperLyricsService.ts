@@ -21,12 +21,14 @@ export interface WhisperLyricsResult {
 
 /**
  * Formate des secondes en timecode standard LRC [mm:ss.xx]
+ * Utilise un arrondi entier en centièmes de seconde pour éliminer toute dérive flottante IEEE-754 (ex: 1.15s -> .15 et non .14)
  */
 export function formatLrcTimestamp(seconds: number): string {
-  const safeSec = Math.max(0, seconds);
-  const mins = Math.floor(safeSec / 60);
-  const secs = Math.floor(safeSec % 60);
-  const hundredths = Math.floor((safeSec % 1) * 100);
+  const safeSec = Number.isFinite(seconds) ? Math.max(0, seconds) : 0;
+  const totalHundredths = Math.round(safeSec * 100);
+  const mins = Math.floor(totalHundredths / 6000);
+  const secs = Math.floor((totalHundredths % 6000) / 100);
+  const hundredths = totalHundredths % 100;
 
   const mm = String(mins).padStart(2, '0');
   const ss = String(secs).padStart(2, '0');
@@ -35,21 +37,37 @@ export function formatLrcTimestamp(seconds: number): string {
   return `[${mm}:${ss}.${xx}]`;
 }
 
+const WHISPER_HALLUCINATION_PATTERNS = [
+  /^sous-titres réalisés par/i,
+  /amara\.org/i,
+  /^merci d'avoir regardé/i,
+  /^thank you for watching/i,
+  /^subtitles by/i,
+];
+
 /**
  * Convertit des segments horodatés (Whisper verbose_json) en chaîne LRC valide
  */
 export function convertWhisperSegmentsToLrc(
   segments: Array<{ start: number; end: number; text: string }>
 ): string {
-  if (!segments || segments.length === 0) return '';
+  if (!Array.isArray(segments) || segments.length === 0) return '';
 
-  return segments
-    .map((seg) => {
-      const text = (seg.text || '').trim();
-      if (!text) return null;
-      return `${formatLrcTimestamp(seg.start)} ${text}`;
+  const validSegments = segments
+    .filter((seg) => seg && typeof seg.text === 'string')
+    .map((seg) => ({
+      start: Number.isFinite(seg.start) ? Math.max(0, seg.start) : 0,
+      end: Number.isFinite(seg.end) ? Math.max(0, seg.end) : 0,
+      text: seg.text.trim(),
+    }))
+    .filter((seg) => {
+      if (!seg.text) return false;
+      return !WHISPER_HALLUCINATION_PATTERNS.some((pattern) => pattern.test(seg.text));
     })
-    .filter(Boolean)
+    .sort((a, b) => a.start - b.start);
+
+  return validSegments
+    .map((seg) => `${formatLrcTimestamp(seg.start)} ${seg.text}`)
     .join('\n');
 }
 
@@ -178,8 +196,13 @@ RÈGLES STRICTES :
       .replace(/\s*```$/i, '')
       .trim();
 
-    const isInstrumental = cleanedLrc.includes('Morceau instrumental') || cleanedLrc.includes('instrumental');
     const parsedLines = parseLrc(cleanedLrc);
+    const isInstrumental =
+      cleanedLrc.includes('♪ Morceau instrumental ♪') ||
+      (parsedLines.length <= 2 &&
+        /\b(morceau instrumental|instrumental track|musique instrumentale|^\[?instrumental\]?$)\b/i.test(
+          parsedLines.map((l) => l.text).join(' ').trim()
+        ));
 
     return {
       success: true,
@@ -203,6 +226,20 @@ RÈGLES STRICTES :
 }
 
 /**
+ * Normalise le nom du modèle pour l'API de transcription Whisper
+ * (remplace les identifiants de LLM conversationnels par 'whisper-1')
+ */
+export function resolveWhisperModelName(rawModel?: string): string {
+  if (!rawModel || typeof rawModel !== 'string') return 'whisper-1';
+  const trimmed = rawModel.trim();
+  if (!trimmed) return 'whisper-1';
+  if (/^(gpt-|gemini-|claude-|mistral-|pixtral-|codestral-|o1-|o3-|deepseek-|qwen|llama)/i.test(trimmed)) {
+    return 'whisper-1';
+  }
+  return trimmed;
+}
+
+/**
  * Transcription audio directe via endpoint Whisper (Local ou Cloud)
  */
 export async function transcribeAudioWithWhisper(
@@ -219,10 +256,24 @@ export async function transcribeAudioWithWhisper(
     };
   }
 
-  const settings = aiSettings || {
+  const settings: Partial<AISettings> = aiSettings || {
     activeProvider: 'gemini',
   };
-  const config = getEffectiveAiConfig(settings as any);
+  let config = getEffectiveAiConfig(settings as AISettings);
+
+  // Si le provider actif est un LLM Cloud sans endpoint Whisper dédié (ex: Gemini, Anthropic, Mistral),
+  // basculer vers la configuration OpenAI ou Custom si disponible.
+  if (['gemini', 'anthropic', 'mistral'].includes(config.provider)) {
+    if (settings.openai?.apiKey) {
+      config = getEffectiveAiConfig(settings as AISettings, 'openai');
+    } else if (settings.custom?.endpoint) {
+      config = getEffectiveAiConfig(settings as AISettings, 'custom');
+    }
+  }
+
+  const whisperModel = resolveWhisperModelName(config.model);
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 90000);
 
   try {
     const res = await fetch('/api/lyrics/transcribe', {
@@ -233,8 +284,9 @@ export async function transcribeAudioWithWhisper(
         provider: config.provider,
         endpoint: config.endpoint,
         apiKey: config.apiKey,
-        model: config.model,
+        model: whisperModel,
       }),
+      signal: controller.signal,
     });
 
     if (!res.ok) {
@@ -252,19 +304,24 @@ export async function transcribeAudioWithWhisper(
         isSynced: lines.length > 0,
         source: data.isLocal ? 'whisper_local' : 'whisper_cloud',
         providerName: config.provider,
-        modelUsed: data.model || config.model,
+        modelUsed: data.model || whisperModel,
       };
     }
 
     throw new Error('Réponse vide du moteur Whisper.');
   } catch (err: any) {
+    const isAbort = err?.name === 'AbortError';
     return {
       success: false,
       lines: [],
       isSynced: false,
       source: 'whisper_local',
-      error: err?.message || 'Échec de la transcription audio Whisper.',
+      error: isAbort
+        ? 'Délai dépassé lors de la transcription audio Whisper (90s).'
+        : err?.message || 'Échec de la transcription audio Whisper.',
     };
+  } finally {
+    clearTimeout(timeoutId);
   }
 }
 

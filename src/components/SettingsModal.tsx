@@ -658,14 +658,63 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
 
   const currentLang = SUPPORTED_LANGUAGES.find((l) => l.code === (settings.language || 'fr')) || SUPPORTED_LANGUAGES[0];
 
+  const ACCENT_LABELS: Record<AccentColor, string> = {
+    emerald: t.accentEmerald,
+    violet: t.accentViolet,
+    blue: t.accentBlue,
+    amber: t.accentAmber,
+    rose: t.accentRose,
+    cyan: t.accentCyan,
+  };
+
+  const localizedShortcutGroups = [
+    {
+      title: t.shortcutGroupPlayback,
+      shortcuts: [
+        { key: 'Space', desc: `${t.play} / ${t.pause}` },
+        { key: '← / →', desc: t.rewind10s },
+        { key: 'N', desc: t.next },
+        { key: 'P', desc: t.previous },
+        { key: 'S', desc: t.shuffle },
+        { key: 'R', desc: t.repeat },
+      ],
+    },
+    {
+      title: t.shortcutGroupVolume,
+      shortcuts: [
+        { key: '↑ / ↓', desc: 'Volume +/-' },
+        { key: 'M', desc: 'Mute' },
+        { key: 'L', desc: t.favorites },
+        { key: 'E', desc: t.equalizer },
+      ],
+    },
+    {
+      title: t.shortcutGroupDisplay,
+      shortcuts: [
+        { key: 'F', desc: `${t.fullscreen} & ${t.lyrics}` },
+        { key: 'W', desc: t.cmdToggleMiniPlayerTitle },
+        { key: 'Ctrl + K', desc: t.quickPalette },
+      ],
+    },
+    {
+      title: t.videosTitle,
+      shortcuts: [
+        { key: 'S', desc: t.skipOpening },
+        { key: 'N', desc: t.next },
+        { key: 'Esc', desc: t.minimizeToPip },
+        { key: 'Double-tap / Click', desc: t.forwardInterval.replace('{seconds}', String(settings.videoSkipForwardInterval ?? 10)) },
+      ],
+    },
+  ];
+
   const TABS = [
-    { id: 'appearance' as SettingsTab, label: 'Apparence', icon: Sparkles },
-    { id: 'audio' as SettingsTab, label: 'Audio & Écoute', icon: Volume2 },
-    { id: 'video' as SettingsTab, label: 'Vidéo', icon: Film },
-    { id: 'ai' as SettingsTab, label: "Modèles d'IA", icon: Bot },
-    { id: 'general' as SettingsTab, label: 'Général & Système', icon: Globe },
-    { id: 'system' as SettingsTab, label: 'Moteurs & Fichiers', icon: Cpu },
-    { id: 'shortcuts' as SettingsTab, label: 'Raccourcis Clavier', icon: Keyboard },
+    { id: 'appearance' as SettingsTab, label: t.settingsTabAppearance, icon: Sparkles },
+    { id: 'audio' as SettingsTab, label: t.settingsTabAudio, icon: Volume2 },
+    { id: 'video' as SettingsTab, label: t.settingsTabVideo, icon: Film },
+    { id: 'ai' as SettingsTab, label: t.settingsTabAi, icon: Bot },
+    { id: 'general' as SettingsTab, label: t.settingsTabGeneral, icon: Globe },
+    { id: 'system' as SettingsTab, label: t.settingsTabEngines, icon: Cpu },
+    { id: 'shortcuts' as SettingsTab, label: t.settingsTabShortcuts, icon: Keyboard },
   ];
 
   return (
@@ -695,7 +744,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
             type="button"
             onClick={onClose}
             className="p-2 rounded-xl text-neutral-400 hover:text-neutral-900 dark:hover:text-white hover:bg-white/10 transition-colors cursor-pointer"
-            title="Fermer"
+            title={t.closeBtn}
           >
             <X className="w-5 h-5" />
           </button>
@@ -930,7 +979,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                           className="w-4 h-4 rounded-full flex-shrink-0 shadow-xs"
                           style={{ backgroundColor: acc.colorHex }}
                         />
-                        <span className="text-xs truncate">{acc.label}</span>
+                        <span className="text-xs truncate">{ACCENT_LABELS[acc.id] || acc.label}</span>
                       </button>
                     );
                   })}
@@ -2299,7 +2348,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                   </div>
                   <span className="text-[11px] font-mono text-emerald-400 bg-emerald-950/80 px-2.5 py-1 rounded-full border border-emerald-500/25 font-semibold flex items-center gap-2">
                     <CountryFlag code={currentLang.code} size="sm" />
-                    <span>{currentLang.name}</span>
+                    <span>{currentLang.nativeName}</span>
                   </span>
                 </div>
                 <p className="text-xs text-neutral-400">
@@ -2324,8 +2373,8 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                         <div className="flex items-center gap-2.5 min-w-0">
                           <CountryFlag code={lang.code} size="md" />
                           <div className="min-w-0">
-                            <div className="text-xs font-semibold truncate text-white">{lang.name}</div>
-                            <div className="text-[10px] text-neutral-400 truncate">{lang.nativeName}</div>
+                            <div className="text-xs font-semibold truncate text-white">{lang.nativeName}</div>
+                            <div className="text-[10px] text-neutral-400 truncate uppercase font-mono">{lang.code}</div>
                           </div>
                         </div>
                         {isSelected && <Check className="w-4 h-4 text-emerald-400 flex-shrink-0 ml-1" />}
@@ -2836,7 +2885,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
               </div>
 
               <div className="flex flex-col gap-4">
-                {SHORTCUT_GROUPS.map((group) => (
+                {localizedShortcutGroups.map((group) => (
                   <div key={group.title} className="flex flex-col gap-2.5">
                     <span className="text-xs font-bold text-neutral-300">{group.title}</span>
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
@@ -2874,7 +2923,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
             onClick={onClose}
             className="px-5 py-2 rounded-xl text-xs font-semibold bg-white/10 hover:bg-white/20 text-neutral-900 dark:text-white transition-all cursor-pointer active:scale-95 border border-white/10"
           >
-            Fermer
+            {t.closeBtn}
           </button>
         </div>
       </div>

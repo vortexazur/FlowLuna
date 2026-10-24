@@ -21,7 +21,8 @@ import {
   Film,
   Download,
 } from 'lucide-react';
-import { Track, Playlist, AccentColor } from '../types';
+import { Track, Playlist, AccentColor, LanguageCode } from '../types';
+import { getT } from '../i18n';
 
 interface CommandPaletteModalProps {
   isOpen: boolean;
@@ -45,6 +46,7 @@ interface CommandPaletteModalProps {
   onOpenMerger: () => void;
   onOpenStats: () => void;
   accent: AccentColor;
+  language?: LanguageCode;
 }
 
 interface ActionItem {
@@ -88,7 +90,9 @@ export const CommandPaletteModal: React.FC<CommandPaletteModalProps> = ({
   onOpenMerger,
   onOpenStats,
   accent,
+  language,
 }) => {
+  const t = getT(language);
   const [query, setQuery] = useState('');
   const [selectedIndex, setSelectedIndex] = useState(0);
   const [showShortcutsHelp, setShowShortcutsHelp] = useState(false);
@@ -111,17 +115,17 @@ export const CommandPaletteModal: React.FC<CommandPaletteModalProps> = ({
       {
         id: 'toggle-play',
         category: 'action',
-        title: isPlaying ? 'Mettre en pause' : 'Lancer la lecture',
-        subtitle: 'Contrôle de lecture principal',
+        title: isPlaying ? t.cmdPauseTrackTitle : t.cmdPlayTrackTitle,
+        subtitle: `${t.play} / ${t.pause}`,
         icon: isPlaying ? <Pause className="w-4 h-4 text-amber-400" /> : <Play className="w-4 h-4 text-emerald-400" />,
-        shortcut: 'Espace',
+        shortcut: 'Space',
         onSelect: onTogglePlay,
       },
       {
         id: 'next-track',
         category: 'action',
-        title: 'Morceau suivant',
-        subtitle: 'Passer à la piste d’après',
+        title: t.next,
+        subtitle: t.queue,
         icon: <SkipForward className="w-4 h-4 text-sky-400" />,
         shortcut: 'N',
         onSelect: onNext,
@@ -129,8 +133,8 @@ export const CommandPaletteModal: React.FC<CommandPaletteModalProps> = ({
       {
         id: 'prev-track',
         category: 'action',
-        title: 'Morceau précédent',
-        subtitle: 'Revenir à la piste d’avant',
+        title: t.previous,
+        subtitle: t.queue,
         icon: <SkipBack className="w-4 h-4 text-sky-400" />,
         shortcut: 'P',
         onSelect: onPrev,
@@ -138,8 +142,8 @@ export const CommandPaletteModal: React.FC<CommandPaletteModalProps> = ({
       {
         id: 'toggle-shuffle',
         category: 'action',
-        title: 'Activer / Désactiver le mode aléatoire',
-        subtitle: 'Mélanger la file d’attente',
+        title: t.shuffle,
+        subtitle: t.queue,
         icon: <Shuffle className="w-4 h-4 text-amber-400" />,
         shortcut: 'S',
         onSelect: onToggleShuffle,
@@ -147,8 +151,8 @@ export const CommandPaletteModal: React.FC<CommandPaletteModalProps> = ({
       {
         id: 'open-eq',
         category: 'action',
-        title: 'Ouvrir l’Égaliseur & Effets DSP 3D',
-        subtitle: '10 bandes, Spatial Audio 3D, Vitesse',
+        title: t.cmdOpenEqualizerTitle,
+        subtitle: t.equalizerSubtitle,
         icon: <Sliders className="w-4 h-4 text-violet-400" />,
         shortcut: 'E',
         onSelect: onOpenEqualizer,
@@ -156,8 +160,8 @@ export const CommandPaletteModal: React.FC<CommandPaletteModalProps> = ({
       {
         id: 'open-fullscreen',
         category: 'action',
-        title: 'Mode Paroles & Plein Écran immersif',
-        subtitle: 'Visualiseur graphique audio',
+        title: t.cmdOpenFullscreenTitle,
+        subtitle: `${t.lyrics} & ${t.fullscreen}`,
         icon: <Maximize2 className="w-4 h-4 text-rose-400" />,
         shortcut: 'F / L',
         onSelect: onOpenFullscreen,
@@ -165,8 +169,8 @@ export const CommandPaletteModal: React.FC<CommandPaletteModalProps> = ({
       {
         id: 'open-pip',
         category: 'action',
-        title: 'Mode Lecteur Compact / Mini-barre d’appoint',
-        subtitle: 'Barre ultra-compacte ancrable en haut/bas ou widget flottant',
+        title: t.cmdToggleMiniPlayerTitle,
+        subtitle: t.compactDockDesc,
         icon: <Tv className="w-4 h-4 text-cyan-400" />,
         shortcut: 'W',
         onSelect: onOpenMiniPlayer,
@@ -174,48 +178,48 @@ export const CommandPaletteModal: React.FC<CommandPaletteModalProps> = ({
       {
         id: 'open-videos',
         category: 'action',
-        title: 'Ouvrir le Lecteur Vidéo & Clips',
-        subtitle: 'Lecteur multimédia MP4, WebM, MKV, MOV avec mode cinéma',
+        title: t.cmdGoVideosTitle,
+        subtitle: t.videosSubtitle,
         icon: <Film className="w-4 h-4 text-sky-400" />,
-        onSelect: onOpenVideos,
+        onSelect: onOpenVideos || (() => {}),
       },
       {
         id: 'open-downloader',
         category: 'action',
-        title: 'Ouvrir le Téléchargeur Vidéo & Musique',
-        subtitle: 'Télécharger depuis YouTube, TikTok, SoundCloud, X via yt-dlp & FFmpeg',
+        title: t.cmdGoDownloaderTitle,
+        subtitle: t.downloaderSubtitle,
         icon: <Download className="w-4 h-4 text-red-500" />,
-        onSelect: onOpenDownloader,
+        onSelect: onOpenDownloader || (() => {}),
       },
       {
         id: 'open-import',
         category: 'action',
-        title: 'Ouvrir un fichier ou dossier audio...',
-        subtitle: 'Lecture et indexation instantanée (MP3, FLAC, WAV, AAC, M4A, OGG)',
+        title: t.cmdOpenMediaTitle,
+        subtitle: t.openFileFormatsSub,
         icon: <FolderUp className="w-4 h-4 text-emerald-400" />,
         onSelect: onOpenImport,
       },
       {
         id: 'open-merger',
         category: 'action',
-        title: 'Assembler & Fusionner des pistes audio',
-        subtitle: 'Combiner plusieurs morceaux avec transitions fondues',
+        title: t.audioMergerMenu,
+        subtitle: t.libraryTitle,
         icon: <Layers className="w-4 h-4 text-indigo-400" />,
         onSelect: onOpenMerger,
       },
       {
         id: 'open-deduplicator',
         category: 'action',
-        title: 'Détecteur de doublons audio',
-        subtitle: 'Nettoyer et optimiser la bibliothèque',
+        title: t.duplicateFinderMenu,
+        subtitle: t.libraryTitle,
         icon: <Copy className="w-4 h-4 text-amber-400" />,
         onSelect: onOpenDeduplicator,
       },
       {
         id: 'open-stats',
         category: 'action',
-        title: 'Statistiques & Historique d’écoute',
-        subtitle: 'Temps total, artistes et titres phares',
+        title: t.listeningStatsMenu,
+        subtitle: t.statsSubtitle,
         icon: <BarChart3 className="w-4 h-4 text-teal-400" />,
         onSelect: onOpenStats,
       },
@@ -232,15 +236,15 @@ export const CommandPaletteModal: React.FC<CommandPaletteModalProps> = ({
 
     // Matching tracks (up to 8)
     const matchedTracks: ActionItem[] = tracks
-      .filter((t) => t.title.toLowerCase().includes(q) || t.artist.toLowerCase().includes(q) || t.album.toLowerCase().includes(q))
+      .filter((tr) => tr.title.toLowerCase().includes(q) || tr.artist.toLowerCase().includes(q) || tr.album.toLowerCase().includes(q))
       .slice(0, 8)
-      .map((t) => ({
-        id: `track-${t.id}`,
+      .map((tr) => ({
+        id: `track-${tr.id}`,
         category: 'track',
-        title: t.title,
-        subtitle: `${t.artist} • ${t.album || 'Single'} (${t.format.toUpperCase()})`,
+        title: tr.title,
+        subtitle: `${tr.artist} • ${tr.album || 'Single'} (${tr.format.toUpperCase()})`,
         icon: <Play className="w-4 h-4 text-emerald-400" />,
-        onSelect: () => onPlayTrack(t),
+        onSelect: () => onPlayTrack(tr),
       }));
 
     // Matching playlists
@@ -251,13 +255,14 @@ export const CommandPaletteModal: React.FC<CommandPaletteModalProps> = ({
         id: `playlist-${p.id}`,
         category: 'playlist',
         title: p.title,
-        subtitle: `${p.trackIds.length} morceau(x)`,
+        subtitle: `${p.trackIds.length} ${t.playlistTracksCount}`,
         icon: <ListMusic className="w-4 h-4 text-violet-400" />,
         onSelect: () => onOpenPlaylist(p.id),
       }));
 
     return [...matchedActions, ...matchedTracks, ...matchedPlaylists];
   }, [
+    t,
     query,
     isPlaying,
     tracks,
@@ -269,6 +274,8 @@ export const CommandPaletteModal: React.FC<CommandPaletteModalProps> = ({
     onOpenEqualizer,
     onOpenFullscreen,
     onOpenMiniPlayer,
+    onOpenVideos,
+    onOpenDownloader,
     onOpenImport,
     onOpenMerger,
     onOpenDeduplicator,
@@ -322,7 +329,7 @@ export const CommandPaletteModal: React.FC<CommandPaletteModalProps> = ({
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             onKeyDown={handleKeyDown}
-            placeholder="Rechercher un morceau, artiste, action ou commande rapide..."
+            placeholder={t.cmdSearchPlaceholder}
             className="flex-1 bg-transparent text-sm text-white placeholder-neutral-500 focus:outline-none"
           />
           <button
@@ -333,14 +340,15 @@ export const CommandPaletteModal: React.FC<CommandPaletteModalProps> = ({
                 ? 'bg-neutral-800 text-white'
                 : 'text-neutral-400 hover:text-neutral-200 hover:bg-neutral-800/80'
             }`}
-            title="Guide des raccourcis clavier"
+            title={t.shortcutsTitle}
           >
             <Keyboard className="w-4 h-4" />
-            <span className="hidden sm:inline">Raccourcis (?)</span>
+            <span className="hidden sm:inline">{t.settingsTabShortcuts} (?)</span>
           </button>
           <button
             type="button"
             onClick={onClose}
+            title={t.closeBtn}
             className="p-1 rounded-lg text-neutral-400 hover:text-neutral-200 hover:bg-neutral-800 transition-colors cursor-pointer"
           >
             <X className="w-4 h-4" />
@@ -353,31 +361,31 @@ export const CommandPaletteModal: React.FC<CommandPaletteModalProps> = ({
             <div className="flex items-center justify-between border-b border-neutral-800 pb-2">
               <span className="text-sm font-bold text-neutral-200 flex items-center gap-2">
                 <Keyboard className="w-4 h-4 text-cyan-400" />
-                Raccourcis Clavier Globaux FlowLuna
+                {t.shortcutsTitle}
               </span>
               <button
                 type="button"
                 onClick={() => setShowShortcutsHelp(false)}
                 className="text-xs text-neutral-400 hover:text-neutral-200"
               >
-                Retour aux commandes
+                {t.closeBtn}
               </button>
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
               {[
-                { key: 'Espace', desc: 'Lecture / Pause instantané' },
-                { key: 'Ctrl + K / Cmd + K', desc: 'Palette de commandes rapides' },
-                { key: 'Flèche Gauche / Droite', desc: 'Reculer / Avancer de 5 secondes' },
-                { key: 'Flèche Haut / Bas', desc: 'Ajuster le volume (±5%)' },
-                { key: 'M', desc: 'Couper / Rétablir le son (Mute)' },
-                { key: 'N', desc: 'Morceau suivant' },
-                { key: 'P', desc: 'Morceau précédent' },
-                { key: 'S', desc: 'Activer / Désactiver lecture aléatoire' },
-                { key: 'R', desc: 'Changer mode répétition (Tous / 1 / Off)' },
-                { key: 'E', desc: 'Ouvrir l’Égaliseur & Effets DSP 3D' },
-                { key: 'F / L', desc: 'Plein Écran immersif & Paroles' },
-                { key: 'X', desc: 'Arrêter la lecture (Stop complet)' },
-                { key: '?', desc: 'Ouvrir cette aide de raccourcis' },
+                { key: 'Space', desc: `${t.play} / ${t.pause}` },
+                { key: 'Ctrl + K / Cmd + K', desc: t.quickPalette },
+                { key: '← / →', desc: t.rewind10s },
+                { key: '↑ / ↓', desc: 'Volume (±5%)' },
+                { key: 'M', desc: 'Mute' },
+                { key: 'N', desc: t.next },
+                { key: 'P', desc: t.previous },
+                { key: 'S', desc: t.shuffle },
+                { key: 'R', desc: t.repeat },
+                { key: 'E', desc: t.equalizer },
+                { key: 'F / L', desc: `${t.fullscreen} & ${t.lyrics}` },
+                { key: 'X', desc: t.stop },
+                { key: '?', desc: t.shortcutsTitle },
               ].map((sc, i) => (
                 <div key={i} className="flex items-center justify-between p-2.5 rounded-lg bg-neutral-950/60 border border-neutral-800">
                   <span className="text-neutral-300">{sc.desc}</span>
@@ -394,7 +402,7 @@ export const CommandPaletteModal: React.FC<CommandPaletteModalProps> = ({
             {items.length === 0 ? (
               <div className="py-12 text-center text-xs text-neutral-500 flex flex-col items-center gap-2">
                 <Sparkles className="w-6 h-6 text-neutral-600" />
-                <span>Aucun résultat trouvé pour "{query}"</span>
+                <span>{t.cmdNoResults.replace('{query}', query)}</span>
               </div>
             ) : (
               items.map((item, idx) => {

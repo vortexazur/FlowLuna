@@ -1,7 +1,8 @@
 import React, { useState, useMemo } from 'react';
 import { X, Plus, Check, FolderPlus, Search, Music } from 'lucide-react';
-import { Track, Playlist, AccentColor } from '../types';
+import { Track, Playlist, AccentColor, LanguageCode } from '../types';
 import { PlaylistIcon } from './PlaylistIcon';
+import { getT } from '../i18n';
 
 interface AddToPlaylistModalProps {
   isOpen: boolean;
@@ -12,6 +13,7 @@ interface AddToPlaylistModalProps {
   onRemoveFromPlaylist?: (playlistId: string, trackId: string) => void;
   onCreatePlaylist?: (title: string) => Promise<string | void> | void;
   accent?: AccentColor;
+  language?: LanguageCode;
 }
 
 const ACCENT_BTN: Record<AccentColor, string> = {
@@ -32,7 +34,9 @@ export const AddToPlaylistModal: React.FC<AddToPlaylistModalProps> = ({
   onRemoveFromPlaylist,
   onCreatePlaylist,
   accent = 'emerald',
+  language,
 }) => {
+  const t = getT(language);
   const [searchQuery, setSearchQuery] = useState('');
   const [newPlaylistName, setNewPlaylistName] = useState('');
   const [isCreating, setIsCreating] = useState(false);
@@ -119,7 +123,7 @@ export const AddToPlaylistModal: React.FC<AddToPlaylistModalProps> = ({
               <FolderPlus className="w-5 h-5" />
             </div>
             <div>
-              <h3 className="text-sm font-bold text-white">Ajouter à une playlist</h3>
+              <h3 className="text-sm font-bold text-white">{t.addToPlaylistModalTitle}</h3>
               <p className="text-[11px] text-neutral-400 truncate max-w-[260px]">
                 {track.title} • {track.artist}
               </p>
@@ -128,6 +132,7 @@ export const AddToPlaylistModal: React.FC<AddToPlaylistModalProps> = ({
           <button
             type="button"
             onClick={onClose}
+            title={t.closeBtn}
             className="p-1.5 rounded-lg text-neutral-400 hover:text-white hover:bg-neutral-800 transition-colors"
           >
             <X className="w-4 h-4" />
@@ -159,7 +164,7 @@ export const AddToPlaylistModal: React.FC<AddToPlaylistModalProps> = ({
             <form onSubmit={handleCreateAndAdd} className="flex gap-2">
               <input
                 type="text"
-                placeholder="Créer une nouvelle playlist..."
+                placeholder={t.newPlaylistInputPlaceholder}
                 value={newPlaylistName}
                 onChange={(e) => setNewPlaylistName(e.target.value)}
                 className="flex-1 bg-neutral-950/80 border border-neutral-800 rounded-xl px-3 py-2 text-xs text-neutral-200 placeholder-neutral-500 focus:outline-none focus:border-neutral-600 transition-colors"
@@ -170,7 +175,7 @@ export const AddToPlaylistModal: React.FC<AddToPlaylistModalProps> = ({
                 className={`px-3 py-2 rounded-xl text-xs font-semibold flex items-center gap-1 transition-all disabled:opacity-40 disabled:cursor-not-allowed ${ACCENT_BTN[accent]}`}
               >
                 <Plus className="w-3.5 h-3.5" />
-                <span>Créer</span>
+                <span>{t.createBtn}</span>
               </button>
             </form>
           </div>
@@ -183,7 +188,7 @@ export const AddToPlaylistModal: React.FC<AddToPlaylistModalProps> = ({
               <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-neutral-500 pointer-events-none" />
               <input
                 type="text"
-                placeholder="Rechercher une playlist..."
+                placeholder={t.searchPlaylistPlaceholder}
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 className="w-full bg-neutral-950/50 border border-neutral-800/80 rounded-lg pl-8 pr-3 py-1.5 text-xs text-neutral-300 placeholder-neutral-500 focus:outline-none focus:border-neutral-700"
@@ -197,8 +202,8 @@ export const AddToPlaylistModal: React.FC<AddToPlaylistModalProps> = ({
           {availablePlaylists.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-8 text-neutral-500 text-xs text-center gap-2">
               <FolderPlus className="w-8 h-8 opacity-40" />
-              <p>Aucune playlist trouvée.</p>
-              <p className="text-[11px] text-neutral-600">Créez-en une directement avec le champ ci-dessus !</p>
+              <p>{t.noCustomPlaylists}</p>
+              <p className="text-[11px] text-neutral-600">{t.noCustomPlaylistsDesc}</p>
             </div>
           ) : (
             availablePlaylists.map((pl) => {
@@ -227,7 +232,7 @@ export const AddToPlaylistModal: React.FC<AddToPlaylistModalProps> = ({
                         {pl.title}
                       </p>
                       <p className="text-[10px] text-neutral-400">
-                        {currentCount} titre{currentCount !== 1 ? 's' : ''}
+                        {pl.id === 'playlist-favorites' ? t.favorites : pl.title} • {currentCount} {t.playlistTracksCount}
                       </p>
                     </div>
                   </div>
@@ -237,22 +242,22 @@ export const AddToPlaylistModal: React.FC<AddToPlaylistModalProps> = ({
                       type="button"
                       onClick={() => handleRemove(pl.id, pl.title)}
                       className="group/btn flex items-center gap-1.5 text-[11px] font-semibold text-emerald-400 hover:text-rose-400 bg-emerald-950/40 hover:bg-rose-950/50 border border-emerald-500/25 hover:border-rose-500/30 px-3 py-1.5 rounded-lg transition-all cursor-pointer shadow-sm hover:scale-[1.02] active:scale-95"
-                      title={`Cliquer pour retirer de "${pl.title}"`}
+                      title={t.removeFromPlaylistMenu}
                     >
                       <Check className="w-3.5 h-3.5 text-emerald-400 group-hover/btn:hidden flex-shrink-0" />
-                      <span className="group-hover/btn:hidden">Ajouté</span>
+                      <span className="group-hover/btn:hidden">{t.alreadyAddedBadge}</span>
                       <X className="w-3.5 h-3.5 text-rose-400 hidden group-hover/btn:inline flex-shrink-0" />
-                      <span className="hidden group-hover/btn:inline">Retirer</span>
+                      <span className="hidden group-hover/btn:inline">{t.removeFromPlaylistMenu}</span>
                     </button>
                   ) : (
                     <button
                       type="button"
                       onClick={() => handleAdd(pl.id, pl.title)}
                       className="flex items-center gap-1.5 text-[11px] font-semibold text-neutral-300 hover:text-white bg-neutral-800 hover:bg-neutral-700 border border-neutral-700/60 px-3 py-1.5 rounded-lg transition-all cursor-pointer shadow-sm hover:scale-[1.02] active:scale-95"
-                      title={`Cliquer pour ajouter à "${pl.title}"`}
+                      title={t.addBtn}
                     >
                       <Plus className="w-3.5 h-3.5" />
-                      <span>Ajouter</span>
+                      <span>{t.addBtn}</span>
                     </button>
                   )}
                 </div>
@@ -275,7 +280,7 @@ export const AddToPlaylistModal: React.FC<AddToPlaylistModalProps> = ({
             onClick={onClose}
             className="px-4 py-1.5 rounded-xl text-xs font-medium text-neutral-300 hover:text-white hover:bg-neutral-800 transition-colors cursor-pointer"
           >
-            Fermer
+            {t.closeBtn}
           </button>
         </div>
       </div>
